@@ -1,6 +1,8 @@
 <template>
     <header class="header-banner">
-        <h1>奎宁zzzz</h1>
+        <router-link to="/" class="logo">
+            <h1>奎宁zzzz</h1>
+        </router-link>
         <nav>
             <router-link to="/">首页</router-link>
             <router-link to="/tutorial">教程</router-link>
@@ -10,39 +12,57 @@
 
 <style scoped>
 .header-banner {
-    background-color: #102e88;
+    border-radius: 12px;
+
+    backdrop-filter: blur(16px);
+
     color: white;
-    padding: 12px;
+    padding: 16px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+h1 {
+    color: #e8edf5;
+    margin: 0;
+    margin-left: 15px;
+    font-size: 26px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
 }
 
-h1 {
-    color: white;
-    margin: 0;
-    font-size: 24px;
+.logo {
+    text-decoration: none;
+    transition: opacity 0.25s ease;
+}
+
+.logo:hover {
+    opacity: 0.8;
 }
 
 nav {
     display: flex;
     gap: 20px;
+}   display: flex;
+    gap: 20px;
 }
 
 nav a {
-    color: white;
+    color: #d1d9e6;
     text-decoration: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    transition: background-color 0.3s;
+    padding: 8px 18px;
+    border-radius: 6px;
+    transition: all 0.25s ease;
+    position: relative;
 }
 
 nav a:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
+    color: #e8edf5;
 }
 
 nav a.router-link-active {
-    background-color: rgba(255, 255, 255, 0.2);
-    font-weight: bold;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    font-weight: 500;
 }
 </style>
