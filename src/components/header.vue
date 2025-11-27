@@ -1,8 +1,6 @@
 <template>
     <header class="header-banner">
-        <router-link to="/" class="logo">
-            <h1>奎宁zzzz</h1>
-        </router-link>
+        <h1>奎宁zzzz</h1>
         <nav>
             <router-link to="/">首页</router-link>
             <router-link to="/tutorial">教程</router-link>
@@ -15,12 +13,13 @@
     border-radius: 12px;
 
     backdrop-filter: blur(16px);
-
     color: white;
     padding: 16px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
 h1 {
     color: #e8edf5;
     margin: 0;
@@ -30,19 +29,8 @@ h1 {
     letter-spacing: 0.5px;
 }
 
-.logo {
-    text-decoration: none;
-    transition: opacity 0.25s ease;
-}
-
-.logo:hover {
-    opacity: 0.8;
-}
-
 nav {
     display: flex;
-    gap: 20px;
-}   display: flex;
     gap: 20px;
 }
 

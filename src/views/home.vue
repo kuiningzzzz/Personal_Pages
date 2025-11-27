@@ -1,6 +1,7 @@
 <script setup>
 import Card2to8 from '../components/card_2to8.vue'
 import WordBlock from '../components/wordblock.vue'
+import CommentArea from '../components/comment_area.vue'
 </script>
 
 <template>
@@ -38,6 +39,7 @@ import WordBlock from '../components/wordblock.vue'
                 <WordBlock>Vue.js</WordBlock>
                 <WordBlock>Node.js</WordBlock>
                 <WordBlock>Flask</WordBlock>
+                <WordBlock>Express</WordBlock>
                 <WordBlock>uni-app</WordBlock>
             </p>
             <p>Tools：
@@ -48,6 +50,8 @@ import WordBlock from '../components/wordblock.vue'
                 <WordBlock>SQL</WordBlock>
             </p>
         </Card2to8>
+
+        <CommentArea pageId="home" />
 
     </div>
 </template>
