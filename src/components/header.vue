@@ -1,9 +1,9 @@
 <template>
     <header class="header-banner">
-        <h1>奎宁zzzz</h1>
+        <router-link to="/" class="logo"><h1>奎宁zzzz</h1></router-link>
         <nav>
-            <router-link to="/">首页</router-link>
-            <router-link to="/tutorial">教程</router-link>
+            <router-link to="/">Index</router-link>
+            <router-link to="/tutorial">Tutorial</router-link>
         </nav>
     </header>
 </template>
@@ -18,6 +18,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.logo {
+    text-decoration: none;
 }
 
 h1 {
