@@ -46,6 +46,7 @@ router.post('/comments', (req, res) => {
             });
         }
 
+
         // 验证内容长度
         if (content.length > 500) {
             return res.status(400).json({

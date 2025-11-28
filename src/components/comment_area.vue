@@ -1,48 +1,37 @@
 <template>
     <div class="comment-area">
-        <h2 class="comment-title">留言板</h2>
-        
-        <!-- 发表评论表单 -->
-        <div class="comment-form">
-            <input 
-                v-model="newComment.username" 
-                type="text" 
-                placeholder="昵称 *" 
-                maxlength="50"
-                class="input-field"
-            />
-            <input 
-                v-model="newComment.email" 
-                type="email" 
-                placeholder="邮箱（可选）" 
-                maxlength="100"
-                class="input-field"
-            />
-            <textarea 
-                v-model="newComment.content" 
-                placeholder="留下你的足迹... *" 
-                maxlength="500"
-                rows="4"
-                class="textarea-field"
-            ></textarea>
-            <div class="form-footer">
-                <span class="char-count">{{ newComment.content.length }}/500</span>
-                <button @click="submitComment" class="submit-btn" :disabled="isSubmitting">
-                    {{ isSubmitting ? '发送中...' : '发表评论' }}
-                </button>
+        <div class="comment-card">
+            <div class="card-title">
+                <h3>COMMENT</h3>
+                <h3>&</h3>
+                <h3>DISCUSSION</h3>
+            </div>
+            <!-- 发表评论表单 -->
+            <div class="card-content">
+                <div class="comment-form">
+                    <div class="input-user-info">
+                        <input v-model="newComment.username" type="text" placeholder="昵称 *" maxlength="50"
+                            class="input-field" />
+                        <input v-model="newComment.email" type="email" placeholder="邮箱（可选）" maxlength="100"
+                            class="input-field" />
+                    </div>
+                    <textarea v-model="newComment.content" placeholder="留下你的足迹... *" maxlength="500" rows="4"
+                        class="textarea-field"></textarea>
+                    <div class="form-footer">
+                        <span class="char-count">{{ newComment.content.length }}/500</span>
+                        <button @click="submitComment" class="submit-btn" :disabled="isSubmitting">
+                            {{ isSubmitting ? '发送中...' : '发表评论' }}
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
-
         <!-- 评论列表 -->
         <div class="comment-list">
             <div v-if="loading" class="loading">加载中...</div>
             <div v-else-if="comments.length === 0" class="empty">暂无评论，快来抢沙发吧！</div>
             <div v-else>
-                <div 
-                    v-for="comment in comments" 
-                    :key="comment.id" 
-                    class="comment-item"
-                >
+                <div v-for="comment in comments" :key="comment.id" class="comment-item">
                     <div class="comment-header">
                         <div class="comment-author">
                             <span class="username">{{ comment.username }}</span>
@@ -122,7 +111,7 @@ async function submitComment() {
             })
         })
         const result = await response.json()
-        
+
         if (result.success) {
             // 清空表单
             newComment.value = { username: '', email: '', content: '' }
@@ -142,19 +131,20 @@ async function submitComment() {
 
 // 格式化时间
 function formatTime(dateString) {
-    const date = new Date(dateString)
+    // SQLite 返回的是 UTC 时间，需要转换为本地时间
+    const date = new Date(dateString + 'Z') // 添加 'Z' 表示这是 UTC 时间
     const now = new Date()
     const diff = now - date
-    
+
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)
-    
+
     if (minutes < 1) return '刚刚'
     if (minutes < 60) return `${minutes}分钟前`
     if (hours < 24) return `${hours}小时前`
     if (days < 7) return `${days}天前`
-    
+
     return date.toLocaleDateString('zh-CN')
 }
 
@@ -175,12 +165,41 @@ onMounted(() => {
     margin: 0 auto;
 }
 
-.comment-title {
+.comment-card {
+    padding: 32px;
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    gap: 20px;
+    margin-left: -32px;
+}
+
+.card-title {
+    width: 20%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    padding-right: 20px;
+    flex-direction: column;
+}
+
+.card-title h3 {
     color: #ffffff;
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 500;
-    margin: 0 0 24px 0;
+    margin: 0;
+    writing-mode: horizontal-tb;
     letter-spacing: 0.5px;
+}
+
+.card-content {
+    width: 80%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-left: 20px;
+    gap: 5px;
 }
 
 /* 评论表单 */
@@ -193,6 +212,13 @@ onMounted(() => {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.input-user-info {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+}
+
+
 .input-field,
 .textarea-field {
     background: rgba(255, 255, 255, 0.06);
@@ -204,6 +230,7 @@ onMounted(() => {
     font-size: 14px;
     font-weight: 300;
     transition: all 0.2s ease;
+    flex: 1;
 }
 
 .input-field::placeholder,
