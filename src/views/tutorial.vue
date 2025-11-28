@@ -6,7 +6,7 @@ import TutorialCard from '../components/tutorial_card.vue'
 <template>
     <div class="tutorial-container">
         <div class="tutorial-header">
-            <h1>Tutorial about Coding, Computer, and Tools</h1>
+            <h1>Tutorials about Coding, Computer, and Tools</h1>
             <p>并没有做详细的课程笔记的习惯，
                 自己的笔记有时只有自己能看懂，
                 况且北大的同学里有课程笔记主页的同学还不少，
@@ -44,7 +44,7 @@ import TutorialCard from '../components/tutorial_card.vue'
             
             <TutorialCard 
                 title="使用uni-app框架进行安卓端应用开发和apk封装" 
-                desc="内容包含：uni-app简单结构、开发工具HbuilderX、简单的内网穿透工具Cpolar、apk封装、手机开发者模式与本机调试等"
+                desc="内容包括：uni-app简单结构、开发工具HbuilderX、简单的内网穿透工具Cpolar、apk封装、手机开发者模式与本机调试等"
                 date="施工中..."
                 link="/" />
 
@@ -86,7 +86,7 @@ p {
 
 /* 两列瀑布流布局 */
 .cards-grid {
-    width: 90%;
+    width: 95%;
     column-count: 2;
     column-gap: 24px;
 }
