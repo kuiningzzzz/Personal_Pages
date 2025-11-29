@@ -4,6 +4,7 @@
         <nav>
             <router-link to="/">Index</router-link>
             <router-link to="/tutorial">Tutorial</router-link>
+            <router-link to="/social">Social</router-link>
         </nav>
     </header>
 </template>
