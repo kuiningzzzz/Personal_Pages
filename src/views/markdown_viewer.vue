@@ -1,6 +1,7 @@
 <template>
     <div class="viewer-container">
         <MarkdownReader :src="markdownSrc" />
+        <CommentArea :pageId="markdownSrc" />
     </div>
 </template>
 
@@ -8,6 +9,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import MarkdownReader from '../components/markdown_reader.vue'
+import CommentArea from '../components/comment_area.vue'
 
 const route = useRoute()
 

@@ -36,19 +36,19 @@ import TutorialCard from '../components/tutorial_card.vue'
                 title="vscode中的python环境配置" 
                 desc="针对Windows端的python环境配置以及虚拟环境、anaconda工具的入门使用"
                 date="2025-09-08"
-                link="/article?src=/articles/vscode-python-setup.md" />
+                link="/article?src=/articles/tutorials/vscode-python-setup.md" />
             
             <TutorialCard 
                 title="在已有Windows系统的机器上安装Ubuntu双系统" 
                 desc="涉及磁盘手动分区，启动U盘的制作和使用等，并涵盖可能遇到的诸多特殊情况"
                 date="2024-09-20"
-                link="/article?src=/articles/ubuntu-dual-boot.md" />
+                link="/article?src=/articles/tutorials/ubuntu-dual-boot.md" />
             
             <TutorialCard 
                 title="使用uni-app框架进行安卓端应用开发和apk封装" 
                 desc="内容包括：uni-app简单结构、开发工具HbuilderX、简单的内网穿透工具Cpolar、apk封装、手机开发者模式与本机调试等"
                 date="施工中..."
-                link="/article?src=/articles/uni-app-dev.md" />
+                link="/article?src=/articles/tutorials/uni-app-dev.md" />
 
         </div>
         <div class="section-title">
@@ -59,7 +59,7 @@ import TutorialCard from '../components/tutorial_card.vue'
                 title="文明六mod编写" 
                 desc="目前更新完的内容有：更改游戏文本、自定义游戏单位。正在准备写自定义文明的攻略，但是工程量有点大，可能鸽一阵子..."
                 date="施工中..."
-                link="/article?src=/articles/civ6-mod.md" />
+                link="/article?src=/articles/tutorials/civ6-mod.md" />
 
         </div>
         <CommentArea pageId="tutorial" />
