@@ -1,23 +1,27 @@
 <template>
     <div class="friend-card">
-        <div class="card-header">
-            <h3 class="card-title">{{ title }}</h3>
+        <div class="card-image">
+            <img :src="avatar" :alt="title" />
         </div>
-        <div class="card-content">
-            <p class="card-desc">{{ desc }}</p>
-            <img src="../../public/friend_avatar/friend1.jpg" alt="Friend Avatar" />
-        </div>
-        <div class="card-footer">
-            <a href="https://qiyuzhang-stu.github.io/" target="_blank" class="see-page-link">
-                <button class="see-page-btn">
-                    <span>See Page</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
-                </button>
-            </a>
+        <div class="card-body">
+            <div class="card-header">
+                <h3 class="card-title">{{ title }}</h3>
+            </div>
+            <div class="card-content">
+                <p class="card-desc">{{ desc }}</p>
+            </div>
+            <div class="card-footer">
+                <a :href="link" target="_blank" class="see-page-link">
+                    <button class="see-page-btn">
+                        <span>See Page</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </button>
+                </a>
+            </div>
         </div>
     </div>
 </template>
@@ -31,6 +35,14 @@ defineProps({
     desc: {
         type: String,
         required: true
+    },
+    avatar: {
+        type: String,
+        required: true
+    },
+    link: {
+        type: String,
+        required: true
     }
 })
 </script>
@@ -42,11 +54,10 @@ defineProps({
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
-    padding: 24px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 16px;
     height: fit-content;
 }
 
@@ -57,15 +68,36 @@ defineProps({
     background: rgba(255, 255, 255, 0.06);
 }
 
+.card-image {
+    width: 100%;
+    aspect-ratio: 5 / 3;
+    overflow: hidden;
+    position: relative;
+}
+
+.card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+}
+
+.card-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
 .card-header {
     display: flex;
     flex-direction: column;
-    gap: 8px;
 }
 
 .card-title {
     color: #ffffff;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 500;
     margin: 0;
     line-height: 1.4;

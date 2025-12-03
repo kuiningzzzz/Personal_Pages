@@ -1,11 +1,26 @@
 <template>
-    < class="social-container">
+    <div class="social-container">
         <div class="social-header">
             <h1>Social Contact & Entertainment</h1>
             <p>Keep your spirit free</p>
         </div>
-        <FriendCard title="test" desc="test2" link="/" />
+        <div class="section-title">
+            <h2>Friend Links</h2>
+        </div>
+        <div class="friends-container">
+            <FriendCard 
+                title="Qiyu Zhang" 
+                desc="我的本科舍友，主页有或有趣或实用或有趣且实用的日志、笔记、随写，但是更新不太频繁，维护不当似乎有点混乱？）"
+                avatar="/friend_avatar/friend1.jpg"
+                link="https://qiyuzhang-stu.github.io/" />
+            <FriendCard 
+                title="FunctionHook函钩" 
+                desc="我的高中同学，天大计算机本科就读，主页有计算机学习笔记、日记、开源项目，以及东方&舟&母鸡卡神人视频，还有大量耄耋&雪莉等神人表情包，是个暂时没啥流量的b站up"
+                avatar="/friend_avatar/friend2.jpg"
+                link="https://functionhooktju.github.io/fxHook.io/" />
 
+        </div>
+    </div>
 </template>
 
 <script setup>
@@ -29,11 +44,41 @@ import FriendCard from '../components/friend_card.vue'
     text-align: center;
 }
 
+.section-title {
+    width: 90%;
+    text-align: left;
+}
+
+.friends-container {
+    width: 90%;
+    column-count: 2;
+    column-gap: 24px;
+}
+
+.friends-container > * {
+    break-inside: avoid;
+    margin-bottom: 24px;
+}
+
+/* 响应式：小屏幕改为单列 */
+@media (max-width: 768px) {
+    .friends-container {
+        column-count: 1;
+    }
+}
+
 h1 {
     color: #ffffff;
     font-size: 32px;
     font-weight: 500;
     margin-bottom: 20px;
+}
+
+h2 {
+    color: #ffffff;
+    font-size: 24px;
+    font-weight: 500;
+    margin: 0;
 }
 
 p {
