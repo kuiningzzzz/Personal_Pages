@@ -16,7 +16,9 @@ import TutorialCard from '../components/tutorial_card.vue'
                 （说不定跟着我走又是另一条弯路呢doge），
                 所以在这个界面分享一些我在敲代码、做项目、配环境等遇到的各种问题以及解决方法</p>
         </div>
-
+        <div class="section-title">
+            <h2>正经教程</h2>
+        </div>
         <div class="cards-grid">
             <TutorialCard 
                 title="vscode中的c/c++环境配置" 
@@ -49,7 +51,17 @@ import TutorialCard from '../components/tutorial_card.vue'
                 link="/" />
 
         </div>
+        <div class="section-title">
+            <h2>不正经教程</h2>
+        </div>
+        <div class="cards-grid">
+            <TutorialCard 
+                title="文明六mod编写" 
+                desc="目前更新完的内容有：更改游戏文本、自定义游戏单位。正在准备写自定义文明的攻略，但是工程量有点大，可能鸽一阵子..."
+                date="施工中..."
+                link="/" />
 
+        </div>
         <CommentArea pageId="tutorial" />
     </div>
 </template>
@@ -70,11 +82,23 @@ import TutorialCard from '../components/tutorial_card.vue'
     text-align: center;
 }
 
+.section-title {
+    width: 90%;
+    text-align: left;
+}
+
 h1 {
     color: #ffffff;
     font-size: 32px;
     font-weight: 500;
     margin-bottom: 20px;
+}
+
+h2 {
+    color: #ffffff;
+    font-size: 24px;
+    font-weight: 500;
+    margin: 0;
 }
 
 p {
