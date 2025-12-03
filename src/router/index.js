@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import home from '../views/home.vue'
 import tutorial from '../views/tutorial.vue'
 import social from '../views/social.vue'
+import markdownViewer from '../views/markdown_viewer.vue'
 
 const routes = [
   {
@@ -18,6 +19,11 @@ const routes = [
     path: '/social',
     name: 'social',
     component: social
+  },
+  {
+    path: '/article',
+    name: 'article',
+    component: markdownViewer
   }
 ]
 
