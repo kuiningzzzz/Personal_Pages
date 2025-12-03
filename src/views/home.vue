@@ -8,7 +8,7 @@ import CommentArea from '../components/comment_area.vue'
     <div class="home-container">
         <div class="profile-card">
             <div class="avatar">
-                <img src="/avatar.png" alt="头像" />
+                <img src="/picture/avatar.png" alt="头像" />
             </div>
             <div class="info">
                 <h2 class="name">奎宁zzzz</h2>
