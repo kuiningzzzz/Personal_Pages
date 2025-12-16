@@ -78,6 +78,7 @@ defineProps({
     margin: 0;
     line-height: 1.4;
     letter-spacing: 0.3px;
+    word-break: break-word;
 }
 
 .card-date {
@@ -96,6 +97,7 @@ defineProps({
     line-height: 1.7;
     font-weight: 300;
     margin: 0;
+    word-break: break-word;
 }
 
 .card-footer {
@@ -122,6 +124,7 @@ defineProps({
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
 }
 
 .read-more-btn:hover {
@@ -136,5 +139,57 @@ defineProps({
 
 .read-more-btn:hover svg {
     transform: translateX(2px);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .tutorial-card {
+        padding: 16px;
+        gap: 12px;
+    }
+
+    .card-title {
+        font-size: 16px;
+    }
+
+    .card-desc {
+        font-size: 13px;
+    }
+
+    .read-more-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .tutorial-card {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .card-title {
+        font-size: 14px;
+    }
+
+    .card-date {
+        font-size: 11px;
+    }
+
+    .card-desc {
+        font-size: 12px;
+        line-height: 1.6;
+    }
+
+    .read-more-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+        gap: 4px;
+    }
+
+    .read-more-btn svg {
+        width: 14px;
+        height: 14px;
+    }
 }
 </style>

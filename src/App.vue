@@ -15,11 +15,28 @@ import Footer from './components/footer.vue'
 
 <style>
 /* 全局样式，不加 scoped */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 10px;
   padding: 0;
   background: linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #141821 100%);
   min-height: 100vh;
+}
+
+/* 手机端调整 */
+@media (max-width: 768px) {
+  body {
+    margin: 5px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    margin: 0;
+  }
 }
 
 /* 页面切换动画 */

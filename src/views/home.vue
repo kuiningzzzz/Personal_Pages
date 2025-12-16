@@ -60,10 +60,11 @@ import CommentArea from '../components/comment_area.vue'
 .home-container {
     display: flex;
     justify-content: center;
-    padding: 10px 0;
+    padding: 20px 0;
     flex-direction: column;
     gap: 15px;
     align-items: center;
+    width: 100%;
 }
 
 .profile-card {
@@ -74,6 +75,7 @@ import CommentArea from '../components/comment_area.vue'
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
     padding: 32px;
     width: 90%;
+    max-width: 600px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -125,5 +127,68 @@ p {
 
 a {
     color: #74aaff;
+}
+
+/* 平板和手机响应式 */
+@media (max-width: 768px) {
+    .home-container {
+        padding: 15px 0;
+        gap: 12px;
+    }
+
+    .profile-card {
+        padding: 24px;
+        gap: 15px;
+        width: 95%;
+    }
+
+    .avatar img {
+        width: 120px;
+        height: 120px;
+    }
+
+    .name {
+        font-size: 24px;
+        margin: 0 0 15px 0;
+    }
+
+    .about p {
+        font-size: 14px;
+    }
+
+    p {
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .home-container {
+        padding: 10px 0;
+        gap: 10px;
+    }
+
+    .profile-card {
+        padding: 16px;
+        gap: 12px;
+        width: 100%;
+        border-radius: 8px;
+        margin: 0 5px;
+    }
+
+    .avatar img {
+        width: 100px;
+        height: 100px;
+    }
+
+    .name {
+        font-size: 20px;
+        margin: 0 0 12px 0;
+    }
+
+    .about p,
+    p {
+        font-size: 13px;
+        line-height: 1.6;
+    }
 }
 </style>

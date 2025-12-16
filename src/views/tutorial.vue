@@ -75,15 +75,18 @@ import TutorialCard from '../components/tutorial_card.vue'
     padding: 20px;
     max-width: 1400px;
     margin: 0 auto;
+    width: 100%;
 }
 
 .tutorial-header {
     width: 90%;
+    max-width: 800px;
     text-align: center;
 }
 
 .section-title {
     width: 90%;
+    max-width: 1300px;
     text-align: left;
 }
 
@@ -113,6 +116,7 @@ p {
     width: 95%;
     column-count: 2;
     column-gap: 24px;
+    max-width: 1300px;
 }
 
 .cards-grid > * {
@@ -120,10 +124,88 @@ p {
     margin-bottom: 24px;
 }
 
-/* 响应式：小屏幕改为单列 */
-@media (max-width: 768px) {
+/* 响应式：平板改为单列 */
+@media (max-width: 1024px) {
     .cards-grid {
         column-count: 1;
+        width: 90%;
+    }
+
+    .tutorial-header {
+        width: 90%;
+    }
+
+    .section-title {
+        width: 90%;
+    }
+}
+
+/* 响应式：小屏幕改为单列 */
+@media (max-width: 768px) {
+    .tutorial-container {
+        gap: 30px;
+        padding: 15px;
+    }
+
+    .tutorial-header {
+        width: 95%;
+    }
+
+    .section-title {
+        width: 95%;
+    }
+
+    .cards-grid {
+        width: 95%;
+        column-count: 1;
+    }
+
+    h1 {
+        font-size: 24px;
+        margin-bottom: 15px;
+    }
+
+    h2 {
+        font-size: 20px;
+    }
+
+    p {
+        font-size: 14px;
+        margin: 8px 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .tutorial-container {
+        gap: 24px;
+        padding: 10px 5px;
+    }
+
+    .tutorial-header {
+        width: 100%;
+    }
+
+    .section-title {
+        width: 100%;
+    }
+
+    .cards-grid {
+        width: 100%;
+        column-gap: 12px;
+    }
+
+    h1 {
+        font-size: 20px;
+        margin-bottom: 12px;
+    }
+
+    h2 {
+        font-size: 18px;
+    }
+
+    p {
+        font-size: 13px;
+        line-height: 1.5;
     }
 }
 </style>

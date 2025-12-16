@@ -162,20 +162,22 @@ onMounted(() => {
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
     padding: 32px;
     width: 90%;
+    max-width: 800px;
     margin: 0 auto;
 }
 
 .comment-card {
-    padding: 32px;
+    padding: 0;
     width: 100%;
     display: flex;
     align-items: stretch;
     gap: 20px;
-    margin-left: -32px;
+    margin: 0;
 }
 
 .card-title {
     width: 20%;
+    min-width: 100px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -186,11 +188,12 @@ onMounted(() => {
 
 .card-title h3 {
     color: #ffffff;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 500;
     margin: 0;
     writing-mode: horizontal-tb;
     letter-spacing: 0.5px;
+    text-align: center;
 }
 
 .card-content {
@@ -217,7 +220,6 @@ onMounted(() => {
     gap: 12px;
     justify-content: space-between;
 }
-
 
 .input-field,
 .textarea-field {
@@ -256,11 +258,13 @@ onMounted(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
 }
 
 .char-count {
     color: #7a8a9e;
     font-size: 12px;
+    white-space: nowrap;
 }
 
 .submit-btn {
@@ -273,6 +277,7 @@ onMounted(() => {
     font-weight: 400;
     cursor: pointer;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 .submit-btn:hover:not(:disabled) {
@@ -318,12 +323,15 @@ onMounted(() => {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .comment-author {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 .username {
@@ -340,6 +348,7 @@ onMounted(() => {
 .comment-time {
     color: #7a8a9e;
     font-size: 12px;
+    white-space: nowrap;
 }
 
 .comment-content {
@@ -349,5 +358,153 @@ onMounted(() => {
     font-weight: 300;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .comment-area {
+        padding: 24px;
+        width: 95%;
+    }
+
+    .comment-card {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .card-title {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 0 0 12px 0;
+        justify-content: flex-start;
+    }
+
+    .card-title h3 {
+        font-size: 16px;
+        text-align: left;
+    }
+
+    .card-content {
+        width: 100%;
+        padding-left: 0;
+    }
+
+    .input-user-info {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .input-field {
+        flex: 1;
+    }
+
+    .comment-form {
+        gap: 10px;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+    }
+
+    .textarea-field {
+        min-height: 80px;
+        font-size: 13px;
+    }
+
+    .form-footer {
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    .submit-btn {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+
+    .comment-header {
+        gap: 6px;
+    }
+
+    .comment-author {
+        gap: 8px;
+    }
+
+    .username {
+        font-size: 14px;
+    }
+
+    .comment-content {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .comment-area {
+        padding: 16px;
+        width: 100%;
+        border-radius: 8px;
+        margin: 0 5px;
+    }
+
+    .card-title h3 {
+        font-size: 14px;
+    }
+
+    .input-user-info {
+        flex-direction: column;
+    }
+
+    .input-field,
+    .textarea-field {
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+
+    .textarea-field {
+        min-height: 60px;
+    }
+
+    .form-footer {
+        gap: 8px;
+    }
+
+    .submit-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .char-count {
+        font-size: 11px;
+    }
+
+    .comment-item {
+        padding: 12px;
+    }
+
+    .comment-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .comment-author {
+        gap: 6px;
+    }
+
+    .username {
+        font-size: 13px;
+    }
+
+    .email {
+        font-size: 11px;
+    }
+
+    .comment-time {
+        font-size: 11px;
+    }
+
+    .comment-content {
+        font-size: 12px;
+        line-height: 1.6;
+    }
 }
 </style>

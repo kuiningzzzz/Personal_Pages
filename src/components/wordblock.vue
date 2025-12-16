@@ -18,10 +18,28 @@
     font-weight: 300;
     line-height: 1.4;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 .word-block:hover {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .word-block {
+        font-size: 12px;
+        padding: 3px 10px;
+        margin: 3px;
+    }
+}
+
+@media (max-width: 480px) {
+    .word-block {
+        font-size: 11px;
+        padding: 2px 8px;
+        margin: 2px;
+    }
 }
 </style>

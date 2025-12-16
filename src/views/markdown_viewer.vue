@@ -26,5 +26,20 @@ const markdownSrc = computed(() => {
     align-items: center;
     padding: 20px;
     min-height: calc(100vh - 200px);
+    width: 100%;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .viewer-container {
+        padding: 15px;
+        min-height: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .viewer-container {
+        padding: 10px 0;
+    }
 }
 </style>

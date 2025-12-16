@@ -107,6 +107,7 @@ watch(() => props.src, () => {
     font-size: 16px;
     line-height: 1.8;
     font-weight: 300;
+    word-break: break-word;
 }
 
 /* 标题样式 */
@@ -179,6 +180,7 @@ watch(() => props.src, () => {
     color: #74aaff;
     text-decoration: none;
     transition: color 0.2s ease;
+    word-break: break-word;
 }
 
 .markdown-content :deep(a:hover) {
@@ -213,6 +215,7 @@ watch(() => props.src, () => {
     border-radius: 4px;
     color: #c5d0dd;
     font-style: italic;
+    overflow: auto;
 }
 
 .markdown-content :deep(blockquote p) {
@@ -227,6 +230,7 @@ watch(() => props.src, () => {
     border-radius: 4px;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 14px;
+    word-break: break-word;
 }
 
 .markdown-content :deep(pre) {
@@ -236,6 +240,7 @@ watch(() => props.src, () => {
     padding: 20px;
     margin: 20px 0;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .markdown-content :deep(pre code) {
@@ -254,6 +259,9 @@ watch(() => props.src, () => {
     background: rgba(255, 255, 255, 0.02);
     border-radius: 8px;
     overflow: hidden;
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .markdown-content :deep(thead) {
@@ -266,12 +274,14 @@ watch(() => props.src, () => {
     padding: 12px 16px;
     text-align: left;
     border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    white-space: nowrap;
 }
 
 .markdown-content :deep(td) {
     color: #b8c5d6;
     padding: 12px 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    white-space: nowrap;
 }
 
 .markdown-content :deep(tr:last-child td) {
@@ -292,14 +302,177 @@ watch(() => props.src, () => {
 /* 图片 */
 .markdown-content :deep(img) {
     max-width: 100%;
+    height: auto;
     border-radius: 8px;
     margin: 20px 0;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    display: block;
 }
 
 /* 任务列表 */
 .markdown-content :deep(input[type="checkbox"]) {
     margin-right: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .markdown-card {
+        padding: 24px;
+        width: 95%;
+    }
+
+    .markdown-content {
+        font-size: 15px;
+    }
+
+    .markdown-content :deep(h1) {
+        font-size: 24px;
+        margin: 24px 0 16px 0;
+    }
+
+    .markdown-content :deep(h2) {
+        font-size: 20px;
+        margin: 20px 0 12px 0;
+    }
+
+    .markdown-content :deep(h3) {
+        font-size: 18px;
+        margin: 18px 0 10px 0;
+    }
+
+    .markdown-content :deep(h4) {
+        font-size: 16px;
+    }
+
+    .markdown-content :deep(p) {
+        font-size: 14px;
+        line-height: 1.7;
+    }
+
+    .markdown-content :deep(code) {
+        font-size: 12px;
+    }
+
+    .markdown-content :deep(pre) {
+        padding: 12px;
+        margin: 12px 0;
+    }
+
+    .markdown-content :deep(pre code) {
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    .markdown-content :deep(blockquote) {
+        padding: 12px 16px;
+        margin: 12px 0;
+    }
+
+    .markdown-content :deep(ul),
+    .markdown-content :deep(ol) {
+        padding-left: 20px;
+        margin: 12px 0;
+    }
+
+    .markdown-content :deep(li) {
+        margin: 4px 0;
+    }
+
+    .markdown-content :deep(table) {
+        font-size: 13px;
+    }
+
+    .markdown-content :deep(th),
+    .markdown-content :deep(td) {
+        padding: 8px 12px;
+    }
+
+    .markdown-content :deep(img) {
+        margin: 12px 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .markdown-card {
+        padding: 16px;
+        width: 100%;
+        border-radius: 8px;
+    }
+
+    .markdown-content {
+        font-size: 14px;
+    }
+
+    .markdown-content :deep(h1) {
+        font-size: 20px;
+        margin: 20px 0 12px 0;
+        padding-bottom: 8px;
+    }
+
+    .markdown-content :deep(h2) {
+        font-size: 18px;
+        margin: 16px 0 10px 0;
+    }
+
+    .markdown-content :deep(h3) {
+        font-size: 16px;
+        margin: 14px 0 8px 0;
+    }
+
+    .markdown-content :deep(h4) {
+        font-size: 15px;
+    }
+
+    .markdown-content :deep(p) {
+        font-size: 13px;
+        line-height: 1.6;
+        margin: 8px 0;
+    }
+
+    .markdown-content :deep(code) {
+        font-size: 11px;
+        padding: 1px 4px;
+    }
+
+    .markdown-content :deep(pre) {
+        padding: 8px;
+        margin: 8px 0;
+        border-radius: 4px;
+    }
+
+    .markdown-content :deep(blockquote) {
+        padding: 8px 12px;
+        margin: 8px 0;
+        border-left: 3px solid rgba(116, 170, 255, 0.5);
+    }
+
+    .markdown-content :deep(ul),
+    .markdown-content :deep(ol) {
+        padding-left: 16px;
+        margin: 8px 0;
+    }
+
+    .markdown-content :deep(li) {
+        margin: 2px 0;
+    }
+
+    .markdown-content :deep(table) {
+        font-size: 12px;
+        margin: 12px 0;
+    }
+
+    .markdown-content :deep(th),
+    .markdown-content :deep(td) {
+        padding: 6px 8px;
+    }
+
+    .markdown-content :deep(hr) {
+        margin: 16px 0;
+    }
+
+    .markdown-content :deep(img) {
+        margin: 8px 0;
+    }
 }
 </style>
 
