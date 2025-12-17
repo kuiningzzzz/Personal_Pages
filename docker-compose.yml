@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: personal-pages-backend
+    restart: unless-stopped
+    ports:
+      - "3002:3002"  # 映射端口到主机
+    environment:
+      - NODE_ENV=production
+      - SERVER_PORT=3002
+    volumes:
+      - ./server/database.sqlite:/app/database.sqlite  # 持久化数据库
+      - ./server/.env:/app/.env  # 挂载环境变量文件
+    networks:
+      - personal-pages-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  personal-pages-network:
+    driver: bridge
