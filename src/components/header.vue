@@ -11,6 +11,7 @@
         <nav :class="['nav-menu', { active: mobileMenuOpen }]">
             <router-link to="/" @click="mobileMenuOpen = false">Index</router-link>
             <router-link to="/tutorial" @click="mobileMenuOpen = false">Tutorial</router-link>
+            <router-link to="/project" @click="mobileMenuOpen = false">Project</router-link>
             <router-link to="/social" @click="mobileMenuOpen = false">Social</router-link>
         </nav>
     </header>
