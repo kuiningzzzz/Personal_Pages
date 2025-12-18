@@ -16,6 +16,10 @@ RUN npm ci --only=production
 # 复制应用代码
 COPY . .
 
+# 创建数据目录并设置权限
+RUN mkdir -p /app/data && \
+    chmod 777 /app/data
+
 # 暴露端口（默认3002，可通过环境变量修改）
 EXPOSE 3002
 
