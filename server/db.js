@@ -57,10 +57,6 @@ function initializeDatabase() {
                 INSERT INTO comments (page_id, username, email, content) VALUES (?, ?, ?, ?)
             `);
 
-            insert.run('home', '奎宁zzzz', 'admin@example.com', '欢迎来到我的个人主页！');
-            insert.run('home', '访客001', 'visitor@example.com', '网站设计得很不错！');
-            insert.run('tutorial', '学习者', 'learner@example.com', '教程很实用！');
-
             console.log('✓ 示例数据已插入');
         }
 
