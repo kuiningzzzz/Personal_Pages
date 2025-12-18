@@ -18,6 +18,11 @@ import ProjectCard from '../components/project_card.vue'
             不过这个项目本质上还是我用来学习和实践前端开发技术的一个练手项目，仅供参考和学习使用，当然不嫌弃的话也可以fork一份当模板使）"
                 date="2025-12-18" link="/article?src=/articles/projects/personal_pages.md"
                 repoUrl="https://github.com/kuiningzzzz/Personal_Pages" />
+
+            <ProjectCard title="Con-jugamos" desc="一款面向西班牙语学习者的动词变位学习软件，致力于通过科学的练习方法帮助学习者掌握西班牙语动词变位规则。
+            本项目是我在北京大学《智能化软件系统与工程》课程的大作业项目，后续将与北京大学外国语学院合作进行持续维护和更新。" date="2025-12-19"
+                link="/article?src=/articles/projects/con-jugamos.md"  downloadUrl="/source/Con-jugamos.apk"
+                repoUrl="https://github.com/kuiningzzzz/Spanish-Verb-Conjugation-Practicer" />
         </div>
 
         <div class="section-title">
