@@ -1,6 +1,26 @@
 version: '3.8'
 
 services:
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: personal-pages-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"  # 映射 HTTP 端口
+    depends_on:
+      - backend
+    networks:
+      - personal-pages-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # 后端服务
   backend:
     build:

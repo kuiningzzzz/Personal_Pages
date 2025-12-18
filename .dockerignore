@@ -1,0 +1,52 @@
+# 依赖目录
+node_modules
+npm-debug.log*
+
+# 构建输出
+dist
+.output
+
+# 环境变量文件（开发环境）
+.env.development
+.env.local
+.env.*.local
+
+# Git 相关
+.git
+.gitignore
+
+# IDE 配置
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+logs
+*.log
+
+# 测试文件
+coverage
+.nyc_output
+
+# 服务器代码（前端构建不需要）
+server
+
+# Docker 相关
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# 文档
+*.md
+README.md
+DOCKER_DEPLOY.md
+
+# 其他
+.cache
+.temp
