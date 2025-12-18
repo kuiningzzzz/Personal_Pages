@@ -1,13 +1,25 @@
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 
 // 获取当前文件的目录
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// 数据目录路径
+const DATA_DIR = join(__dirname, 'data');
+
+// 确保数据目录存在
+if (!existsSync(DATA_DIR)) {
+    mkdirSync(DATA_DIR, { recursive: true });
+    console.log('✓ 数据目录已创建');
+}
+
 // 数据库文件路径
-const DB_PATH = join(__dirname, 'database.sqlite');
+const DB_PATH = join(DATA_DIR, 'database.sqlite');
+
+console.log(`数据库路径: ${DB_PATH}`);
 
 // 创建或打开数据库
 const db = new Database(DB_PATH);

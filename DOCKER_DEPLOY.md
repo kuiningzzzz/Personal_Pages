@@ -84,7 +84,7 @@ docker-compose up -d --build
 ### 后端服务
 
 - **端口**: 3002（可在 docker-compose.yml 中修改）
-- **数据持久化**: 数据库文件 `database.sqlite` 挂载到主机
+- **数据持久化**: 使用 Docker 命名卷存储数据库文件（`/app/data` 目录）
 - **环境变量**: 通过 `.env` 文件配置
 - **健康检查**: 每30秒检查一次服务状态
 
@@ -211,7 +211,7 @@ sudo firewall-cmd --reload
 
 ## 注意事项
 
-- 数据库文件会自动持久化到 `server/database.sqlite`
+- 数据库文件使用 Docker 命名卷持久化，存储在 `/app/data/database.sqlite`
 - 如果需要修改端口，请同时修改 `docker-compose.yml` 和相关配置文件
 - 容器会在崩溃后自动重启（`restart: unless-stopped`）
 - 健康检查会在服务启动40秒后开始，每30秒检查一次
@@ -249,11 +249,20 @@ sudo firewall-cmd --reload
 - 构建过程是否成功：查看构建日志
 - public 目录的文件是否正确复制
 
-### 5. 数据库文件权限问题
+### 5. 数据库相关问题
 
-确保 `server/database.sqlite` 文件有正确的读写权限：
+数据库使用 Docker 命名卷存储，如需查看或备份：
+
 ```bash
-chmod 666 server/database.sqlite
+# 查看命名卷
+docker volume ls
+
+# 进入容器查看数据库
+docker-compose exec backend sh
+ls -la /app/data/
+
+# 备份数据库
+docker-compose exec backend cat /app/data/database.sqlite > backup.sqlite
 ```
 
 ### 6. 完全重新构建
@@ -312,8 +321,11 @@ docker-compose logs -f
 3. **配置 CDN**（可选）
 4. **数据库定期备份**
    ```bash
-   # 备份数据库
-   cp server/database.sqlite server/database.sqlite.backup.$(date +%Y%m%d)
+   # 从容器中备份数据库
+   docker-compose exec backend cat /app/data/database.sqlite > backup_$(date +%Y%m%d).sqlite
+   
+   # 或者直接备份 Docker 卷
+   docker run --rm -v personal_pages_db-data:/data -v $(pwd):/backup alpine tar czf /backup/db-backup-$(date +%Y%m%d).tar.gz -C /data .
    ```
 
 ## 监控和维护
