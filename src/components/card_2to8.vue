@@ -27,7 +27,7 @@ defineProps({
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
     padding: 32px;
     width: 90%;
-    max-width: 700px;
+    max-width: 1200px;
     display: flex;
     align-items: stretch;
     gap: 24px;

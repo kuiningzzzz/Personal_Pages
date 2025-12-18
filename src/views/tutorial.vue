@@ -80,13 +80,13 @@ import TutorialCard from '../components/tutorial_card.vue'
 
 .tutorial-header {
     width: 90%;
-    max-width: 800px;
+    max-width: 1200px;
     text-align: center;
 }
 
 .section-title {
     width: 90%;
-    max-width: 1300px;
+    max-width: 1200px;
     text-align: left;
 }
 
@@ -116,7 +116,7 @@ p {
     width: 95%;
     column-count: 2;
     column-gap: 24px;
-    max-width: 1300px;
+    max-width: 1200px;
 }
 
 .cards-grid > * {

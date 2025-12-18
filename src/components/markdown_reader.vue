@@ -86,7 +86,7 @@ watch(() => props.src, () => {
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
     padding: 40px;
     width: 90%;
-    max-width: 900px;
+    max-width: 1200px;
 }
 
 .loading,

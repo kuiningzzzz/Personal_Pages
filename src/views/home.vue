@@ -75,7 +75,7 @@ import CommentArea from '../components/comment_area.vue'
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
     padding: 32px;
     width: 90%;
-    max-width: 600px;
+    max-width: 1200px;
     display: flex;
     flex-direction: column;
     align-items: center;
