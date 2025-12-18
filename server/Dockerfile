@@ -4,6 +4,9 @@ FROM node:20-alpine
 # 设置工作目录
 WORKDIR /app
 
+# 安装构建依赖（better-sqlite3 需要这些依赖来编译）
+RUN apk add --no-cache python3 make g++
+
 # 复制 package.json 和 package-lock.json（如果存在）
 COPY package*.json ./
 
