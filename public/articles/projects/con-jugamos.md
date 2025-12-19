@@ -224,60 +224,67 @@ Spanish-Verb-Conjugation-Practicer/
 │   ├── feedback/                   # 用户反馈页
 │   └── update/                     # 版本更新页
 ├── server/                         # 后端服务目录
-│   ├── database/                   # 数据库相关
-│   │   └── db.js                   # 数据库连接和初始化
-│   ├── models/                     # 数据模型层
-│   │   ├── User.js                 # 用户模型
-│   │   ├── Verb.js                 # 动词模型
-│   │   ├── Conjugation.js          # 变位模型
-│   │   ├── PracticeRecord.js       # 练习记录模型
-│   │   ├── CheckIn.js              # 打卡模型
-│   │   ├── FavoriteVerb.js         # 收藏动词模型
-│   │   ├── WrongVerb.js            # 错题模型
-│   │   ├── Question.js             # 题库模型
-│   │   ├── QuestionFeedback.js     # 题目反馈模型
-│   │   ├── Textbook.js             # 教材模型
-│   │   ├── Lesson.js               # 课程模型
-│   │   ├── LessonVerb.js           # 课程动词关联
-│   │   ├── UserLessonProgress.js   # 用户课程进度
-│   │   ├── UserTextbook.js         # 用户教材关联
-│   │   ├── Feedback.js             # 用户反馈模型
-│   │   └── VerificationCode.js     # 验证码模型
-│   ├── routes/                     # 路由层
-│   │   ├── user.js                 # 用户相关路由
-│   │   ├── verb.js                 # 动词相关路由
-│   │   ├── exercise.js             # 练习相关路由
-│   │   ├── record.js               # 记录相关路由
-│   │   ├── checkin.js              # 打卡相关路由
-│   │   ├── leaderboard.js          # 排行榜路由
-│   │   ├── vocabulary.js           # 单词本路由
-│   │   ├── question.js             # 题库管理路由
-│   │   ├── questionFeedback.js     # 题目反馈路由
-│   │   ├── course.js               # 课程路由
-│   │   ├── feedback.js             # 用户反馈路由
-│   │   └── version.js              # 版本更新路由
-│   ├── services/                   # 业务逻辑层
-│   │   ├── deepseek.js             # DeepSeek AI服务
-│   │   ├── emailService.js         # 邮件服务
-│   │   ├── exerciseGenerator.js    # 练习题生成服务
-│   │   ├── imageCompression.js     # 图片压缩服务
-│   │   ├── questionValidator.js    # 题目验证服务
-│   │   └── scheduler.js            # 定时任务调度
-│   ├── middleware/                 # 中间件
-│   │   ├── auth.js                 # 身份认证中间件
-│   │   └── logger.js               # 日志中间件
-│   ├── data/                       # 初始化数据
-│   │   ├── initData.js             # 基础数据初始化
-│   │   └── initCourseData.js       # 课程数据初始化
-│   ├── textbookWord/               # 教材词汇数据
-│   │   └── textbook1.json          # 教材1词汇
-│   ├── updates/                    # 版本更新文件
-│   ├── logs/                       # 日志文件目录
 │   ├── .env.example                # 环境变量示例
+│   ├── .env                        # 本地环境文件（可选）
 │   ├── Dockerfile                  # Docker构建文件
 │   ├── docker-compose.yml          # Docker编排配置
-│   ├── verbs.json                  # 动词基础数据
-│   └── index.js                    # 服务入口文件
+│   ├── index.js                    # 服务入口文件
+│   ├── data/                       # 运行时的 SQLite 数据文件
+│   │   ├── feedback.db
+│   │   ├── questions.db
+│   │   ├── user_data.db
+│   │   └── vocabulary.db
+│   ├── database/                   # 数据库相关脚本与初始化
+│   │   ├── db.js                   # 数据库连接和初始化
+│   │   ├── initData.js             # 基础数据初始化
+│   │   └── initCourseData.js       # 课程数据初始化
+│   ├── models/                     # 数据模型层
+│   │   ├── CheckIn.js
+│   │   ├── Conjugation.js
+│   │   ├── FavoriteVerb.js
+│   │   ├── Feedback.js
+│   │   ├── Lesson.js
+│   │   ├── LessonVerb.js
+│   │   ├── PracticeRecord.js
+│   │   ├── Question.js
+│   │   ├── QuestionFeedback.js
+│   │   ├── Textbook.js
+│   │   ├── User.js
+│   │   ├── UserLessonProgress.js
+│   │   ├── UserTextbook.js
+│   │   ├── Verb.js
+│   │   ├── VerificationCode.js
+│   │   └── WrongVerb.js
+│   ├── routes/                     # 路由层
+│   │   ├── checkin.js
+│   │   ├── course.js
+│   │   ├── exercise.js
+│   │   ├── feedback.js
+│   │   ├── leaderboard.js
+│   │   ├── question.js
+│   │   ├── questionFeedback.js
+│   │   ├── record.js
+│   │   ├── user.js
+│   │   ├── verb.js
+│   │   ├── version.js
+│   │   └── vocabulary.js
+│   ├── services/                   # 业务逻辑层
+│   │   ├── deepseek.js
+│   │   ├── emailService.js
+│   │   ├── exerciseGenerator.js
+│   │   ├── imageCompression.js
+│   │   ├── questionValidator.js
+│   │   └── scheduler.js
+│   ├── middleware/                 # 中间件
+│   │   ├── auth.js
+│   │   └── logger.js
+│   ├── src/                        # 源数据与版本更新相关
+│   │   ├── verbs.json
+│   │   ├── version.json
+│   │   ├── textbookWord/
+│   │   │   └── textbook1.json
+│   │   └── updates/                # 版本更新文件夹
+│   └── logs/                       # 日志文件目录
 ├── utils/                          # 工具函数目录
 │   ├── api.js                      # API接口封装
 │   ├── base_url.js.example         # API地址配置示例
