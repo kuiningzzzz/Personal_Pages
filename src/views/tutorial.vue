@@ -45,6 +45,12 @@ import TutorialCard from '../components/tutorial_card.vue'
                 link="/article?src=/articles/tutorials/ubuntu-dual-boot.md" />
             
             <TutorialCard 
+                title="QQbot的搭建与简单的功能编写" 
+                desc="采用napcat框架作为QQ运行端，应用端有诸多，其中会夹带原神机器人Yunzai-bot及其各种功能强大的插件功能"
+                date="施工中..."
+                link="/article?src=/articles/tutorials/qqbot.md" />            
+
+            <TutorialCard 
                 title="使用uni-app框架进行安卓端应用开发和apk封装" 
                 desc="内容包括：uni-app简单结构、开发工具HbuilderX、简单的内网穿透工具Cpolar、apk封装、手机开发者模式与本机调试等"
                 date="施工中..."
