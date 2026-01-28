@@ -42,25 +42,26 @@ function initializeCardConfigs() {
                 date: "2024-09-20",
                 link: "/article?src=/articles/tutorials/ubuntu-dual-boot.md",
                 category: "正经教程"
-            }
-        ];
-
-        // Tutorial 卡片初始数据 - 不正经教程
-        const tutorialCardsFun = [
+            },
             {
                 title: "QQbot的搭建与简单的功能编写",
                 desc: "采用napcat框架作为QQ运行端，应用端有诸多，其中会夹带原神机器人Yunzai-bot及其各种功能强大的插件功能",
                 date: "施工中...",
                 link: "/article?src=/articles/tutorials/qqbot.md",
-                category: "不正经教程"
+                category: "正经教程"
             },
             {
                 title: "uni-app开发入门",
                 desc: "从零开始学习uni-app跨平台开发，包括环境搭建、基础语法和常用组件使用",
                 date: "施工中...",
                 link: "/article?src=/articles/tutorials/uni-app-dev.md",
-                category: "不正经教程"
-            },
+                category: "正经教程"
+            }
+        ];
+
+        // Tutorial 卡片初始数据 - 不正经教程
+        const tutorialCardsFun = [
+
             {
                 title: "文明6 MOD 开发教程",
                 desc: "详细介绍如何制作文明6的各类MOD，包括UI修改、游戏机制调整等",
