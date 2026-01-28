@@ -1,4 +1,4 @@
-import db from './db.js';
+import { cardDb } from './db.js';
 
 // 初始化卡片配置数据
 function initializeCardConfigs() {
@@ -6,7 +6,7 @@ function initializeCardConfigs() {
         console.log('🔄 开始初始化卡片配置...');
 
         // 检查是否已有数据
-        const count = db.prepare('SELECT COUNT(*) as count FROM card_configs').get();
+        const count = cardDb.prepare('SELECT COUNT(*) as count FROM card_configs').get();
         
         if (count.count > 0) {
             console.log('✓ 卡片配置已存在，跳过初始化');
@@ -125,7 +125,7 @@ function initializeCardConfigs() {
         ];
 
         // 插入 Tutorial 卡片
-        const insertCard = db.prepare('INSERT INTO card_configs (type, category, data, display_order) VALUES (?, ?, ?, ?)');
+        const insertCard = cardDb.prepare('INSERT INTO card_configs (type, category, data, display_order) VALUES (?, ?, ?, ?)');
         
         let order = 0;
         tutorialCardsSerious.forEach((card) => {

@@ -17,21 +17,25 @@ if (!existsSync(DATA_DIR)) {
 }
 
 // 数据库文件路径
-const DB_PATH = join(DATA_DIR, 'database.sqlite');
+const COMMENT_DB_PATH = join(DATA_DIR, 'comment.sqlite');
+const CARD_DB_PATH = join(DATA_DIR, 'card.sqlite');
 
-console.log(`数据库路径: ${DB_PATH}`);
+console.log(`评论数据库路径: ${COMMENT_DB_PATH}`);
+console.log(`卡片数据库路径: ${CARD_DB_PATH}`);
 
 // 创建或打开数据库
-const db = new Database(DB_PATH);
+const commentDb = new Database(COMMENT_DB_PATH);
+const cardDb = new Database(CARD_DB_PATH);
 
 // 启用外键约束
-db.pragma('foreign_keys = ON');
+commentDb.pragma('foreign_keys = ON');
+cardDb.pragma('foreign_keys = ON');
 
 // 初始化数据库表
 function initializeDatabase() {
     try {
-        // 创建评论表
-        db.exec(`
+        // 初始化评论数据库
+        commentDb.exec(`
             CREATE TABLE IF NOT EXISTS comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 page_id TEXT NOT NULL DEFAULT 'home',
@@ -42,13 +46,14 @@ function initializeDatabase() {
             )
         `);
 
-        // 创建索引
-        db.exec(`
+        commentDb.exec(`
             CREATE INDEX IF NOT EXISTS idx_page_created ON comments(page_id, created_at DESC)
         `);
 
-        // 创建卡片配置表
-        db.exec(`
+        console.log('✓ 评论数据库表已初始化');
+
+        // 初始化卡片配置数据库
+        cardDb.exec(`
             CREATE TABLE IF NOT EXISTS card_configs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL,
@@ -60,25 +65,20 @@ function initializeDatabase() {
             )
         `);
 
-        // 创建索引
-        db.exec(`
+        cardDb.exec(`
             CREATE INDEX IF NOT EXISTS idx_card_type_order ON card_configs(type, display_order)
         `);
 
-        console.log('✓ 数据库表已初始化');
+        console.log('✓ 卡片数据库表已初始化');
 
-        // 检查是否有数据，如果没有则插入示例数据
-        const count = db.prepare('SELECT COUNT(*) as count FROM comments').get();
-        
-        if (count.count === 0) {
-            const insert = db.prepare(`
-                INSERT INTO comments (page_id, username, email, content) VALUES (?, ?, ?, ?)
-            `);
+        // 检查评论数据库是否有数据
+        const commentCount = commentDb.prepare('SELECT COUNT(*) as count FROM comments').get();
+        console.log(`✓ 评论数据库已就绪（${commentCount.count} 条评论）`);
 
-            console.log('✓ 示例数据已插入');
-        }
+        // 检查卡片数据库是否有数据
+        const cardCount = cardDb.prepare('SELECT COUNT(*) as count FROM card_configs').get();
+        console.log(`✓ 卡片数据库已就绪（${cardCount.count} 个卡片配置）`);
 
-        console.log('✓ SQLite 数据库已就绪');
     } catch (error) {
         console.error('✗ 数据库初始化失败:', error.message);
         throw error;
@@ -99,9 +99,16 @@ async function loadInitialData() {
     }
 }
 
-// 延迟执行，确保数据库表已创建
+// 延迟加载初始数据，确保数据库已完全初始化
 setTimeout(() => {
     loadInitialData();
 }, 100);
 
-export default db;
+// 导出两个数据库实例
+export { commentDb, cardDb };
+
+// 默认导出（为了向后兼容）
+export default {
+    comment: commentDb,
+    card: cardDb
+};

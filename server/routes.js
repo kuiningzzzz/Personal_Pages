@@ -1,5 +1,5 @@
 import express from 'express';
-import db from './db.js';
+import { commentDb } from './db.js';
 
 const router = express.Router();
 
@@ -12,11 +12,11 @@ router.get('/comments', (req, res) => {
         
         if (page_id) {
             // 获取指定页面的评论
-            stmt = db.prepare('SELECT * FROM comments WHERE page_id = ? ORDER BY created_at DESC');
+            stmt = commentDb.prepare('SELECT * FROM comments WHERE page_id = ? ORDER BY created_at DESC');
             rows = stmt.all(page_id);
         } else {
             // 获取所有评论
-            stmt = db.prepare('SELECT * FROM comments ORDER BY created_at DESC');
+            stmt = commentDb.prepare('SELECT * FROM comments ORDER BY created_at DESC');
             rows = stmt.all();
         }
         
@@ -56,13 +56,13 @@ router.post('/comments', (req, res) => {
         }
 
         // 插入评论
-        const insert = db.prepare(
+        const insert = commentDb.prepare(
             'INSERT INTO comments (page_id, username, email, content) VALUES (?, ?, ?, ?)'
         );
         const result = insert.run(page_id, username, email || null, content);
 
         // 获取新插入的评论
-        const newComment = db.prepare('SELECT * FROM comments WHERE id = ?').get(result.lastInsertRowid);
+        const newComment = commentDb.prepare('SELECT * FROM comments WHERE id = ?').get(result.lastInsertRowid);
 
         res.status(201).json({
             success: true,
@@ -83,7 +83,7 @@ router.delete('/comments/:id', (req, res) => {
     try {
         const { id } = req.params;
 
-        const stmt = db.prepare('DELETE FROM comments WHERE id = ?');
+        const stmt = commentDb.prepare('DELETE FROM comments WHERE id = ?');
         const result = stmt.run(id);
 
         if (result.changes === 0) {

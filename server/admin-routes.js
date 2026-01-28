@@ -11,7 +11,7 @@ import {
 } from 'fs/promises';
 import { existsSync } from 'fs';
 import multer from 'multer';
-import db from './db.js';
+import { cardDb } from './db.js';
 
 const router = express.Router();
 
@@ -347,7 +347,7 @@ router.get('/cards/:type', async (req, res) => {
     try {
         const { type } = req.params;
         
-        const stmt = db.prepare('SELECT * FROM card_configs WHERE type = ?');
+        const stmt = cardDb.prepare('SELECT * FROM card_configs WHERE type = ?');
         const rows = stmt.all(type);
         
         const cards = rows.map(row => JSON.parse(row.data));
@@ -379,10 +379,10 @@ router.put('/cards/:type', async (req, res) => {
         }
 
         // 删除旧配置
-        db.prepare('DELETE FROM card_configs WHERE type = ?').run(type);
+        cardDb.prepare('DELETE FROM card_configs WHERE type = ?').run(type);
 
         // 插入新配置
-        const insert = db.prepare('INSERT INTO card_configs (type, data, display_order) VALUES (?, ?, ?)');
+        const insert = cardDb.prepare('INSERT INTO card_configs (type, data, display_order) VALUES (?, ?, ?)');
         cards.forEach((card, index) => {
             insert.run(type, JSON.stringify(card), index);
         });
