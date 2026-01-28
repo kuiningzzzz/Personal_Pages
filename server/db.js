@@ -47,6 +47,24 @@ function initializeDatabase() {
             CREATE INDEX IF NOT EXISTS idx_page_created ON comments(page_id, created_at DESC)
         `);
 
+        // 创建卡片配置表
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS card_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                category TEXT,
+                data TEXT NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // 创建索引
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_card_type_order ON card_configs(type, display_order)
+        `);
+
         console.log('✓ 数据库表已初始化');
 
         // 检查是否有数据，如果没有则插入示例数据
@@ -69,5 +87,21 @@ function initializeDatabase() {
 
 // 执行初始化
 initializeDatabase();
+
+// 初始化卡片配置数据（在数据库表创建后）
+async function loadInitialData() {
+    try {
+        // 动态导入初始化数据脚本
+        const { default: initializeCardConfigs } = await import('./init-data.js');
+        // initializeCardConfigs 在导入时会自动执行
+    } catch (error) {
+        console.error('加载初始数据失败:', error);
+    }
+}
+
+// 延迟执行，确保数据库表已创建
+setTimeout(() => {
+    loadInitialData();
+}, 100);
 
 export default db;

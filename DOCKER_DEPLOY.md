@@ -6,38 +6,66 @@
 
 - **前端服务**: Vue3 + Nginx（端口 80）
 - **后端服务**: Node.js + Express（端口 3002）
-- **网络**: 两个服务在同一 Docker 网络中通信
+- **数据持久化**: SQLite 数据库 + 命名卷
+- **自动初始化**: 首次启动自动创建数据库表和初始数据
 
 访问架构：
 ```
 用户 → Nginx (80端口)
-       ├─→ 静态文件服务 (Vue3 应用)
+       ├─→ 静态文件服务 (Vue3 应用 + public 资源)
        └─→ API 反向代理 (/api/*) → 后端服务 (3002端口)
 ```
 
-## 快速开始
+## 🚀 快速开始（一键部署）
 
-### 1. 构建并启动服务
+### 方法一：使用部署脚本（推荐）
+
+**Linux/Mac:**
+```bash
+bash deploy.sh
+```
+
+**Windows:**
+```bash
+deploy.bat
+```
+
+### 方法二：手动部署
 
 在项目根目录运行：
 
 ```bash
-docker-compose up -d
+docker-compose up -d --build
 ```
 
 这将会：
-- 构建前端服务的 Docker 镜像（Vue3 + Nginx）
-- 构建后端服务的 Docker 镜像（Node.js + Express）
-- 启动前后端容器
-- 在后台运行服务（`-d` 参数）
+- ✅ 构建前端服务的 Docker 镜像（Vue3 + Nginx）
+- ✅ 构建后端服务的 Docker 镜像（Node.js + Express）
+- ✅ 自动创建数据库表结构
+- ✅ 自动初始化卡片配置数据
+- ✅ 启动前后端容器并在后台运行
+- ✅ 配置持久化存储卷
 
-### 2. 查看服务状态
+**完成后即可直接访问，无需额外配置！**
+
+## 📋 访问地址
+
+部署完成后，可以通过以下地址访问：
+
+- 🏠 **前端主页**: `http://你的域名` 或 `http://localhost`
+- 🔧 **后端API**: `http://你的域名/api` 或 `http://localhost:3002`
+- 👨‍💼 **管理后台**: `http://你的域名/admin` 或 `http://localhost/admin`
+  - 密码: `zjy051104`
+
+## 🛠️ 常用命令
+
+### 查看服务状态
 
 ```bash
 docker-compose ps
 ```
 
-### 3. 查看日志
+### 查看日志
 
 ```bash
 # 查看所有服务日志
@@ -53,160 +81,385 @@ docker-compose logs frontend
 docker-compose logs backend
 ```
 
-### 4. 停止服务
+### 停止服务
 
 ```bash
 docker-compose down
 ```
 
-### 5. 重新构建并启动
-
-如果修改了代码，需要重新构建镜像：
+### 重启服务
 
 ```bash
-docker-compose up -d --build
+docker-compose restart
 ```
 
-## 服务配置
+### 进入容器调试
+
+```bash
+# 进入后端容器
+docker-compose exec backend sh
+
+# 进入前端容器
+docker-compose exec frontend sh
+```
+
+## ✨ 自动化特性
+
+### 数据库自动初始化
+
+后端服务首次启动时会自动：
+1. ✅ 创建 SQLite 数据库文件
+2. ✅ 创建 `comments` 表（评论系统）
+3. ✅ 创建 `card_configs` 表（卡片配置）
+4. ✅ 初始化 Tutorial 卡片数据（7个教程）
+5. ✅ 初始化 Project 卡片数据（2个项目）
+
+**数据持久化**: 数据库存储在 Docker 命名卷 `db-data` 中，容器删除后数据不会丢失。
+
+### Public 资源自动部署
+
+前端容器包含：
+- ✅ Vue 应用构建产物
+- ✅ Markdown 文章（`/articles`）
+- ✅ 图片资源（`/picture`）
+- ✅ 好友头像（`/friend_avatar`）
+
+### Nginx 优化配置
+
+- ✅ Gzip 压缩
+- ✅ 静态资源缓存
+- ✅ API 反向代理
+- ✅ Vue Router history 模式支持
+- ✅ 健康检查
+
+## 📦 服务配置详情
 
 ### 前端服务
 
 - **端口**: 80（HTTP）
 - **技术栈**: Vue3 + Vite + Nginx
-- **静态文件**: 构建后的文件位于容器内 `/usr/share/nginx/html`
+- **容器名**: `personal-pages-frontend`
+- **静态文件位置**: `/usr/share/nginx/html`
+- **包含内容**:
+  - Vue 应用构建产物
+  - Public 资源（articles、picture、friend_avatar）
 - **Nginx 配置**: 
-  - 支持 Vue Router history 模式
-  - API 请求反向代理到后端
-  - 静态资源缓存优化
-  - Gzip 压缩
-- **健康检查**: 每30秒检查一次服务状态
+  - ✅ 支持 Vue Router history 模式
+  - ✅ API 请求反向代理到后端 (`/api/*`)
+  - ✅ Public 资源直接服务 (`/articles`, `/picture`, `/friend_avatar`)
+  - ✅ 静态资源缓存优化（图片1年，文章1小时）
+  - ✅ Gzip 压缩
+- **健康检查**: 每30秒检查一次
 
 ### 后端服务
 
-- **端口**: 3002（可在 docker-compose.yml 中修改）
-- **数据持久化**: 使用 Docker 命名卷存储数据库文件（`/app/data` 目录）
-- **环境变量**: 通过 `.env` 文件配置
-- **健康检查**: 每30秒检查一次服务状态
+- **端口**: 3002
+- **技术栈**: Node.js + Express + SQLite
+- **容器名**: `personal-pages-backend`
+- **数据持久化**: Docker 命名卷 `db-data` → `/app/data`
+- **自动初始化**: 
+  - ✅ 创建数据库表结构
+  - ✅ 初始化卡片配置数据
+- **API 端点**:
+  - `/api/comments` - 评论系统
+  - `/api/admin/*` - 管理后台 API
+- **健康检查**: 每30秒检查一次
+
+### 数据持久化
+
+使用 Docker 命名卷确保数据安全：
+
+```yaml
+volumes:
+  db-data:  # 存储 SQLite 数据库
+```
+
+**数据位置**: 
+- 宿主机: Docker 管理的卷存储位置
+- 容器内: `/app/data/database.sqlite`
+
+**优点**:
+- ✅ 容器删除后数据保留
+- ✅ 易于备份和迁移
+- ✅ 性能优化
 
 ### 环境变量配置
 
-前端环境变量（`.env.production`）：
+**前端环境变量** (`.env.production`):
 ```env
 VITE_API_BASE_URL=http://quininezzzz.top/api
 ```
 
-后端环境变量（`server/.env`）：
+**后端环境变量** (`server/.env`):
 ```env
 SERVER_PORT=3002
+NODE_ENV=production
 ```
 
-## 常用命令
+> 💡 **提示**: 在服务器部署时，记得修改 `VITE_API_BASE_URL` 为你的实际域名。
+
+## 🚀 服务器部署步骤
+
+### 1. 准备工作
+
+确保服务器已安装 Docker 和 Docker Compose：
 
 ```bash
-# 启动服务
-docker-compose up -d
+# 检查安装
+docker --version
+docker-compose --version
 
-# 停止服务
-docker-compose down
+# 如未安装，参考官方文档安装
+# https://docs.docker.com/engine/install/
+```
+
+### 2. 上传项目到服务器
+
+```bash
+# 方法一：使用 git
+git clone https://github.com/你的用户名/Personal_Pages.git
+cd Personal_Pages
+
+# 方法二：使用 scp（从本地上传）
+scp -r Personal_Pages/ user@server:/path/to/deploy/
+```
+
+### 3. 配置域名和环境变量
+
+编辑 `.env.production` 文件：
+
+```bash
+nano .env.production
+```
+
+修改为你的域名：
+```env
+VITE_API_BASE_URL=http://你的域名/api
+```
+
+### 4. 一键部署
+
+```bash
+# Linux/Mac
+bash deploy.sh
+
+# 或手动执行
+docker-compose up -d --build
+```
+
+### 5. 验证部署
+
+```bash
+# 查看服务状态
+docker-compose ps
 
 # 查看日志
 docker-compose logs -f
 
-# 重启服务
-docker-compose restart
-
-# 进入容器
-docker-compose exec backend sh
-
-# 查看服务状态
-docker-compose ps
-
-# 删除所有容器和网络（保留数据卷）
-docker-compose down
-
-# 删除所有容器、网络和数据卷
-docker-compose down -v
+# 测试访问
+curl http://localhost
+curl http://localhost/api
 ```
 
-## 服务器部署步骤
-
-### 准备工作
-
-1. 确保服务器已安装 Docker 和 Docker Compose
-   ```bash
-   docker --version
-   docker-compose --version
-   ```
-
-2. 配置域名解析（如果使用域名）
-   - 将域名 A 记录指向服务器 IP
-   - 例如：`quininezzzz.top` → 服务器 IP
-
-### 部署步骤
-
-1. **上传项目文件到服务器**
-   ```bash
-   # 使用 git clone 或 scp 上传
-   git clone <repository-url>
-   cd Personal_Pages
-   ```
-
-2. **配置环境变量**
-   
-   前端配置（`.env.production`）：
-   ```env
-   VITE_API_BASE_URL=http://quininezzzz.top/api
-   ```
-   
-   后端配置（`server/.env`）：
-   ```env
-   SERVER_PORT=3002
-   ```
-
-3. **构建并启动服务**
-   ```bash
-   # 首次部署或代码更新后
-   docker-compose up -d --build
-   
-   # 后续重启（不需要重新构建）
-   docker-compose up -d
-   ```
-
-4. **检查服务状态**
-   ```bash
-   # 查看容器状态
-   docker-compose ps
-   
-   # 查看日志
-   docker-compose logs -f
-   ```
-
-5. **访问测试**
-   - 前端页面：`http://服务器IP` 或 `http://quininezzzz.top`
-   - 后端 API：`http://服务器IP/api/comments`
-
-### 防火墙配置
-
-确保服务器防火墙开放以下端口：
+### 6. 配置防火墙（如需要）
 
 ```bash
-# Ubuntu/Debian
-sudo ufw allow 80/tcp    # HTTP
-sudo ufw allow 443/tcp   # HTTPS（如果配置 SSL）
+# 开放 80 端口
+sudo ufw allow 80/tcp
 
-# CentOS/RHEL
-sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --permanent --add-service=https
-sudo firewall-cmd --reload
+# 开放 443 端口（HTTPS）
+sudo ufw allow 443/tcp
 ```
 
-### HTTPS 配置（可选）
+## 🔒 HTTPS 配置（可选）
 
-如果需要 HTTPS，可以使用 Certbot 和 Let's Encrypt：
+如需启用 HTTPS，可以使用 Let's Encrypt 的 Certbot：
 
-1. 安装 Certbot
-2. 获取 SSL 证书
-3. 修改 nginx.conf 配置 SSL
+### 方法一：使用 Nginx Proxy Manager
+
+推荐使用 Nginx Proxy Manager 来管理 SSL 证书。
+
+### 方法二：手动配置 Certbot
+
+```bash
+# 安装 Certbot
+sudo apt install certbot python3-certbot-nginx
+
+# 获取证书
+sudo certbot --nginx -d 你的域名
+
+# 自动续期
+sudo certbot renew --dry-run
+```
+
+## 📊 监控和维护
+
+### 查看实时日志
+
+```bash
+# 所有服务
+docker-compose logs -f
+
+# 仅后端
+docker-compose logs -f backend
+
+# 最近100行
+docker-compose logs --tail=100
+```
+
+### 健康检查
+
+```bash
+# 查看容器健康状态
+docker-compose ps
+
+# 手动测试健康检查
+curl http://localhost/
+curl http://localhost:3002/
+```
+
+### 数据备份
+
+**备份数据库**:
+```bash
+# 方法一：备份整个数据卷
+docker run --rm -v personal_pages_db-data:/data -v $(pwd):/backup alpine tar czf /backup/db-backup.tar.gz /data
+
+# 方法二：直接复制数据库文件
+docker-compose exec backend cat /app/data/database.sqlite > backup.sqlite
+```
+
+**恢复数据库**:
+```bash
+# 停止服务
+docker-compose down
+
+# 删除旧数据卷
+docker volume rm personal_pages_db-data
+
+# 重新启动（会创建新卷）
+docker-compose up -d
+
+# 复制备份文件到容器
+docker cp backup.sqlite personal-pages-backend:/app/data/database.sqlite
+
+# 重启后端服务
+docker-compose restart backend
+```
+
+### 更新应用
+
+```bash
+# 1. 拉取最新代码
+git pull
+
+# 2. 重新构建并启动
+docker-compose up -d --build
+
+# 3. 查看日志确认
+docker-compose logs -f
+```
+
+### 清理资源
+
+```bash
+# 清理未使用的镜像
+docker image prune -a
+
+# 清理未使用的容器
+docker container prune
+
+# 清理未使用的卷（注意：会删除数据！）
+docker volume prune
+
+# 清理所有未使用的资源
+docker system prune -a
+```
+
+## 🐛 故障排查
+
+### 问题1: 容器启动失败
+
+```bash
+# 查看详细日志
+docker-compose logs backend
+docker-compose logs frontend
+
+# 检查容器状态
+docker-compose ps
+
+# 重启服务
+docker-compose restart
+```
+
+### 问题2: 数据库无法初始化
+
+```bash
+# 进入后端容器
+docker-compose exec backend sh
+
+# 检查数据目录
+ls -la /app/data/
+
+# 检查权限
+chmod 777 /app/data
+```
+
+### 问题3: 前端无法访问后端 API
+
+```bash
+# 检查后端服务是否运行
+curl http://localhost:3002/
+
+# 检查网络连接
+docker network inspect personal_pages_personal-pages-network
+
+# 测试容器间通信
+docker-compose exec frontend ping backend
+```
+
+### 问题4: 端口被占用
+
+```bash
+# 查看端口占用
+sudo lsof -i :80
+sudo lsof -i :3002
+
+# 修改 docker-compose.yml 中的端口映射
+ports:
+  - "8080:80"  # 将80改为8080
+```
+
+### 问题5: 构建失败
+
+```bash
+# 清理构建缓存
+docker-compose build --no-cache
+
+# 重新构建
+docker-compose up -d --build --force-recreate
+```
+
+## 📝 重要提示
+
+1. **首次部署**: 自动创建数据库和初始化数据，无需手动操作
+2. **数据持久化**: 数据库存储在 Docker 卷中，删除容器不会丢失数据
+3. **管理后台**: 访问 `/admin` 需要密码 `zjy051104`
+4. **日志监控**: 建议定期查看日志，及时发现问题
+5. **定期备份**: 建议每周备份一次数据库文件
+6. **安全加固**: 生产环境建议修改管理员密码和启用 HTTPS
+
+## 🔗 相关链接
+
+- [Docker 官方文档](https://docs.docker.com/)
+- [Docker Compose 文档](https://docs.docker.com/compose/)
+- [Nginx 配置指南](https://nginx.org/en/docs/)
+- [Let's Encrypt](https://letsencrypt.org/)
+
+---
+
+**最后更新**: 2026-01-29  
+**版本**: 2.0.0 - 添加自动化部署支持
 4. 更新 docker-compose.yml 端口映射（添加 443 端口）
 
 ## 注意事项

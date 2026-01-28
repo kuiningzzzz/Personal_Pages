@@ -32,7 +32,8 @@ services:
       - NODE_ENV=production
       - SERVER_PORT=3002
     volumes:
-      - db-data:/app/data  # 使用命名卷持久化数据目录
+      - ./server/data:/app/data  # 挂载数据库到项目目录，方便查看和备份
+      - ./public:/app/public  # 挂载宿主机的 public 目录
     networks:
       - personal-pages-network
     healthcheck:

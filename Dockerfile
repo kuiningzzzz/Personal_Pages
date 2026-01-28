@@ -22,6 +22,9 @@ FROM nginx:alpine
 # 复制构建产物到 nginx 目录
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# 复制 public 目录（文章和图片资源）
+COPY --from=builder /app/public /usr/share/nginx/html
+
 # 复制 nginx 配置文件
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 

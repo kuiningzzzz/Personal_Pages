@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import routes from './routes.js';
+import adminRoutes from './admin-routes.js';
 
 dotenv.config();
 
@@ -21,6 +22,7 @@ app.use((req, res, next) => {
 
 // API 路由
 app.use('/api', routes);
+app.use('/api/admin', adminRoutes);
 
 // 根路径
 app.get('/', (req, res) => {
@@ -32,6 +34,11 @@ app.get('/', (req, res) => {
                 get: 'GET /api/comments',
                 post: 'POST /api/comments',
                 delete: 'DELETE /api/comments/:id'
+            },
+            admin: {
+                articles: 'GET /api/admin/articles',
+                images: 'GET /api/admin/images',
+                cards: 'GET /api/admin/cards/:type'
             }
         }
     });

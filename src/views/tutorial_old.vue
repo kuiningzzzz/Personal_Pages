@@ -1,33 +1,6 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
 import CommentArea from '../components/comment_area.vue'
 import TutorialCard from '../components/tutorial_card.vue'
-
-const cards = ref([])
-const loading = ref(true)
-
-// 按分类分组
-const seriousCards = computed(() => cards.value.filter(card => card.category === '正经教程'))
-const funCards = computed(() => cards.value.filter(card => card.category === '不正经教程'))
-
-// 从API加载卡片数据
-const loadCards = async () => {
-    try {
-        const response = await fetch('/api/admin/cards/tutorials')
-        const data = await response.json()
-        if (data.success) {
-            cards.value = data.data
-        }
-    } catch (error) {
-        console.error('加载教程卡片失败:', error)
-    } finally {
-        loading.value = false
-    }
-}
-
-onMounted(() => {
-    loadCards()
-})
 </script>
 
 <template>
@@ -43,40 +16,58 @@ onMounted(() => {
                 （说不定跟着我走又是另一条弯路呢doge），
                 所以在这个界面分享一些我在敲代码、做项目、配环境等遇到的各种问题以及解决方法</p>
         </div>
-        
-        <div v-if="loading" class="loading">加载中...</div>
-        <template v-else>
-            <div v-if="seriousCards.length > 0" class="section-wrapper">
-                <div class="section-title">
-                    <h2>正经教程</h2>
-                </div>
-                <div class="cards-grid">
-                    <TutorialCard 
-                        v-for="card in seriousCards"
-                        :key="card.title"
-                        :title="card.title" 
-                        :desc="card.desc"
-                        :date="card.date"
-                        :link="card.link" />
-                </div>
-            </div>
+        <div class="section-title">
+            <h2>正经教程</h2>
+        </div>
+        <div class="cards-grid">
+            <TutorialCard 
+                title="vscode中的c/c++环境配置" 
+                desc="针对Windows端的C/C++环境配置以及Cmake工具的使用"
+                date="2025-09-07"
+                link="/article?src=/articles/tutorials/vscode-cpp-setup.md" />
             
-            <div v-if="funCards.length > 0" class="section-wrapper">
-                <div class="section-title">
-                    <h2>不正经教程</h2>
-                </div>
-                <div class="cards-grid">
-                    <TutorialCard 
-                        v-for="card in funCards"
-                        :key="card.title"
-                        :title="card.title" 
-                        :desc="card.desc"
-                        :date="card.date"
-                        :link="card.link" />
-                </div>
-            </div>
-        </template>
-        
+            <TutorialCard 
+                title="GitHub Pages的构建方法" 
+                desc="fork一个现成的主页模板？或者自己从零开始写一份主页文件？总之建个repo先！"
+                date="2025-09-07"
+                link="/article?src=/articles/tutorials/github-pages.md" />
+            
+            <TutorialCard 
+                title="vscode中的python环境配置" 
+                desc="针对Windows端的python环境配置以及虚拟环境、anaconda工具的入门使用"
+                date="2025-09-08"
+                link="/article?src=/articles/tutorials/vscode-python-setup.md" />
+            
+            <TutorialCard 
+                title="在已有Windows系统的机器上安装Ubuntu双系统" 
+                desc="涉及磁盘手动分区，启动U盘的制作和使用等，并涵盖可能遇到的诸多特殊情况"
+                date="2024-09-20"
+                link="/article?src=/articles/tutorials/ubuntu-dual-boot.md" />
+            
+            <TutorialCard 
+                title="QQbot的搭建与简单的功能编写" 
+                desc="采用napcat框架作为QQ运行端，应用端有诸多，其中会夹带原神机器人Yunzai-bot及其各种功能强大的插件功能"
+                date="施工中..."
+                link="/article?src=/articles/tutorials/qqbot.md" />            
+
+            <TutorialCard 
+                title="使用uni-app框架进行安卓端应用开发和apk封装" 
+                desc="内容包括：uni-app简单结构、开发工具HbuilderX、简单的内网穿透工具Cpolar、apk封装、手机开发者模式与本机调试等"
+                date="施工中..."
+                link="/article?src=/articles/tutorials/uni-app-dev.md" />
+
+        </div>
+        <div class="section-title">
+            <h2>不正经教程</h2>
+        </div>
+        <div class="cards-grid">
+            <TutorialCard 
+                title="文明六mod编写" 
+                desc="目前更新完的内容有：更改游戏文本、自定义游戏单位。正在准备写自定义文明的攻略，但是工程量有点大，可能鸽一阵子..."
+                date="施工中..."
+                link="/article?src=/articles/tutorials/civ6-mod.md" />
+
+        </div>
         <CommentArea pageId="tutorial" />
     </div>
 </template>
@@ -93,24 +84,10 @@ onMounted(() => {
     width: 100%;
 }
 
-.loading {
-    text-align: center;
-    padding: 60px;
-    color: #7a8a9e;
-    font-size: 16px;
-}
-
 .tutorial-header {
     width: 90%;
     max-width: 1200px;
     text-align: center;
-}
-
-.section-wrapper {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
 }
 
 .section-title {

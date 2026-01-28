@@ -4,6 +4,7 @@ import tutorial from '../views/tutorial.vue'
 import social from '../views/social.vue'
 import project from '../views/project.vue'
 import markdownViewer from '../views/markdown_viewer.vue'
+import admin from '../views/admin.vue'
 
 const routes = [
   {
@@ -30,6 +31,11 @@ const routes = [
     path: '/article',
     name: 'article',
     component: markdownViewer
+  },
+  {
+    path: '/admin',
+    name: 'admin',
+    component: admin
   }
 ]
 
