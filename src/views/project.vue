@@ -49,7 +49,7 @@ import ProjectCard from '../components/project_card.vue'
             当然软件功能非常强大不止于此，可以进行几何作图、代数计算、微积分运算、统计分析等多种数学相关的操作，适合各个阶段的数学学习与研究使用。" date="2025-12-18"
                 repoUrl="https://www.geogebra.org/" />
 
-            <ProjectCard title="bandizip" desc="缩与解压已经是老生常谈的话题了，但是可能有同学还是在文件解压方面有困难，一个一站式万能解压工具在此时就会非常好用。管你是zip、tar、7z还是什么，一个软件全部搞定。
+            <ProjectCard title="bandizip" desc="压缩与解压已经是老生常谈的话题了，但是可能有同学还是在文件解压方面有困难，一个一站式万能解压工具在此时就会非常好用。管你是zip、tar、7z还是什么，一个软件全部搞定。
             免费版基本就可以使用全部功能了，如果想要赞助作者买个付费版的话，优点主要就是没广告（免费版每次使用的时候都会有右下角弹窗广告），这个问题在免费版其实也  完全可以容忍。" date="2025-12-18"
                 repoUrl="https://www.bandisoft.com/bandizip/" />
         </div>
