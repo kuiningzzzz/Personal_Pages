@@ -46,7 +46,8 @@ async function loadMarkdown() {
     error.value = ''
     
     try {
-        const response = await fetch(props.src)
+        // 通过后端 API 获取文章内容（而不是直接访问静态文件）
+        const response = await fetch(`/api/article?src=${encodeURIComponent(props.src)}`)
         if (!response.ok) {
             throw new Error(`无法加载文件: ${response.statusText}`)
         }

@@ -1,7 +1,66 @@
 import express from 'express';
 import { commentDb } from './db.js';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 const router = express.Router();
+
+// 获取当前文件的目录
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PUBLIC_DIR = process.env.NODE_ENV === 'production' 
+    ? '/app/public' 
+    : join(__dirname, '..', 'public');
+
+// ==================== 文章内容 API ====================
+
+// 获取 Markdown 文章内容
+router.get('/article', async (req, res) => {
+    try {
+        const { src } = req.query;
+        
+        if (!src) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少文章路径参数'
+            });
+        }
+
+        // 安全检查：防止路径遍历攻击
+        if (src.includes('..') || !src.startsWith('/articles/')) {
+            return res.status(403).json({
+                success: false,
+                message: '非法的文件路径'
+            });
+        }
+
+        const filePath = join(PUBLIC_DIR, src);
+        const content = await readFile(filePath, 'utf-8');
+
+        // 设置正确的 Content-Type 并允许缓存
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=300'); // 缓存5分钟
+        res.send(content);
+        
+    } catch (error) {
+        console.error('读取文章失败:', error);
+        if (error.code === 'ENOENT') {
+            res.status(404).json({
+                success: false,
+                message: '文章不存在'
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: '读取文章失败'
+            });
+        }
+    }
+});
+
+// ==================== 评论 API ====================
 
 // 获取所有评论（支持按页面筛选）
 router.get('/comments', (req, res) => {
