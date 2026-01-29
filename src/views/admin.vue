@@ -40,6 +40,12 @@
                     图片管理
                 </button>
                 <button 
+                    :class="['tab-btn', { active: currentTab === 'emoji' }]"
+                    @click="currentTab = 'emoji'"
+                >
+                    表情包管理
+                </button>
+                <button 
                     :class="['tab-btn', { active: currentTab === 'config' }]"
                     @click="currentTab = 'config'"
                 >
@@ -59,6 +65,11 @@
                     <ImageManager />
                 </div>
 
+                <!-- 表情包管理 -->
+                <div v-else-if="currentTab === 'emoji'" class="tab-content">
+                    <EmojiManager />
+                </div>
+
                 <!-- 卡片配置管理 -->
                 <div v-else-if="currentTab === 'config'" class="tab-content">
                     <CardConfigManager />
@@ -73,6 +84,7 @@ import { ref, onMounted } from 'vue'
 import ArticleManager from '../components/admin/ArticleManager.vue'
 import ImageManager from '../components/admin/ImageManager.vue'
 import CardConfigManager from '../components/admin/CardConfigManager.vue'
+import EmojiManager from '../components/admin/EmojiManager.vue'
 
 const isAuthenticated = ref(false)
 const password = ref('')

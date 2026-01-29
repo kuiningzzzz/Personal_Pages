@@ -400,4 +400,300 @@ router.put('/cards/:type', async (req, res) => {
     }
 });
 
+// ==================== 表情包管理 API ====================
+
+// 获取表情包分类列表
+router.get('/emoji/categories', async (req, res) => {
+    try {
+        const emojiDir = join(PUBLIC_DIR, 'emoji');
+        
+        if (!existsSync(emojiDir)) {
+            await mkdir(emojiDir, { recursive: true });
+        }
+
+        const categories = [];
+        const folders = await readdir(emojiDir, { withFileTypes: true });
+
+        for (const folder of folders) {
+            if (!folder.isDirectory()) continue;
+
+            const categoryId = folder.name;
+            const categoryPath = join(emojiDir, categoryId);
+            const configPath = join(categoryPath, 'config.json');
+            
+            // 读取分类配置
+            let config = {
+                id: categoryId,
+                title: `表情包类型${categoryId}`,
+                desc: `${categoryId}类型的表情包收藏`
+            };
+
+            if (existsSync(configPath)) {
+                const configContent = await readFile(configPath, 'utf-8');
+                config = { ...config, ...JSON.parse(configContent) };
+            }
+
+            // 获取该分类下的所有图片
+            const files = await readdir(categoryPath);
+            const images = files
+                .filter(file => {
+                    // 排除config.json和非图片文件
+                    if (file === 'config.json') return false;
+                    return /\.(jpg|jpeg|png|gif|webp)$/i.test(file);
+                })
+                .map(file => `/emoji/${categoryId}/${file}`);
+
+            console.log(`📂 分类 ${categoryId}: 找到 ${images.length} 张图片`);
+
+            categories.push({
+                ...config,
+                count: images.length,
+                images
+            });
+        }
+
+        res.json({
+            success: true,
+            data: categories
+        });
+    } catch (error) {
+        console.error('获取表情包分类失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取表情包分类失败'
+        });
+    }
+});
+
+// 创建/更新表情包分类
+router.post('/emoji/categories', async (req, res) => {
+    try {
+        const { id, title, desc } = req.body;
+
+        if (!id || !title) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少必要参数'
+            });
+        }
+
+        // 验证ID格式
+        if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+            return res.status(400).json({
+                success: false,
+                message: '分类ID只能包含字母、数字、下划线和连字符'
+            });
+        }
+
+        const emojiDir = join(PUBLIC_DIR, 'emoji');
+        const categoryPath = join(emojiDir, id);
+        const configPath = join(categoryPath, 'config.json');
+
+        // 创建目录
+        if (!existsSync(categoryPath)) {
+            await mkdir(categoryPath, { recursive: true });
+        }
+
+        // 保存配置
+        const config = { id, title, desc };
+        await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+
+        res.json({
+            success: true,
+            message: '分类创建成功'
+        });
+    } catch (error) {
+        console.error('创建分类失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '创建分类失败'
+        });
+    }
+});
+
+// 更新表情包分类
+router.put('/emoji/categories', async (req, res) => {
+    try {
+        const { id, title, desc } = req.body;
+
+        if (!id || !title) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少必要参数'
+            });
+        }
+
+        const categoryPath = join(PUBLIC_DIR, 'emoji', id);
+        const configPath = join(categoryPath, 'config.json');
+
+        if (!existsSync(categoryPath)) {
+            return res.status(404).json({
+                success: false,
+                message: '分类不存在'
+            });
+        }
+
+        // 更新配置
+        const config = { id, title, desc };
+        await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+
+        res.json({
+            success: true,
+            message: '分类更新成功'
+        });
+    } catch (error) {
+        console.error('更新分类失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '更新分类失败'
+        });
+    }
+});
+
+// 删除表情包分类
+router.delete('/emoji/categories', async (req, res) => {
+    try {
+        const { id } = req.body;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少分类ID'
+            });
+        }
+
+        const categoryPath = join(PUBLIC_DIR, 'emoji', id);
+
+        if (!existsSync(categoryPath)) {
+            return res.status(404).json({
+                success: false,
+                message: '分类不存在'
+            });
+        }
+
+        // 递归删除目录及其内容
+        const { rm } = await import('fs/promises');
+        await rm(categoryPath, { recursive: true, force: true });
+
+        console.log('✅ 已删除分类目录:', categoryPath);
+
+        res.json({
+            success: true,
+            message: '分类删除成功'
+        });
+    } catch (error) {
+        console.error('删除分类失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '删除分类失败'
+        });
+    }
+});
+
+// 上传表情包图片 - 通过查询参数接收category
+router.post('/emoji/images/:category', async (req, res) => {
+    try {
+        const { category } = req.params;
+        
+        if (!category) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少分类参数'
+            });
+        }
+        
+        console.log('📁 准备上传表情包到分类:', category);
+        
+        const uploadPath = join(PUBLIC_DIR, 'emoji', category);
+        if (!existsSync(uploadPath)) {
+            await mkdir(uploadPath, { recursive: true });
+        }
+        
+        const categoryUpload = multer({
+            storage: multer.diskStorage({
+                destination: (req, file, cb) => {
+                    cb(null, uploadPath);
+                },
+                filename: (req, file, cb) => {
+                    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+                    cb(null, originalName);
+                }
+            })
+        }).array('images', 20);
+        
+        categoryUpload(req, res, (err) => {
+            if (err) {
+                console.error('❌ 上传表情包失败:', err);
+                return res.status(500).json({
+                    success: false,
+                    message: '上传表情包失败: ' + err.message
+                });
+            }
+            
+            if (!req.files || req.files.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: '没有上传文件'
+                });
+            }
+
+            const uploadedFiles = req.files.map(file => ({
+                name: file.originalname,
+                path: file.path,
+                size: file.size
+            }));
+            
+            console.log('✅ 成功上传', uploadedFiles.length, '个文件到', category);
+
+            res.json({
+                success: true,
+                message: `成功上传 ${uploadedFiles.length} 张图片`,
+                data: uploadedFiles
+            });
+        });
+    } catch (error) {
+        console.error('❌ 上传表情包失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '上传表情包失败'
+        });
+    }
+});
+
+// 删除表情包图片
+router.delete('/emoji/images', async (req, res) => {
+    try {
+        const { category, path } = req.body;
+
+        if (!category || !path) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少必要参数'
+            });
+        }
+
+        const filePath = join(PUBLIC_DIR, path);
+        
+        if (!existsSync(filePath)) {
+            return res.status(404).json({
+                success: false,
+                message: '图片不存在'
+            });
+        }
+
+        await unlink(filePath);
+
+        res.json({
+            success: true,
+            message: '图片删除成功'
+        });
+    } catch (error) {
+        console.error('删除图片失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '删除图片失败'
+        });
+    }
+});
+
 export default router;

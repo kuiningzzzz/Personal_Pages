@@ -1,9 +1,10 @@
 import express from 'express';
 import { commentDb } from './db.js';
-import { readFile } from 'fs/promises';
+import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { existsSync } from 'fs';
 
 const router = express.Router();
 
@@ -161,6 +162,44 @@ router.delete('/comments/:id', (req, res) => {
         res.status(500).json({
             success: false,
             message: '删除评论失败'
+        });
+    }
+});
+
+// ==================== 表情包 API ====================
+
+// 获取指定分类的表情包列表
+router.get('/emoji/:category', async (req, res) => {
+    try {
+        const { category } = req.params;
+        const categoryPath = join(PUBLIC_DIR, 'emoji', category);
+
+        if (!existsSync(categoryPath)) {
+            return res.status(404).json({
+                success: false,
+                message: '分类不存在'
+            });
+        }
+
+        // 读取目录中的所有图片文件
+        const files = await readdir(categoryPath);
+        const images = files
+            .filter(file => {
+                // 排除config.json和非图片文件
+                if (file === 'config.json') return false;
+                return /\.(jpg|jpeg|png|gif|webp)$/i.test(file);
+            })
+            .map(file => `/emoji/${category}/${file}`);
+
+        res.json({
+            success: true,
+            images
+        });
+    } catch (error) {
+        console.error('获取表情包失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取表情包失败'
         });
     }
 });

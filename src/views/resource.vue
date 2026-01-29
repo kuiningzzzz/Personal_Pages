@@ -3,28 +3,33 @@ import { ref, onMounted } from 'vue'
 import CommentArea from '../components/comment_area.vue'
 import EmojiCard from '../components/emoji_card.vue'
 
-const loading = ref(false)
+const loading = ref(true)
+const emojiCategories = ref([])
 
-// 表情包数据
-const emojiCategories = ref([
-    {
-        title: '表情包类型1',
-        desc: '第一类表情包收藏',
-        category: 'type1',
-        previewImage: '/emoji/type1/959E4E909D5437E26DC980105EBD9DB6.jpg',
-        count: 1
-    },
-    {
-        title: '表情包类型2',
-        desc: '第二类表情包收藏',
-        category: 'type2',
-        previewImage: '/emoji/type2/yui.png',
-        count: 2
+// 从API加载表情包分类
+const loadEmojiCategories = async () => {
+    loading.value = true
+    try {
+        const response = await fetch('/api/admin/emoji/categories')
+        const data = await response.json()
+        if (data.success) {
+            emojiCategories.value = data.data.map(cat => ({
+                title: cat.title,
+                desc: cat.desc,
+                category: cat.id,
+                previewImage: cat.images[0] || '/picture/default-emoji.png',
+                count: cat.count
+            }))
+        }
+    } catch (error) {
+        console.error('加载表情包分类失败:', error)
+    } finally {
+        loading.value = false
     }
-])
+}
 
 onMounted(() => {
-    // 页面加载逻辑
+    loadEmojiCategories()
 })
 </script>
 
