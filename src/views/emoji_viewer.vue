@@ -16,14 +16,16 @@
         <div v-if="loading" class="loading">加载中...</div>
         <div v-else-if="images.length === 0" class="empty">暂无表情包</div>
         <div v-else class="emoji-grid">
-            <div v-for="(image, index) in images" :key="index" class="emoji-item" @click="viewImage(image)">
-                <img :src="image" :alt="`表情包 ${index + 1}`" @error="handleImageError" loading="lazy" />
-                <div class="emoji-overlay">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
+            <div v-for="col in columns" :key="col.index" class="emoji-column">
+                <div v-for="image in col.images" :key="image.index" class="emoji-item" @click="viewImage(image.src)">
+                    <img :src="image.src" :alt="`表情包 ${image.index + 1}`" @error="handleImageError" loading="lazy" />
+                    <div class="emoji-overlay">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                    </div>
                 </div>
             </div>
         </div>
@@ -72,6 +74,37 @@ const categoryDesc = ref('')
 const images = ref([])
 const loading = ref(true)
 const previewImage = ref(null)
+const columnCount = ref(4) // 默认4列
+
+// 计算分列数据，按顺序分配到各列
+const columns = computed(() => {
+    const cols = []
+    for (let i = 0; i < columnCount.value; i++) {
+        cols.push({ index: i, images: [] })
+    }
+    
+    // 按顺序循环分配图片到各列
+    images.value.forEach((src, index) => {
+        const colIndex = index % columnCount.value
+        cols[colIndex].images.push({ src, index })
+    })
+    
+    return cols
+})
+
+// 响应式调整列数
+const updateColumnCount = () => {
+    const width = window.innerWidth
+    if (width <= 480) {
+        columnCount.value = 2
+    } else if (width <= 768) {
+        columnCount.value = 2
+    } else if (width <= 1200) {
+        columnCount.value = 3
+    } else {
+        columnCount.value = 4
+    }
+}
 
 // 加载分类配置信息
 const loadCategoryInfo = async () => {
@@ -160,6 +193,8 @@ const handleImageError = (e) => {
 }
 
 onMounted(() => {
+    updateColumnCount()
+    window.addEventListener('resize', updateColumnCount)
     loadCategoryInfo()
     loadImages()
 })
@@ -228,16 +263,22 @@ onMounted(() => {
     font-size: 16px;
 }
 
-/* 瀑布流布局 */
+/* 瀑布流布局 - 使用flexbox手动分列 */
 .emoji-grid {
     width: 100%;
-    column-count: 4;
-    column-gap: 20px;
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.emoji-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
 }
 
 .emoji-item {
-    break-inside: avoid;
-    margin-bottom: 20px;
     position: relative;
     cursor: pointer;
     border-radius: 12px;
@@ -375,7 +416,11 @@ onMounted(() => {
 /* 响应式设计 */
 @media (max-width: 1200px) {
     .emoji-grid {
-        column-count: 3;
+        gap: 15px;
+    }
+    
+    .emoji-column {
+        gap: 15px;
     }
 }
 
@@ -399,12 +444,11 @@ onMounted(() => {
     }
 
     .emoji-grid {
-        column-count: 2;
-        column-gap: 15px;
+        gap: 15px;
     }
-
-    .emoji-item {
-        margin-bottom: 15px;
+    
+    .emoji-column {
+        gap: 15px;
     }
 }
 
@@ -422,12 +466,11 @@ onMounted(() => {
     }
 
     .emoji-grid {
-        column-count: 2;
-        column-gap: 10px;
+        gap: 10px;
     }
-
-    .emoji-item {
-        margin-bottom: 10px;
+    
+    .emoji-column {
+        gap: 10px;
     }
 
     .modal {
