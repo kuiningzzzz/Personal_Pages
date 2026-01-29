@@ -85,7 +85,7 @@
                 <div v-else-if="currentTab === 'backup'" class="tab-content">
                     <div class="backup-manager">
                         <h2>数据备份</h2>
-                        <p class="backup-desc">下载public目录的完整备份（不包含favicon.ico）</p>
+                        <p class="backup-desc">下载完整备份包（包含资源文件和数据库）</p>
                         <div class="backup-actions">
                             <button @click="downloadBackup" :disabled="isDownloading" class="backup-btn">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -101,13 +101,14 @@
                         <div class="backup-info">
                             <h3>备份包内容：</h3>
                             <ul>
-                                <li>📄 所有文章（articles目录）</li>
-                                <li>🖼️ 所有图片（picture目录）</li>
-                                <li>😊 所有表情包（emoji目录）</li>
-                                <li>👤 所有头像（friend_avatar目录）</li>
-                                <li>📦 其他资源（source目录等）</li>
+                                <li>📄 所有文章（public/articles目录）</li>
+                                <li>🖼️ 所有图片（public/picture目录）</li>
+                                <li>😊 所有表情包（public/emoji目录）</li>
+                                <li>👤 所有头像（public/friend_avatar目录）</li>
+                                <li>📦 其他资源（public/source目录等）</li>
+                                <li>🗄️ 所有数据库文件（data/*.sqlite）</li>
                             </ul>
-                            <p class="backup-note">💡 备份包为zip格式，文件名包含时间戳，方便版本管理</p>
+                            <p class="backup-note">💡 备份包为zip格式，包含public和data两个文件夹，文件名含时间戳</p>
                         </div>
                     </div>
                 </div>
@@ -167,7 +168,7 @@ const downloadBackup = async () => {
         
         // 直接通过window.location触发下载
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-        const filename = `public-backup-${timestamp}.zip`
+        const filename = `backup-${timestamp}.zip`
         
         // 创建一个临时的a标签触发下载
         const link = document.createElement('a')

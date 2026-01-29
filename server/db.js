@@ -88,22 +88,6 @@ function initializeDatabase() {
 // 执行初始化
 initializeDatabase();
 
-// 初始化卡片配置数据（在数据库表创建后）
-async function loadInitialData() {
-    try {
-        // 动态导入初始化数据脚本
-        const { default: initializeCardConfigs } = await import('./init-data.js');
-        // initializeCardConfigs 在导入时会自动执行
-    } catch (error) {
-        console.error('加载初始数据失败:', error);
-    }
-}
-
-// 延迟加载初始数据，确保数据库已完全初始化
-setTimeout(() => {
-    loadInitialData();
-}, 100);
-
 // 导出两个数据库实例
 export { commentDb, cardDb };
 

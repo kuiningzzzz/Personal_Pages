@@ -754,14 +754,14 @@ router.delete('/emoji/images', async (req, res) => {
 
 // ==================== 备份管理 API ====================
 
-// 生成并下载public目录备份（排除favicon.ico）
+// 生成并下载备份（包含public目录和数据库文件）
 router.get('/backup', async (req, res) => {
     try {
         console.log('📦 开始创建备份包...');
         
         // 设置响应头
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const filename = `public-backup-${timestamp}.zip`;
+        const filename = `backup-${timestamp}.zip`;
         
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -785,7 +785,7 @@ router.get('/backup', async (req, res) => {
         // 将压缩流发送给客户端
         archive.pipe(res);
         
-        // 添加public目录内容（排除favicon.ico）
+        // 1. 添加public目录内容（排除favicon.ico）
         const publicDir = PUBLIC_DIR;
         
         // 递归添加目录，但排除favicon.ico
@@ -805,12 +805,32 @@ router.get('/backup', async (req, res) => {
                 if (file.isDirectory()) {
                     await addDirectory(fullPath, relativePath);
                 } else {
-                    archive.file(fullPath, { name: relativePath });
+                    archive.file(fullPath, { name: `public/${relativePath}` });
                 }
             }
         };
         
         await addDirectory(publicDir);
+        console.log('✅ public目录已添加到备份');
+        
+        // 2. 添加数据库文件
+        const dataDir = process.env.NODE_ENV === 'production' 
+            ? '/app/data' 
+            : join(__dirname, 'data');
+        
+        if (existsSync(dataDir)) {
+            const dataFiles = await readdir(dataDir);
+            const sqliteFiles = dataFiles.filter(file => file.endsWith('.sqlite'));
+            
+            for (const file of sqliteFiles) {
+                const fullPath = join(dataDir, file);
+                archive.file(fullPath, { name: `data/${file}` });
+                console.log(`📊 添加数据库文件: ${file}`);
+            }
+            console.log(`✅ 已添加 ${sqliteFiles.length} 个数据库文件到备份`);
+        } else {
+            console.log('⚠️  数据库目录不存在，跳过数据库备份');
+        }
         
         console.log('✅ 备份包创建完成');
         

@@ -17,7 +17,7 @@ COPY . .
 RUN npm run build
 
 # 生产阶段
-FROM nginx:1.27-alpine
+FROM nginx:alpine
 
 # 安装 wget 用于健康检查
 RUN apk add --no-cache wget
