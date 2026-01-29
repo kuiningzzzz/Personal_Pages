@@ -1,8 +1,27 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import CommentArea from '../components/comment_area.vue'
+import EmojiCard from '../components/emoji_card.vue'
 
 const loading = ref(false)
+
+// 表情包数据
+const emojiCategories = ref([
+    {
+        title: '表情包类型1',
+        desc: '第一类表情包收藏',
+        category: 'type1',
+        previewImage: '/emoji/type1/959E4E909D5437E26DC980105EBD9DB6.jpg',
+        count: 1
+    },
+    {
+        title: '表情包类型2',
+        desc: '第二类表情包收藏',
+        category: 'type2',
+        previewImage: '/emoji/type2/yui.png',
+        count: 2
+    }
+])
 
 onMounted(() => {
     // 页面加载逻辑
@@ -23,8 +42,15 @@ onMounted(() => {
                 <div class="section-title">
                     <h2>表情包收集</h2>
                 </div>
-                <div class="content-area">
-                    <p>TODO</p>
+                <div class="cards-grid">
+                    <EmojiCard 
+                        v-for="emoji in emojiCategories"
+                        :key="emoji.category"
+                        :title="emoji.title"
+                        :desc="emoji.desc"
+                        :category="emoji.category"
+                        :previewImage="emoji.previewImage"
+                        :count="emoji.count" />
                 </div>
             </div>
         </template>
@@ -92,13 +118,13 @@ p {
     margin: 10px 0;
 }
 
-.content-area {
+/* 两列网格布局 */
+.cards-grid {
     width: 95%;
     max-width: 1200px;
-    padding: 40px;
-    color: #b8c5d6;
-    font-size: 18px;
-    text-align: center;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
 }
 
 /* 响应式：平板 */
@@ -111,8 +137,9 @@ p {
         width: 90%;
     }
 
-    .content-area {
+    .cards-grid {
         width: 90%;
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 
@@ -131,9 +158,10 @@ p {
         width: 95%;
     }
 
-    .content-area {
+    .cards-grid {
         width: 95%;
-        padding: 30px 20px;
+        grid-template-columns: 1fr;
+        gap: 20px;
     }
 
     h1 {
@@ -148,10 +176,6 @@ p {
     p {
         font-size: 14px;
         margin: 8px 0;
-    }
-
-    .content-area {
-        font-size: 16px;
     }
 }
 
@@ -169,9 +193,9 @@ p {
         width: 100%;
     }
 
-    .content-area {
+    .cards-grid {
         width: 100%;
-        padding: 25px 15px;
+        gap: 15px;
     }
 
     h1 {

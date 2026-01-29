@@ -5,6 +5,7 @@ import social from '../views/social.vue'
 import project from '../views/project.vue'
 import resource from '../views/resource.vue'
 import markdownViewer from '../views/markdown_viewer.vue'
+import emojiViewer from '../views/emoji_viewer.vue'
 import admin from '../views/admin.vue'
 
 const routes = [
@@ -37,6 +38,11 @@ const routes = [
     path: '/article',
     name: 'article',
     component: markdownViewer
+  },
+  {
+    path: '/emoji-viewer',
+    name: 'emoji-viewer',
+    component: emojiViewer
   },
   {
     path: '/admin',
