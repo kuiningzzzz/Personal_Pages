@@ -453,9 +453,31 @@ router.get('/emoji/categories', async (req, res) => {
             });
         }
 
+        // 读取排序配置
+        const orderConfigPath = join(emojiDir, 'order.json');
+        let orderedCategories = categories;
+        
+        if (existsSync(orderConfigPath)) {
+            const orderContent = await readFile(orderConfigPath, 'utf-8');
+            const order = JSON.parse(orderContent);
+            
+            // 按照配置的顺序排列
+            orderedCategories = [];
+            for (const id of order) {
+                const cat = categories.find(c => c.id === id);
+                if (cat) orderedCategories.push(cat);
+            }
+            // 添加未在配置中的新分类
+            for (const cat of categories) {
+                if (!order.includes(cat.id)) {
+                    orderedCategories.push(cat);
+                }
+            }
+        }
+
         res.json({
             success: true,
-            data: categories
+            data: orderedCategories
         });
     } catch (error) {
         console.error('获取表情包分类失败:', error);
@@ -587,6 +609,39 @@ router.delete('/emoji/categories', async (req, res) => {
         res.status(500).json({
             success: false,
             message: '删除分类失败'
+        });
+    }
+});
+
+// 保存表情包分类排序
+router.put('/emoji/order', async (req, res) => {
+    try {
+        const { order } = req.body;
+
+        if (!Array.isArray(order)) {
+            return res.status(400).json({
+                success: false,
+                message: '排序数据格式错误'
+            });
+        }
+
+        const emojiDir = join(PUBLIC_DIR, 'emoji');
+        if (!existsSync(emojiDir)) {
+            await mkdir(emojiDir, { recursive: true });
+        }
+
+        const orderConfigPath = join(emojiDir, 'order.json');
+        await writeFile(orderConfigPath, JSON.stringify(order, null, 2), 'utf-8');
+
+        res.json({
+            success: true,
+            message: '排序保存成功'
+        });
+    } catch (error) {
+        console.error('保存排序失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '保存排序失败'
         });
     }
 });

@@ -27,15 +27,36 @@
 
         <!-- 分类列表 -->
         <div v-else class="categories-list">
-            <div v-for="category in categories" :key="category.id" class="category-card">
+            <div v-for="(category, index) in categories" :key="category.id" class="category-card">
                 <div class="category-header">
                     <div class="category-info">
-                        <h3>{{ category.title }}</h3>
+                        <div class="category-title-row">
+                            <h3>{{ category.title }}</h3>
+                            <button @click="toggleCollapse(category.id)" class="collapse-btn" :title="isCollapsed(category.id) ? '展开' : '折叠'">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                    :style="{ transform: isCollapsed(category.id) ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.3s' }">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </button>
+                        </div>
                         <p>{{ category.desc }}</p>
                         <span class="category-id">ID: {{ category.id }}</span>
                         <span class="image-count">{{ category.count }} 张图片</span>
                     </div>
                     <div class="category-actions">
+                        <button @click="moveCategory(index, -1)" class="icon-btn" :disabled="index === 0" title="上移">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="18 15 12 9 6 15"></polyline>
+                            </svg>
+                        </button>
+                        <button @click="moveCategory(index, 1)" class="icon-btn" :disabled="index === categories.length - 1" title="下移">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
                         <button @click="editCategory(category)" class="icon-btn" title="编辑分类">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -54,7 +75,7 @@
                 </div>
 
                 <!-- 图片预览 -->
-                <div class="category-images">
+                <div v-show="!isCollapsed(category.id)" class="category-images">
                     <div v-for="(image, index) in category.images" :key="index" class="image-item">
                         <img :src="image" :alt="`表情包 ${index + 1}`" />
                         <button @click="deleteImage(category.id, image)" class="delete-image-btn" title="删除图片">
@@ -128,12 +149,63 @@ const editingCategory = ref(null)
 const currentUploadCategory = ref(null)
 const fileInput = ref(null)
 const message = ref(null)
+const collapsedCategories = ref(new Set()) // 记录折叠状态的分类
 
 const categoryForm = ref({
     id: '',
     title: '',
     desc: ''
 })
+
+// 检查分类是否折叠
+const isCollapsed = (categoryId) => {
+    return collapsedCategories.value.has(categoryId)
+}
+
+// 切换折叠状态
+const toggleCollapse = (categoryId) => {
+    if (collapsedCategories.value.has(categoryId)) {
+        collapsedCategories.value.delete(categoryId)
+    } else {
+        collapsedCategories.value.add(categoryId)
+    }
+}
+
+// 移动分类位置
+const moveCategory = async (index, direction) => {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= categories.value.length) return
+    
+    // 交换位置
+    const temp = categories.value[index]
+    categories.value[index] = categories.value[newIndex]
+    categories.value[newIndex] = temp
+    
+    // 保存排序
+    await saveOrder()
+}
+
+// 保存排序到服务器
+const saveOrder = async () => {
+    try {
+        const order = categories.value.map(cat => cat.id)
+        const response = await fetch('/api/admin/emoji/order', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order })
+        })
+        
+        const data = await response.json()
+        if (data.success) {
+            showMessage('排序已保存', 'success')
+        } else {
+            showMessage(data.message, 'error')
+        }
+    } catch (error) {
+        console.error('保存排序失败:', error)
+        showMessage('保存排序失败', 'error')
+    }
+}
 
 // 加载分类列表
 const loadCategories = async () => {
@@ -145,6 +217,9 @@ const loadCategories = async () => {
             console.log('📦 加载的分类数据:', data.data)
             categories.value = data.data
             console.log('✅ categories.value:', categories.value)
+            
+            // 默认折叠所有分类
+            collapsedCategories.value = new Set(categories.value.map(cat => cat.id))
         } else {
             showMessage('加载失败: ' + data.message, 'error')
         }
@@ -406,6 +481,31 @@ onMounted(() => {
     color: #ffffff;
 }
 
+.category-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.collapse-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.collapse-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
 .category-info p {
     margin: 0 0 8px 0;
     color: #b8c5d6;
@@ -445,6 +545,15 @@ onMounted(() => {
 
 .icon-btn:hover {
     background: rgba(255, 255, 255, 0.12);
+}
+
+.icon-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.icon-btn:disabled:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .icon-btn.danger:hover {
