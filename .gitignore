@@ -34,3 +34,7 @@ coverage
 
 # Vitest
 __screenshots__/
+
+# 忽略 public 目录下的内容
+public/*
+!public/favicon.ico
