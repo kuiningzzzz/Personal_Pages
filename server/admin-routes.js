@@ -11,6 +11,7 @@ import {
 } from 'fs/promises';
 import { existsSync } from 'fs';
 import multer from 'multer';
+import archiver from 'archiver';
 import { cardDb } from './db.js';
 
 const router = express.Router();
@@ -693,6 +694,82 @@ router.delete('/emoji/images', async (req, res) => {
             success: false,
             message: '删除图片失败'
         });
+    }
+});
+
+// ==================== 备份管理 API ====================
+
+// 生成并下载public目录备份（排除favicon.ico）
+router.get('/backup', async (req, res) => {
+    try {
+        console.log('📦 开始创建备份包...');
+        
+        // 设置响应头
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `public-backup-${timestamp}.zip`;
+        
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        
+        // 创建压缩器
+        const archive = archiver('zip', {
+            zlib: { level: 9 } // 最高压缩级别
+        });
+        
+        // 监听错误
+        archive.on('error', (err) => {
+            console.error('❌ 压缩失败:', err);
+            throw err;
+        });
+        
+        // 监听进度
+        archive.on('progress', (progress) => {
+            console.log(`📊 压缩进度: ${progress.entries.processed}/${progress.entries.total} 个文件`);
+        });
+        
+        // 将压缩流发送给客户端
+        archive.pipe(res);
+        
+        // 添加public目录内容（排除favicon.ico）
+        const publicDir = PUBLIC_DIR;
+        
+        // 递归添加目录，但排除favicon.ico
+        const addDirectory = async (dirPath, archivePath = '') => {
+            const files = await readdir(dirPath, { withFileTypes: true });
+            
+            for (const file of files) {
+                const fullPath = join(dirPath, file.name);
+                const relativePath = archivePath ? join(archivePath, file.name) : file.name;
+                
+                // 跳过favicon.ico
+                if (file.name === 'favicon.ico' && archivePath === '') {
+                    console.log('⏭️  跳过 favicon.ico');
+                    continue;
+                }
+                
+                if (file.isDirectory()) {
+                    await addDirectory(fullPath, relativePath);
+                } else {
+                    archive.file(fullPath, { name: relativePath });
+                }
+            }
+        };
+        
+        await addDirectory(publicDir);
+        
+        console.log('✅ 备份包创建完成');
+        
+        // 完成压缩
+        await archive.finalize();
+        
+    } catch (error) {
+        console.error('❌ 创建备份失败:', error);
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: '创建备份失败: ' + error.message
+            });
+        }
     }
 });
 

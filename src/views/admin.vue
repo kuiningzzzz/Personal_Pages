@@ -51,6 +51,12 @@
                 >
                     卡片配置
                 </button>
+                <button 
+                    :class="['tab-btn', { active: currentTab === 'backup' }]"
+                    @click="currentTab = 'backup'"
+                >
+                    备份管理
+                </button>
             </div>
 
             <!-- 内容区域 -->
@@ -74,6 +80,37 @@
                 <div v-else-if="currentTab === 'config'" class="tab-content">
                     <CardConfigManager />
                 </div>
+
+                <!-- 备份管理 -->
+                <div v-else-if="currentTab === 'backup'" class="tab-content">
+                    <div class="backup-manager">
+                        <h2>数据备份</h2>
+                        <p class="backup-desc">下载public目录的完整备份（不包含favicon.ico）</p>
+                        <div class="backup-actions">
+                            <button @click="downloadBackup" :disabled="isDownloading" class="backup-btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
+                                <span v-if="!isDownloading">获取备份包</span>
+                                <span v-else>正在生成备份...</span>
+                            </button>
+                        </div>
+                        <div class="backup-info">
+                            <h3>备份包内容：</h3>
+                            <ul>
+                                <li>📄 所有文章（articles目录）</li>
+                                <li>🖼️ 所有图片（picture目录）</li>
+                                <li>😊 所有表情包（emoji目录）</li>
+                                <li>👤 所有头像（friend_avatar目录）</li>
+                                <li>📦 其他资源（source目录等）</li>
+                            </ul>
+                            <p class="backup-note">💡 备份包为zip格式，文件名包含时间戳，方便版本管理</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -90,6 +127,7 @@ const isAuthenticated = ref(false)
 const password = ref('')
 const authError = ref('')
 const currentTab = ref('articles')
+const isDownloading = ref(false)
 
 const ADMIN_PASSWORD = 'zjy051104' // 管理员密码
 
@@ -118,6 +156,37 @@ const logout = () => {
     isAuthenticated.value = false
     sessionStorage.removeItem('admin_auth')
     currentTab.value = 'articles'
+}
+
+// 下载备份
+const downloadBackup = async () => {
+    if (isDownloading.value) return
+    
+    try {
+        isDownloading.value = true
+        
+        // 直接通过window.location触发下载
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+        const filename = `public-backup-${timestamp}.zip`
+        
+        // 创建一个临时的a标签触发下载
+        const link = document.createElement('a')
+        link.href = '/api/admin/backup'
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        // 延迟重置状态，给服务器一些处理时间
+        setTimeout(() => {
+            isDownloading.value = false
+        }, 2000)
+        
+    } catch (error) {
+        console.error('下载备份失败:', error)
+        alert('下载备份失败，请重试')
+        isDownloading.value = false
+    }
 }
 </script>
 
@@ -330,5 +399,81 @@ const logout = () => {
 
 .tab-content {
     color: #ffffff;
+}
+
+/* 备份管理样式 */
+.backup-manager {
+    max-width: 800px;
+}
+
+.backup-manager h2 {
+    color: #ffffff;
+    font-size: 24px;
+    margin: 0 0 12px 0;
+}
+
+.backup-desc {
+    color: #b8c5d6;
+    font-size: 14px;
+    margin: 0 0 24px 0;
+}
+
+.backup-actions {
+    margin-bottom: 32px;
+}
+
+.backup-btn {
+    padding: 14px 28px;
+    background: rgba(52, 152, 219, 0.3);
+    border: 1px solid rgba(52, 152, 219, 0.5);
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.backup-btn:hover:not(:disabled) {
+    background: rgba(52, 152, 219, 0.4);
+    border-color: rgba(52, 152, 219, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.backup-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.backup-info h3 {
+    color: #ffffff;
+    font-size: 18px;
+    margin: 0 0 16px 0;
+}
+
+.backup-info ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 20px 0;
+}
+
+.backup-info li {
+    color: #b8c5d6;
+    font-size: 14px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.backup-note {
+    color: #7a8a9e;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 12px;
+    border-radius: 6px;
+    margin: 0;
 }
 </style>
