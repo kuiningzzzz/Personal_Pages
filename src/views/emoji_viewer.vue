@@ -66,17 +66,31 @@ const route = useRoute()
 const router = useRouter()
 
 const category = computed(() => route.query.category || 'type1')
-const categoryTitle = computed(() => {
-    const titles = {
-        'type1': '表情包类型1',
-        'type2': '表情包类型2'
-    }
-    return titles[category.value] || '表情包集合'
-})
+const categoryTitle = ref('表情包集合')
+const categoryDesc = ref('')
 
 const images = ref([])
 const loading = ref(true)
 const previewImage = ref(null)
+
+// 加载分类配置信息
+const loadCategoryInfo = async () => {
+    try {
+        const response = await fetch('/api/admin/emoji/categories')
+        if (response.ok) {
+            const data = await response.json()
+            if (data.success) {
+                const categoryInfo = data.data.find(cat => cat.id === category.value)
+                if (categoryInfo) {
+                    categoryTitle.value = categoryInfo.title
+                    categoryDesc.value = categoryInfo.desc
+                }
+            }
+        }
+    } catch (error) {
+        console.error('加载分类信息失败:', error)
+    }
+}
 
 // 加载指定分类的所有图片
 const loadImages = async () => {
@@ -146,6 +160,7 @@ const handleImageError = (e) => {
 }
 
 onMounted(() => {
+    loadCategoryInfo()
     loadImages()
 })
 </script>
