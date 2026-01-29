@@ -3,6 +3,7 @@ import home from '../views/home.vue'
 import tutorial from '../views/tutorial.vue'
 import social from '../views/social.vue'
 import project from '../views/project.vue'
+import resource from '../views/resource.vue'
 import markdownViewer from '../views/markdown_viewer.vue'
 import admin from '../views/admin.vue'
 
@@ -21,6 +22,11 @@ const routes = [
     path: '/project',
     name: 'project',
     component: project
+  },
+  {
+    path: '/resource',
+    name: 'resource',
+    component: resource
   },
   {
     path: '/social',
