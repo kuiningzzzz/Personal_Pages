@@ -181,8 +181,8 @@ const logout = () => {
     width: 100%;
     padding: 12px;
     margin-top: 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     color: white;
     font-size: 16px;
@@ -192,8 +192,8 @@ const logout = () => {
 }
 
 .auth-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 /* Admin 主界面 */
@@ -257,8 +257,8 @@ const logout = () => {
 }
 
 .tab-btn.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: transparent;
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
     color: #ffffff;
 }
 
@@ -270,6 +270,50 @@ const logout = () => {
     border-radius: 12px;
     padding: 24px;
     min-height: 500px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .admin-container {
+        padding: 10px;
+    }
+
+    .admin-header {
+        flex-direction: column;
+        gap: 16px;
+        align-items: flex-start;
+    }
+
+    .admin-header h1 {
+        font-size: 24px;
+    }
+
+    .logout-btn {
+        width: 100%;
+    }
+
+    .admin-tabs {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .tab-btn {
+        width: 100%;
+        text-align: center;
+    }
+
+    .admin-main {
+        padding: 16px;
+    }
+
+    .auth-box {
+        padding: 24px;
+        width: 95%;
+    }
+
+    .auth-box h2 {
+        font-size: 22px;
+    }
 }
 
 .tab-content {

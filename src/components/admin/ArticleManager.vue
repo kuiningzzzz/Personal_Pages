@@ -223,18 +223,19 @@ onMounted(() => {
 
 .primary-btn {
     padding: 10px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     color: white;
     font-size: 14px;
     cursor: pointer;
     transition: all 0.3s;
+    white-space: nowrap;
 }
 
 .primary-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 .secondary-btn {
@@ -425,7 +426,7 @@ onMounted(() => {
 }
 
 .form-input:focus, .form-textarea:focus {
-    border-color: rgba(102, 126, 234, 0.5);
+    border-color: rgba(255, 255, 255, 0.3);
     background: rgba(255, 255, 255, 0.08);
 }
 
@@ -440,5 +441,80 @@ onMounted(() => {
     gap: 12px;
     padding: 20px 24px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .manager-header {
+        flex-direction: column;
+        gap: 16px;
+        align-items: flex-start;
+    }
+
+    .manager-header h2 {
+        font-size: 20px;
+    }
+
+    .primary-btn, .secondary-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .article-item {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .article-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .action-btn {
+        flex: 1;
+        text-align: center;
+    }
+
+    .modal-content {
+        width: 95%;
+        max-height: 95vh;
+    }
+
+    .modal-header {
+        padding: 16px;
+    }
+
+    .modal-header h3 {
+        font-size: 18px;
+    }
+
+    .modal-body {
+        padding: 16px;
+    }
+
+    .modal-footer {
+        padding: 16px;
+        flex-direction: column-reverse;
+    }
+
+    .modal-footer button {
+        width: 100%;
+    }
+
+    .form-textarea {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .article-info h3 {
+        font-size: 14px;
+    }
+
+    .action-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
 }
 </style>

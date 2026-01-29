@@ -218,18 +218,19 @@ onMounted(() => {
 
 .primary-btn {
     padding: 10px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     color: white;
     font-size: 14px;
     cursor: pointer;
     transition: all 0.3s;
+    white-space: nowrap;
 }
 
 .primary-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 .category-tabs {
@@ -254,8 +255,8 @@ onMounted(() => {
 }
 
 .category-tab.active {
-    background: rgba(102, 126, 234, 0.3);
-    border-color: rgba(102, 126, 234, 0.5);
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
     color: #ffffff;
 }
 
@@ -374,5 +375,60 @@ onMounted(() => {
 
 .action-btn.delete:hover {
     background: rgba(231, 76, 60, 0.3);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .manager-header {
+        flex-direction: column;
+        gap: 16px;
+        align-items: flex-start;
+    }
+
+    .manager-header h2 {
+        font-size: 20px;
+    }
+
+    .primary-btn {
+        width: 100%;
+    }
+
+    .category-tabs {
+        width: 100%;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .category-tab {
+        width: 100%;
+        text-align: center;
+    }
+
+    .image-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
+    }
+
+    .image-preview {
+        height: 120px;
+    }
+
+    .image-path-group {
+        flex-direction: column;
+    }
+
+    .copy-btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .image-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .image-preview {
+        height: 200px;
+    }
 }
 </style>

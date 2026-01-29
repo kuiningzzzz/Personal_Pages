@@ -283,8 +283,8 @@ onMounted(() => {
 }
 
 .type-tab.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: transparent;
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
     color: #ffffff;
 }
 
@@ -294,18 +294,19 @@ onMounted(() => {
 
 .primary-btn {
     padding: 10px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     color: white;
     font-size: 14px;
     cursor: pointer;
     transition: all 0.3s;
+    white-space: nowrap;
 }
 
 .primary-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 .secondary-btn {
@@ -380,7 +381,7 @@ onMounted(() => {
 
 .card-category {
     padding: 2px 8px;
-    background: rgba(102, 126, 234, 0.3);
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 4px;
     color: #ffffff;
     font-weight: 500;
@@ -532,7 +533,7 @@ onMounted(() => {
 }
 
 .form-input:focus, .form-textarea:focus, .form-select:focus {
-    border-color: rgba(102, 126, 234, 0.5);
+    border-color: rgba(255, 255, 255, 0.3);
     background: rgba(255, 255, 255, 0.08);
 }
 
@@ -547,5 +548,90 @@ onMounted(() => {
     gap: 12px;
     padding: 20px 24px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .manager-header h2 {
+        font-size: 20px;
+    }
+
+    .type-tabs {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .type-tab {
+        width: 100%;
+        text-align: center;
+    }
+
+    .primary-btn {
+        width: 100%;
+    }
+
+    .card-item {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .card-meta {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .card-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .action-btn {
+        flex: 1;
+        text-align: center;
+        padding: 8px 8px;
+        font-size: 12px;
+    }
+
+    .modal-content {
+        width: 95%;
+        max-height: 95vh;
+    }
+
+    .modal-header {
+        padding: 16px;
+    }
+
+    .modal-header h3 {
+        font-size: 18px;
+    }
+
+    .modal-body {
+        padding: 16px;
+    }
+
+    .modal-footer {
+        padding: 16px;
+        flex-direction: column-reverse;
+    }
+
+    .modal-footer button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .card-preview h3 {
+        font-size: 14px;
+    }
+
+    .card-preview p {
+        font-size: 12px;
+    }
+
+    .action-btn {
+        padding: 6px 4px;
+        font-size: 11px;
+    }
 }
 </style>
