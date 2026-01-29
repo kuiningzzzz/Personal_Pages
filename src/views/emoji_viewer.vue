@@ -210,6 +210,7 @@ onMounted(() => {
     width: 100%;
     max-width: 1400px;
     margin: 0 auto;
+    gap: 60px;
 }
 
 .viewer-header {

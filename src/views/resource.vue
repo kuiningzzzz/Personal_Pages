@@ -100,6 +100,7 @@ onMounted(() => {
     width: 90%;
     max-width: 1200px;
     text-align: left;
+    margin-bottom: 24px;
 }
 
 h1 {
