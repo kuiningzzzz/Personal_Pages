@@ -11,20 +11,97 @@
         <div class="article-list">
             <div v-if="loading" class="loading">加载中...</div>
             <div v-else-if="articles.length === 0" class="empty">暂无文章</div>
-            <div v-else class="article-items">
-                <div 
-                    v-for="article in articles" 
-                    :key="article.path"
-                    class="article-item"
-                >
-                    <div class="article-info">
-                        <h3>{{ article.name }}</h3>
-                        <p>{{ article.path }}</p>
-                        <span class="article-size">{{ formatSize(article.size) }}</span>
+            <div v-else class="article-categories">
+                <!-- 教程分类 -->
+                <div class="category-section">
+                    <div class="category-header" @click="toggleCategory('tutorials')">
+                        <div class="category-title">
+                            <span class="toggle-icon">{{ collapsedCategories.tutorials ? '▶' : '▼' }}</span>
+                            <h3>教程 (Tutorials)</h3>
+                            <span class="category-count">{{ tutorialArticles.length }} 篇</span>
+                        </div>
                     </div>
-                    <div class="article-actions">
-                        <button @click="editArticle(article)" class="action-btn edit">编辑</button>
-                        <button @click="deleteArticle(article)" class="action-btn delete">删除</button>
+                    <div v-show="!collapsedCategories.tutorials" class="category-content">
+                        <div v-if="tutorialArticles.length === 0" class="empty-category">该分类暂无文章</div>
+                        <div v-else class="article-items">
+                            <div 
+                                v-for="article in tutorialArticles" 
+                                :key="article.path"
+                                class="article-item"
+                            >
+                                <div class="article-info">
+                                    <h3>{{ article.name }}</h3>
+                                    <p>{{ article.path }}</p>
+                                    <span class="article-size">{{ formatSize(article.size) }}</span>
+                                </div>
+                                <div class="article-actions">
+                                    <button @click="editArticle(article)" class="action-btn edit">编辑</button>
+                                    <button @click="deleteArticle(article)" class="action-btn delete">删除</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 项目分类 -->
+                <div class="category-section">
+                    <div class="category-header" @click="toggleCategory('projects')">
+                        <div class="category-title">
+                            <span class="toggle-icon">{{ collapsedCategories.projects ? '▶' : '▼' }}</span>
+                            <h3>项目 (Projects)</h3>
+                            <span class="category-count">{{ projectArticles.length }} 篇</span>
+                        </div>
+                    </div>
+                    <div v-show="!collapsedCategories.projects" class="category-content">
+                        <div v-if="projectArticles.length === 0" class="empty-category">该分类暂无文章</div>
+                        <div v-else class="article-items">
+                            <div 
+                                v-for="article in projectArticles" 
+                                :key="article.path"
+                                class="article-item"
+                            >
+                                <div class="article-info">
+                                    <h3>{{ article.name }}</h3>
+                                    <p>{{ article.path }}</p>
+                                    <span class="article-size">{{ formatSize(article.size) }}</span>
+                                </div>
+                                <div class="article-actions">
+                                    <button @click="editArticle(article)" class="action-btn edit">编辑</button>
+                                    <button @click="deleteArticle(article)" class="action-btn delete">删除</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 笔记分类 -->
+                <div class="category-section">
+                    <div class="category-header" @click="toggleCategory('note')">
+                        <div class="category-title">
+                            <span class="toggle-icon">{{ collapsedCategories.note ? '▶' : '▼' }}</span>
+                            <h3>笔记 (Note)</h3>
+                            <span class="category-count">{{ noteArticles.length }} 篇</span>
+                        </div>
+                    </div>
+                    <div v-show="!collapsedCategories.note" class="category-content">
+                        <div v-if="noteArticles.length === 0" class="empty-category">该分类暂无文章</div>
+                        <div v-else class="article-items">
+                            <div 
+                                v-for="article in noteArticles" 
+                                :key="article.path"
+                                class="article-item"
+                            >
+                                <div class="article-info">
+                                    <h3>{{ article.name }}</h3>
+                                    <p>{{ article.path }}</p>
+                                    <span class="article-size">{{ formatSize(article.size) }}</span>
+                                </div>
+                                <div class="article-actions">
+                                    <button @click="editArticle(article)" class="action-btn edit">编辑</button>
+                                    <button @click="deleteArticle(article)" class="action-btn delete">删除</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -112,6 +189,31 @@ const loading = ref(false)
 const articles = ref([])
 const showNewArticleModal = ref(false)
 const editingArticle = ref(null)
+
+// 折叠状态（默认全部折叠）
+const collapsedCategories = ref({
+    tutorials: true,
+    projects: true,
+    note: true
+})
+
+// 切换分类折叠状态
+const toggleCategory = (category) => {
+    collapsedCategories.value[category] = !collapsedCategories.value[category]
+}
+
+// 按分类过滤文章
+const tutorialArticles = computed(() => {
+    return articles.value.filter(article => article.category === 'tutorials')
+})
+
+const projectArticles = computed(() => {
+    return articles.value.filter(article => article.category === 'projects')
+})
+
+const noteArticles = computed(() => {
+    return articles.value.filter(article => article.category === 'note')
+})
 
 const articleForm = ref({
     category: 'tutorials',
@@ -296,6 +398,70 @@ onMounted(() => {
 
 .article-list {
     min-height: 300px;
+}
+
+.article-categories {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.category-section {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.category-header {
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+    user-select: none;
+}
+
+.category-header:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.category-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.toggle-icon {
+    color: #7a8a9e;
+    font-size: 12px;
+    transition: transform 0.3s;
+    width: 16px;
+}
+
+.category-title h3 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 500;
+    flex: 1;
+}
+
+.category-count {
+    color: #7a8a9e;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 4px 12px;
+    border-radius: 12px;
+}
+
+.category-content {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.empty-category {
+    text-align: center;
+    padding: 40px;
+    color: #7a8a9e;
+    font-style: italic;
 }
 
 .loading, .empty {
