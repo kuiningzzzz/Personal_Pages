@@ -38,33 +38,44 @@
                     <button @click="closeModal" class="close-btn">×</button>
                 </div>
                 <div class="modal-body">
-                    <div class="form-group">
-                        <label>文章分类</label>
-                        <select v-model="articleForm.category" class="form-input">
-                            <option value="tutorials">教程 (tutorials)</option>
-                            <option value="projects">项目 (projects)</option>
-                            <option value="note">笔记 (note)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>文件名</label>
-                        <input 
-                            v-model="articleForm.filename" 
-                            class="form-input"
-                            placeholder="example.md"
-                            :disabled="!!editingArticle"
-                        />
-                    </div>
-                    <div class="form-group">
-                        <label>文章内容</label>
-                        <textarea 
-                            v-model="articleForm.content" 
-                            class="form-textarea"
-                            placeholder="# 文章标题
+                    <!-- 编辑器部分 -->
+                    <div class="editor-section">
+                        <div class="form-group">
+                            <label>文章分类</label>
+                            <select v-model="articleForm.category" class="form-select">
+                                <option value="tutorials">教程 (tutorials)</option>
+                                <option value="projects">项目 (projects)</option>
+                                <option value="note">笔记 (note)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>文件名</label>
+                            <input 
+                                v-model="articleForm.filename" 
+                                class="form-input"
+                                placeholder="example.md"
+                                :disabled="!!editingArticle"
+                            />
+                        </div>
+                        <div class="form-group">
+                            <label>文章内容</label>
+                            <textarea 
+                                v-model="articleForm.content" 
+                                class="form-textarea"
+                                placeholder="# 文章标题
 
 在这里输入 Markdown 内容..."
-                            rows="15"
-                        ></textarea>
+                                rows="20"
+                            ></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- 预览部分 -->
+                    <div class="preview-section">
+                        <div class="preview-header">
+                            <label>实时预览</label>
+                        </div>
+                        <div class="preview-content" v-html="renderedPreview"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -77,7 +88,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { marked } from 'marked'
+import hljs from 'highlight.js'
+
+// 配置 marked
+marked.setOptions({
+    highlight: function(code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+            try {
+                return hljs.highlight(code, { language: lang }).value
+            } catch (e) {
+                console.error(e)
+            }
+        }
+        return hljs.highlightAuto(code).value
+    },
+    breaks: true,
+    gfm: true
+})
 
 const loading = ref(false)
 const articles = ref([])
@@ -88,6 +117,18 @@ const articleForm = ref({
     category: 'tutorials',
     filename: '',
     content: ''
+})
+
+// 实时预览
+const renderedPreview = computed(() => {
+    if (!articleForm.value.content) {
+        return '<div class="preview-empty">开始输入内容以查看预览...</div>'
+    }
+    try {
+        return marked(articleForm.value.content)
+    } catch (e) {
+        return '<div class="preview-error">预览出错</div>'
+    }
 })
 
 // 加载文章列表
@@ -354,7 +395,7 @@ onMounted(() => {
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 12px;
     width: 90%;
-    max-width: 800px;
+    max-width: 1400px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -392,6 +433,57 @@ onMounted(() => {
 .modal-body {
     padding: 24px;
     overflow-y: auto;
+    display: flex;
+    gap: 24px;
+}
+
+.editor-section {
+    flex: 1;
+    min-width: 0;
+}
+
+.preview-section {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    padding-left: 24px;
+}
+
+.preview-header {
+    margin-bottom: 12px;
+}
+
+.preview-header label {
+    color: #b8c5d6;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.preview-content {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 20px;
+    overflow-y: auto;
+    color: #e8edf5;
+    font-size: 15px;
+    line-height: 1.8;
+    min-height: 400px;
+}
+
+.preview-empty,
+.preview-error {
+    color: #7a8a9e;
+    text-align: center;
+    padding: 40px;
+    font-style: italic;
+}
+
+.preview-error {
+    color: #ff6b6b;
 }
 
 .form-group {
@@ -405,7 +497,7 @@ onMounted(() => {
     font-size: 14px;
 }
 
-.form-input, .form-textarea {
+.form-input, .form-textarea, .form-select {
     width: 100%;
     padding: 10px 12px;
     background: rgba(255, 255, 255, 0.05);
@@ -425,7 +517,17 @@ onMounted(() => {
     line-height: 1.6;
 }
 
-.form-input:focus, .form-textarea:focus {
+.form-select {
+    cursor: pointer;
+}
+
+.form-select option {
+    background: #1a1f2e;
+    color: #ffffff;
+    padding: 8px;
+}
+
+.form-input:focus, .form-textarea:focus, .form-select:focus {
     border-color: rgba(255, 255, 255, 0.3);
     background: rgba(255, 255, 255, 0.08);
 }
@@ -505,6 +607,22 @@ onMounted(() => {
     .form-textarea {
         font-size: 13px;
     }
+
+    .modal-body {
+        flex-direction: column;
+    }
+
+    .preview-section {
+        border-left: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        padding-left: 0;
+        padding-top: 24px;
+        max-height: 300px;
+    }
+
+    .preview-content {
+        min-height: 200px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -516,5 +634,166 @@ onMounted(() => {
         padding: 6px 10px;
         font-size: 12px;
     }
+
+    .preview-section {
+        max-height: 250px;
+    }
 }
+
+/* 预览内容的 Markdown 样式 */
+.preview-content :deep(h1) {
+    color: #ffffff;
+    font-size: 28px;
+    font-weight: 500;
+    margin: 24px 0 16px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.preview-content :deep(h1:first-child) {
+    margin-top: 0;
+}
+
+.preview-content :deep(h2) {
+    color: #ffffff;
+    font-size: 22px;
+    font-weight: 500;
+    margin: 20px 0 12px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.preview-content :deep(h3) {
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 500;
+    margin: 16px 0 10px 0;
+}
+
+.preview-content :deep(h4),
+.preview-content :deep(h5),
+.preview-content :deep(h6) {
+    color: #e8edf5;
+    font-weight: 500;
+    margin: 12px 0 8px 0;
+}
+
+.preview-content :deep(p) {
+    color: #b8c5d6;
+    margin: 10px 0;
+    line-height: 1.8;
+}
+
+.preview-content :deep(strong) {
+    color: #ffffff;
+    font-weight: 500;
+}
+
+.preview-content :deep(em) {
+    color: #d4dde8;
+    font-style: italic;
+}
+
+.preview-content :deep(a) {
+    color: #74aaff;
+    text-decoration: none;
+    word-break: break-word;
+}
+
+.preview-content :deep(a:hover) {
+    color: #9cc3ff;
+    text-decoration: underline;
+}
+
+.preview-content :deep(ul),
+.preview-content :deep(ol) {
+    color: #b8c5d6;
+    margin: 12px 0;
+    padding-left: 24px;
+}
+
+.preview-content :deep(li) {
+    margin: 6px 0;
+    line-height: 1.7;
+}
+
+.preview-content :deep(blockquote) {
+    background: rgba(255, 255, 255, 0.03);
+    border-left: 4px solid rgba(116, 170, 255, 0.5);
+    margin: 16px 0;
+    padding: 12px 16px;
+    border-radius: 4px;
+    color: #c5d0dd;
+    font-style: italic;
+}
+
+.preview-content :deep(code) {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ff9d76;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    word-break: break-word;
+}
+
+.preview-content :deep(pre) {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 16px;
+    margin: 16px 0;
+    overflow-x: auto;
+}
+
+.preview-content :deep(pre code) {
+    background: transparent;
+    color: #e8edf5;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.preview-content :deep(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 13px;
+}
+
+.preview-content :deep(th) {
+    color: #ffffff;
+    font-weight: 500;
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.preview-content :deep(td) {
+    color: #b8c5d6;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.preview-content :deep(hr) {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 24px 0;
+}
+
+.preview-content :deep(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    margin: 12px 0;
+}
+</style>
+
+<style>
+/* 代码高亮主题 */
+@import 'highlight.js/styles/atom-one-dark.css';
 </style>
