@@ -40,6 +40,12 @@
                     图片管理
                 </button>
                 <button 
+                    :class="['tab-btn', { active: currentTab === 'sources' }]"
+                    @click="currentTab = 'sources'"
+                >
+                    下载资源
+                </button>
+                <button 
                     :class="['tab-btn', { active: currentTab === 'emoji' }]"
                     @click="currentTab = 'emoji'"
                 >
@@ -69,6 +75,11 @@
                 <!-- 图片管理 -->
                 <div v-else-if="currentTab === 'images'" class="tab-content">
                     <ImageManager />
+                </div>
+
+                <!-- 下载资源管理 -->
+                <div v-else-if="currentTab === 'sources'" class="tab-content">
+                    <SourceManager />
                 </div>
 
                 <!-- 表情包管理 -->
@@ -121,6 +132,7 @@
 import { ref, onMounted } from 'vue'
 import ArticleManager from '../components/admin/ArticleManager.vue'
 import ImageManager from '../components/admin/ImageManager.vue'
+import SourceManager from '../components/admin/SourceManager.vue'
 import CardConfigManager from '../components/admin/CardConfigManager.vue'
 import EmojiManager from '../components/admin/EmojiManager.vue'
 

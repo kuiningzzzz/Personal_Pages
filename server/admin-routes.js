@@ -52,6 +52,27 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// 配置资源文件上传（用于 source 目录）
+const sourceStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadPath = join(PUBLIC_DIR, 'source');
+        
+        // 确保目录存在
+        if (!existsSync(uploadPath)) {
+            mkdir(uploadPath, { recursive: true });
+        }
+        
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        // 保持原文件名，使用 UTF-8 编码
+        const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        cb(null, originalName);
+    }
+});
+
+const sourceUpload = multer({ storage: sourceStorage });
+
 // ==================== 文章管理 API ====================
 
 // 获取所有文章列表
@@ -748,6 +769,117 @@ router.delete('/emoji/images', async (req, res) => {
         res.status(500).json({
             success: false,
             message: '删除图片失败'
+        });
+    }
+});
+
+// ==================== 资源文件管理 API ====================
+
+// 获取所有资源文件列表
+router.get('/sources', async (req, res) => {
+    try {
+        const sourceDir = join(PUBLIC_DIR, 'source');
+        const sources = [];
+
+        if (!existsSync(sourceDir)) {
+            return res.json({
+                success: true,
+                data: []
+            });
+        }
+
+        const files = await readdir(sourceDir, { withFileTypes: true });
+        
+        for (const file of files) {
+            if (file.isDirectory()) continue;
+
+            const fullPath = join(sourceDir, file.name);
+            const stats = await stat(fullPath);
+            const relativePath = `/source/${file.name}`;
+
+            sources.push({
+                name: file.name,
+                path: fullPath,
+                relativePath: relativePath,
+                size: stats.size,
+                modified: stats.mtime
+            });
+        }
+
+        res.json({
+            success: true,
+            data: sources
+        });
+    } catch (error) {
+        console.error('获取资源列表失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取资源列表失败'
+        });
+    }
+});
+
+// 上传资源文件
+router.post('/sources', sourceUpload.array('sources', 10), async (req, res) => {
+    try {
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: '没有上传文件'
+            });
+        }
+
+        const uploadedFiles = req.files.map(file => ({
+            name: file.originalname,
+            path: file.path,
+            size: file.size
+        }));
+
+        res.json({
+            success: true,
+            message: '上传成功',
+            data: uploadedFiles
+        });
+    } catch (error) {
+        console.error('上传资源失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '上传资源失败'
+        });
+    }
+});
+
+// 删除资源文件
+router.delete('/sources', async (req, res) => {
+    try {
+        const { path } = req.body;
+
+        if (!path) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少文件路径'
+            });
+        }
+
+        // 安全检查：只允许删除 source 目录下的文件
+        if (!path.includes('source')) {
+            return res.status(403).json({
+                success: false,
+                message: '只能删除 source 目录下的文件'
+            });
+        }
+
+        await unlink(path);
+
+        res.json({
+            success: true,
+            message: '删除成功'
+        });
+    } catch (error) {
+        console.error('删除资源失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '删除资源失败'
         });
     }
 });
