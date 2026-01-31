@@ -55,7 +55,9 @@
                                 <span v-if="card.category" class="card-category">{{ card.category }}</span>
                                 <span v-if="card.avatar" class="card-avatar-path">{{ card.avatar }}</span>
                                 <span v-if="card.date" class="card-date">{{ card.date }}</span>
-                                <span class="card-link">{{ card.link }}</span>
+                                <span v-if="card.link" class="card-link">{{ card.link }}</span>
+                                <span v-if="card.downloadUrl" class="card-download">下载: {{ card.downloadUrl }}</span>
+                                <span v-if="card.repoUrl" class="card-repo">外链: {{ card.repoUrl }}</span>
                             </div>
                         </div>
                         <div class="card-actions">
@@ -134,6 +136,26 @@
                             <option v-if="currentType === 'projects'" value="推荐软件">推荐软件</option>
                         </select>
                     </div>
+                    <!-- Project 卡片特有字段：下载链接 -->
+                    <div v-if="currentType === 'projects'" class="form-group">
+                        <label>下载链接 <span class="optional">(可选)</span></label>
+                        <input 
+                            v-model="cardForm.downloadUrl" 
+                            class="form-input"
+                            placeholder="/source/xxx.zip 或留空不显示下载按钮"
+                        />
+                        <p class="form-hint">填写后卡片会显示 Download 按钮</p>
+                    </div>
+                    <!-- Project 卡片特有字段：外部链接 -->
+                    <div v-if="currentType === 'projects'" class="form-group">
+                        <label>外部链接 <span class="optional">(可选)</span></label>
+                        <input 
+                            v-model="cardForm.repoUrl" 
+                            class="form-input"
+                            placeholder="https://github.com/xxx 或留空不显示"
+                        />
+                        <p class="form-hint">填写后卡片会显示 Website 按钮，可用于 GitHub 仓库等外链</p>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button @click="closeModal" class="secondary-btn">取消</button>
@@ -159,7 +181,9 @@ const cardForm = ref({
     date: '',
     link: '',
     category: '',
-    avatar: ''
+    avatar: '',
+    downloadUrl: '',
+    repoUrl: ''
 })
 
 // 加载卡片配置
@@ -265,7 +289,9 @@ const closeModal = () => {
         date: '',
         link: '',
         category: '',
-        avatar: ''
+        avatar: '',
+        downloadUrl: '',
+        repoUrl: ''
     }
 }
 
@@ -696,5 +722,16 @@ onMounted(() => {
         padding: 6px 4px;
         font-size: 11px;
     }
+}
+
+.optional {
+    font-size: 12px;
+    color: #7a8a9e;
+    font-weight: normal;
+}
+
+.card-download, .card-repo {
+    color: #74aaff;
+    font-size: 11px;
 }
 </style>
