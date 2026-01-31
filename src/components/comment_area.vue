@@ -58,7 +58,8 @@ const props = defineProps({
     }
 })
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL
+// API 地址：优先使用环境变量，否则使用相对路径（通过 nginx 代理）
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
 const comments = ref([])
 const loading = ref(false)

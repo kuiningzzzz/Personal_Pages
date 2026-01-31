@@ -142,7 +142,8 @@ const authError = ref('')
 const currentTab = ref('articles')
 const isDownloading = ref(false)
 
-const ADMIN_PASSWORD = 'zjy051104' // 管理员密码
+// 从环境变量读取密码，不要硬编码在代码中
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || ''
 
 // 检查本地存储的认证状态
 onMounted(() => {

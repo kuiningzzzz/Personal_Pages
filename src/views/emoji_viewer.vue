@@ -10,14 +10,14 @@
                 <span>返回</span>
             </button>
             <h1>{{ categoryTitle }}</h1>
-            <p class="image-count">共 {{ images.length }} 张表情包</p>
+            <p class="image-count">共 {{ imageInfos.length }} 张表情包</p>
         </div>
 
         <div v-if="loading" class="loading">加载中...</div>
-        <div v-else-if="images.length === 0" class="empty">暂无表情包</div>
+        <div v-else-if="imageInfos.length === 0" class="empty">暂无表情包</div>
         <div v-else class="emoji-grid">
             <div v-for="col in columns" :key="col.index" class="emoji-column">
-                <div v-for="image in col.images" :key="image.index" class="emoji-item" @click="viewImage(image.src)">
+                <div v-for="image in col.images" :key="image.src" class="emoji-item" @click="viewImage(image.src)">
                     <img :src="image.src" :alt="`表情包 ${image.index + 1}`" @error="handleImageError" loading="lazy" />
                     <div class="emoji-overlay">
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
@@ -60,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CommentArea from '../components/comment_area.vue'
 
@@ -71,22 +71,43 @@ const category = computed(() => route.query.category || 'type1')
 const categoryTitle = ref('表情包集合')
 const categoryDesc = ref('')
 
-const images = ref([])
+const images = ref([])  // 原始图片路径列表
+const imageInfos = ref([])  // 包含尺寸信息的图片数据
 const loading = ref(true)
 const previewImage = ref(null)
 const columnCount = ref(4) // 默认4列
 
-// 计算分列数据，按顺序分配到各列
+// 智能分列算法：将图片分配到当前高度最小的列
 const columns = computed(() => {
     const cols = []
+    const colHeights = []  // 记录每列的累计高度
+    
     for (let i = 0; i < columnCount.value; i++) {
         cols.push({ index: i, images: [] })
+        colHeights.push(0)
     }
     
-    // 按顺序循环分配图片到各列
-    images.value.forEach((src, index) => {
-        const colIndex = index % columnCount.value
-        cols[colIndex].images.push({ src, index })
+    // 间距权重：假设列宽约300px，间距20px，比例约为 20/300 ≈ 0.067
+    const gapRatio = 0.07
+    
+    // 遍历所有图片，每次分配到高度最小的列
+    imageInfos.value.forEach((img) => {
+        // 找到当前高度最小的列
+        let minHeight = colHeights[0]
+        let minIndex = 0
+        for (let i = 1; i < columnCount.value; i++) {
+            if (colHeights[i] < minHeight) {
+                minHeight = colHeights[i]
+                minIndex = i
+            }
+        }
+        
+        // 将图片分配到该列
+        cols[minIndex].images.push(img)
+        
+        // 更新该列的高度：图片宽高比 + 间距权重
+        const aspectRatio = img.height / img.width
+        colHeights[minIndex] += aspectRatio + gapRatio
     })
     
     return cols
@@ -104,6 +125,35 @@ const updateColumnCount = () => {
     } else {
         columnCount.value = 4
     }
+}
+
+// 预加载图片并获取尺寸
+const preloadImages = async (imagePaths) => {
+    const loadImage = (src) => {
+        return new Promise((resolve) => {
+            const img = new Image()
+            img.onload = () => {
+                resolve({
+                    src,
+                    width: img.naturalWidth,
+                    height: img.naturalHeight
+                })
+            }
+            img.onerror = () => {
+                // 加载失败时使用默认的 1:1 比例
+                resolve({
+                    src,
+                    width: 1,
+                    height: 1
+                })
+            }
+            img.src = src
+        })
+    }
+    
+    // 并行加载所有图片
+    const results = await Promise.all(imagePaths.map(loadImage))
+    return results
 }
 
 // 加载分类配置信息
@@ -135,6 +185,8 @@ const loadImages = async () => {
             const data = await response.json()
             if (data.success) {
                 images.value = data.images
+                // 预加载图片获取尺寸
+                imageInfos.value = await preloadImages(data.images)
             } else {
                 // 如果API不存在，使用前端扫描方式（开发环境）
                 await loadImagesFromDirectory()
@@ -152,7 +204,7 @@ const loadImages = async () => {
 }
 
 // 从目录加载图片（降级方案）
-const loadImagesFromDirectory = () => {
+const loadImagesFromDirectory = async () => {
     const knownImages = {
         'type1': [
             '/emoji/type1/959E4E909D5437E26DC980105EBD9DB6.jpg'
@@ -162,7 +214,9 @@ const loadImagesFromDirectory = () => {
             '/emoji/type2/微信图片_20250222221129.jpg'
         ]
     }
-    images.value = knownImages[category.value] || []
+    const imagePaths = knownImages[category.value] || []
+    images.value = imagePaths
+    imageInfos.value = await preloadImages(imagePaths)
 }
 
 const goBack = () => {
@@ -197,6 +251,10 @@ onMounted(() => {
     window.addEventListener('resize', updateColumnCount)
     loadCategoryInfo()
     loadImages()
+})
+
+onUnmounted(() => {
+    window.removeEventListener('resize', updateColumnCount)
 })
 </script>
 
