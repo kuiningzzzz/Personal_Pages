@@ -19,6 +19,12 @@
             >
                 Project 卡片
             </button>
+            <button 
+                :class="['type-tab', { active: currentType === 'friends' }]"
+                @click="loadCardConfig('friends')"
+            >
+                友链卡片
+            </button>
         </div>
 
         <!-- 卡片列表 -->
@@ -38,12 +44,17 @@
                         :key="index"
                         class="card-item"
                     >
+                        <!-- 友链卡片显示头像 -->
+                        <div v-if="currentType === 'friends' && card.avatar" class="card-avatar">
+                            <img :src="card.avatar" :alt="card.title" />
+                        </div>
                         <div class="card-preview">
                             <h3>{{ card.title }}</h3>
                             <p>{{ card.desc }}</p>
                             <div class="card-meta">
                                 <span v-if="card.category" class="card-category">{{ card.category }}</span>
-                                <span class="card-date">{{ card.date }}</span>
+                                <span v-if="card.avatar" class="card-avatar-path">{{ card.avatar }}</span>
+                                <span v-if="card.date" class="card-date">{{ card.date }}</span>
                                 <span class="card-link">{{ card.link }}</span>
                             </div>
                         </div>
@@ -83,7 +94,18 @@
                             rows="3"
                         ></textarea>
                     </div>
-                    <div class="form-group">
+                    <!-- 友链特有字段：头像 -->
+                    <div v-if="currentType === 'friends'" class="form-group">
+                        <label>头像路径</label>
+                        <input 
+                            v-model="cardForm.avatar" 
+                            class="form-input"
+                            placeholder="/friend_avatar/xxx.jpg"
+                        />
+                        <p class="form-hint">头像图片请先在“图片管理”中上传到“好友头像”分类</p>
+                    </div>
+                    <!-- 非友链特有字段：日期 -->
+                    <div v-if="currentType !== 'friends'" class="form-group">
                         <label>日期</label>
                         <input 
                             v-model="cardForm.date" 
@@ -96,10 +118,11 @@
                         <input 
                             v-model="cardForm.link" 
                             class="form-input"
-                            placeholder="/article?src=/articles/tutorials/example.md"
+                            :placeholder="currentType === 'friends' ? 'https://example.com/' : '/article?src=/articles/tutorials/example.md'"
                         />
                     </div>
-                    <div class="form-group">
+                    <!-- 非友链特有字段：分类 -->
+                    <div v-if="currentType !== 'friends'" class="form-group">
                         <label>分类</label>
                         <select 
                             v-model="cardForm.category" 
@@ -135,7 +158,8 @@ const cardForm = ref({
     desc: '',
     date: '',
     link: '',
-    category: ''
+    category: '',
+    avatar: ''
 })
 
 // 加载卡片配置
@@ -188,9 +212,17 @@ const saveCard = async () => {
         alert('请填写标题和描述')
         return
     }
-    if (!cardForm.value.category) {
-        alert('请选择分类')
-        return
+    // 友链需要头像和链接，其他卡片需要分类
+    if (currentType.value === 'friends') {
+        if (!cardForm.value.avatar || !cardForm.value.link) {
+            alert('请填写头像路径和链接')
+            return
+        }
+    } else {
+        if (!cardForm.value.category) {
+            alert('请选择分类')
+            return
+        }
     }
 
     if (editingIndex.value !== null) {
@@ -232,7 +264,8 @@ const closeModal = () => {
         desc: '',
         date: '',
         link: '',
-        category: ''
+        category: '',
+        avatar: ''
     }
 }
 
@@ -349,6 +382,7 @@ onMounted(() => {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
     transition: all 0.3s;
+    gap: 16px;
 }
 
 .card-item:hover {
@@ -356,8 +390,24 @@ onMounted(() => {
     border-color: rgba(255, 255, 255, 0.15);
 }
 
+.card-avatar {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+}
+
+.card-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 .card-preview {
     flex: 1;
+    min-width: 0;
 }
 
 .card-preview h3 {
@@ -377,6 +427,7 @@ onMounted(() => {
     display: flex;
     gap: 16px;
     font-size: 12px;
+    flex-wrap: wrap;
 }
 
 .card-category {
@@ -385,6 +436,11 @@ onMounted(() => {
     border-radius: 4px;
     color: #ffffff;
     font-weight: 500;
+}
+
+.card-avatar-path {
+    color: #74aaff;
+    font-family: 'Consolas', 'Monaco', monospace;
 }
 
 .card-date {
@@ -511,6 +567,13 @@ onMounted(() => {
     margin-bottom: 8px;
     color: #b8c5d6;
     font-size: 14px;
+}
+
+.form-hint {
+    margin: 8px 0 0 0;
+    font-size: 12px;
+    color: #7a8a9e;
+    font-style: italic;
 }
 
 .form-input, .form-textarea, .form-select {

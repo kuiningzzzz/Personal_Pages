@@ -8,17 +8,16 @@
             <h2>Friend Links</h2>
         </div>
         <div class="friends-container">
-            <FriendCard 
-                title="Qiyu Zhang" 
-                desc="我的本科舍友，主页有或有趣或实用或有趣且实用的日志、笔记、随写，但是更新不太频繁，维护不当似乎有点混乱？）"
-                avatar="/friend_avatar/friend1.jpg"
-                link="https://qiyuzhang-stu.github.io/" />
-            <FriendCard 
-                title="FunctionHook函钩" 
-                desc="我的高中同学，天大计算机本科就读，主页有计算机学习笔记、日记、开源项目，以及东方&舟&母鸡卡神人视频，还有大量耄耋&雪莉等神人表情包，是个暂时没啥流量的b站up"
-                avatar="/friend_avatar/friend2.jpg"
-                link="https://functionhooktju.github.io/fxHook.io/" />
-
+            <div v-if="loading" class="loading">加载中...</div>
+            <template v-else>
+                <FriendCard 
+                    v-for="friend in friends"
+                    :key="friend.title"
+                    :title="friend.title" 
+                    :desc="friend.desc"
+                    :avatar="friend.avatar"
+                    :link="friend.link" />
+            </template>
         </div>
         <div class="section-title">
             <h2>Entertainment</h2>
@@ -64,7 +63,30 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
 import FriendCard from '../components/friend_card.vue'
+
+const friends = ref([])
+const loading = ref(true)
+
+// 从 API 加载友链数据
+const loadFriends = async () => {
+    try {
+        const response = await fetch('/api/admin/cards/friends')
+        const data = await response.json()
+        if (data.success) {
+            friends.value = data.data
+        }
+    } catch (error) {
+        console.error('加载友链失败:', error)
+    } finally {
+        loading.value = false
+    }
+}
+
+onMounted(() => {
+    loadFriends()
+})
 </script>
 
 
@@ -102,6 +124,14 @@ import FriendCard from '../components/friend_card.vue'
 .friends-container > * {
     break-inside: avoid;
     margin-bottom: 24px;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #7a8a9e;
+    font-size: 16px;
+    width: 100%;
 }
 
 h1 {
