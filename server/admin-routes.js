@@ -73,6 +73,37 @@ const sourceStorage = multer.diskStorage({
 
 const sourceUpload = multer({ storage: sourceStorage });
 
+// 配置备份文件上传（临时存储）
+const backupStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadPath = join(__dirname, 'temp');
+        
+        // 确保临时目录存在
+        if (!existsSync(uploadPath)) {
+            mkdir(uploadPath, { recursive: true });
+        }
+        
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        // 使用时间戳作为文件名
+        const timestamp = Date.now();
+        cb(null, `backup-${timestamp}.zip`);
+    }
+});
+
+const backupUpload = multer({ 
+    storage: backupStorage,
+    fileFilter: (req, file, cb) => {
+        // 只允许 zip 文件
+        if (file.mimetype === 'application/zip' || file.originalname.endsWith('.zip')) {
+            cb(null, true);
+        } else {
+            cb(new Error('只支持 zip 格式的备份文件'));
+        }
+    }
+});
+
 // ==================== 文章管理 API ====================
 
 // 获取所有文章列表
@@ -977,6 +1008,192 @@ router.get('/backup', async (req, res) => {
                 message: '创建备份失败: ' + error.message
             });
         }
+    }
+});
+
+// 上传并恢复备份（增量恢复：替换同名文件，添加新文件，保留其他文件）
+router.post('/backup/restore', backupUpload.single('backup'), async (req, res) => {
+    let tempFilePath = null;
+    let extractPath = null;
+    
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: '未上传备份文件'
+            });
+        }
+
+        tempFilePath = req.file.path;
+        console.log('📦 开始恢复备份:', tempFilePath);
+        console.log('📦 文件大小:', req.file.size, 'bytes');
+
+        // 验证文件是否存在且可读
+        if (!existsSync(tempFilePath)) {
+            throw new Error('上传的文件不存在');
+        }
+        
+        const fileStats = await stat(tempFilePath);
+        console.log('📦 磁盘文件大小:', fileStats.size, 'bytes');
+        
+        if (fileStats.size !== req.file.size) {
+            throw new Error(`文件大小不匹配: 预期 ${req.file.size}, 实际 ${fileStats.size}`);
+        }
+
+        // 解压到临时目录
+        extractPath = join(__dirname, 'temp', `extract-${Date.now()}`);
+        await mkdir(extractPath, { recursive: true });
+        
+        console.log('📂 解压到:', extractPath);
+        
+        // 使用 unzipper 的 Open 方法，更可靠
+        const unzipper = await import('unzipper');
+        const directory = await unzipper.Open.file(tempFilePath);
+        
+        console.log('📦 ZIP 文件包含', directory.files.length, '个文件');
+        
+        // 提取所有文件
+        await directory.extract({ path: extractPath });
+        
+        console.log('✅ 解压完成');
+        
+        let restoredFiles = 0;
+        let restoredDatabases = 0;
+        
+        // 1. 恢复 public 目录内容
+        const publicExtractPath = join(extractPath, 'public');
+        if (existsSync(publicExtractPath)) {
+            console.log('📁 开始恢复 public 目录...');
+            
+            // 递归复制文件
+            const copyDirectory = async (srcDir, destDir) => {
+                const files = await readdir(srcDir, { withFileTypes: true });
+                
+                for (const file of files) {
+                    const srcPath = join(srcDir, file.name);
+                    const destPath = join(destDir, file.name);
+                    
+                    if (file.isDirectory()) {
+                        // 确保目标目录存在
+                        if (!existsSync(destPath)) {
+                            await mkdir(destPath, { recursive: true });
+                        }
+                        await copyDirectory(srcPath, destPath);
+                    } else {
+                        // 复制文件（覆盖已存在的文件）
+                        const content = await readFile(srcPath);
+                        await writeFile(destPath, content);
+                        restoredFiles++;
+                        
+                        if (restoredFiles % 10 === 0) {
+                            console.log(`📝 已恢复 ${restoredFiles} 个文件...`);
+                        }
+                    }
+                }
+            };
+            
+            await copyDirectory(publicExtractPath, PUBLIC_DIR);
+            console.log(`✅ public 目录恢复完成，共 ${restoredFiles} 个文件`);
+        } else {
+            console.log('⚠️  备份包中未找到 public 目录');
+        }
+        
+        // 2. 恢复数据库文件
+        const dataExtractPath = join(extractPath, 'data');
+        if (existsSync(dataExtractPath)) {
+            console.log('📊 开始恢复数据库...');
+            
+            const dataDir = process.env.NODE_ENV === 'production' 
+                ? '/app/data' 
+                : join(__dirname, 'data');
+            
+            // 确保数据库目录存在
+            if (!existsSync(dataDir)) {
+                await mkdir(dataDir, { recursive: true });
+            }
+            
+            const dbFiles = await readdir(dataExtractPath);
+            const sqliteFiles = dbFiles.filter(file => file.endsWith('.sqlite'));
+            
+            for (const file of sqliteFiles) {
+                const srcPath = join(dataExtractPath, file);
+                const destPath = join(dataDir, file);
+                
+                // 复制数据库文件（覆盖已存在的文件）
+                const content = await readFile(srcPath);
+                await writeFile(destPath, content);
+                restoredDatabases++;
+                console.log(`📊 恢复数据库: ${file}`);
+            }
+            
+            console.log(`✅ 数据库恢复完成，共 ${restoredDatabases} 个文件`);
+        } else {
+            console.log('⚠️  备份包中未找到 data 目录');
+        }
+        
+        // 3. 清理临时文件
+        console.log('🧹 清理临时文件...');
+        const cleanDirectory = async (dir) => {
+            if (!existsSync(dir)) return;
+            const files = await readdir(dir, { withFileTypes: true });
+            for (const file of files) {
+                const filePath = join(dir, file.name);
+                if (file.isDirectory()) {
+                    await cleanDirectory(filePath);
+                } else {
+                    await unlink(filePath).catch(() => {});
+                }
+            }
+            // 删除目录本身
+            await unlink(dir).catch(() => {});
+        };
+        
+        if (extractPath) {
+            await cleanDirectory(extractPath).catch(err => console.log('清理解压目录失败:', err));
+        }
+        if (tempFilePath) {
+            await unlink(tempFilePath).catch(err => console.log('清理上传文件失败:', err));
+        }
+        
+        console.log('✅ 备份恢复成功');
+        
+        res.json({
+            success: true,
+            message: '备份恢复成功',
+            data: {
+                restoredFiles,
+                restoredDatabases
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ 恢复备份失败:', error);
+        console.error('错误堆栈:', error.stack);
+        
+        // 清理临时文件
+        if (tempFilePath && existsSync(tempFilePath)) {
+            await unlink(tempFilePath).catch(() => {});
+        }
+        if (extractPath && existsSync(extractPath)) {
+            const cleanDirectory = async (dir) => {
+                const files = await readdir(dir, { withFileTypes: true }).catch(() => []);
+                for (const file of files) {
+                    const filePath = join(dir, file.name);
+                    if (file.isDirectory()) {
+                        await cleanDirectory(filePath);
+                    } else {
+                        await unlink(filePath).catch(() => {});
+                    }
+                }
+                await unlink(dir).catch(() => {});
+            };
+            await cleanDirectory(extractPath).catch(() => {});
+        }
+        
+        res.status(500).json({
+            success: false,
+            message: '恢复备份失败: ' + error.message
+        });
     }
 });
 

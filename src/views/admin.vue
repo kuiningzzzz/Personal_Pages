@@ -95,20 +95,67 @@
                 <!-- 备份管理 -->
                 <div v-else-if="currentTab === 'backup'" class="tab-content">
                     <div class="backup-manager">
-                        <h2>数据备份</h2>
-                        <p class="backup-desc">下载完整备份包（包含资源文件和数据库）</p>
-                        <div class="backup-actions">
-                            <button @click="downloadBackup" :disabled="isDownloading" class="backup-btn">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                                </svg>
-                                <span v-if="!isDownloading">获取备份包</span>
-                                <span v-else>正在生成备份...</span>
-                            </button>
+                        <h2>数据备份与恢复</h2>
+                        <p class="backup-desc">下载完整备份包，或上传备份包进行增量恢复</p>
+                        
+                        <!-- 下载备份 -->
+                        <div class="backup-section">
+                            <h3>下载备份</h3>
+                            <div class="backup-actions">
+                                <button @click="downloadBackup" :disabled="isDownloading" class="backup-btn download">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7 10 12 15 17 10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
+                                    <span v-if="!isDownloading">获取备份包</span>
+                                    <span v-else>正在生成备份...</span>
+                                </button>
+                            </div>
                         </div>
+                        
+                        <!-- 上传恢复 -->
+                        <div class="backup-section">
+                            <h3>上传恢复</h3>
+                            <p class="section-hint">上传之前下载的备份包进行增量恢复（替换同名文件，添加新文件，保留其他文件）</p>
+                            <div class="upload-area">
+                                <input 
+                                    type="file" 
+                                    accept=".zip" 
+                                    @change="selectBackupFile"
+                                    id="backup-file-input"
+                                    class="file-input"
+                                />
+                                <label for="backup-file-input" class="file-label">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="17 8 12 3 7 8"></polyline>
+                                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                                    </svg>
+                                    <span v-if="!selectedBackupFile">选择备份文件 (.zip)</span>
+                                    <span v-else class="file-name">{{ selectedBackupFile.name }}</span>
+                                </label>
+                                <button 
+                                    @click="uploadBackup" 
+                                    :disabled="!selectedBackupFile || isUploading" 
+                                    class="backup-btn upload"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="16 16 12 12 8 16"></polyline>
+                                        <line x1="12" y1="12" x2="12" y2="21"></line>
+                                        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+                                        <polyline points="16 16 12 12 8 16"></polyline>
+                                    </svg>
+                                    <span v-if="!isUploading">开始恢复</span>
+                                    <span v-else>恢复中...</span>
+                                </button>
+                            </div>
+                            <p class="warning-text">⚠️ 恢复前建议先下载当前备份，恢复操作不可撤销</p>
+                        </div>
+                        
                         <div class="backup-info">
                             <h3>备份包内容：</h3>
                             <ul>
@@ -141,6 +188,8 @@ const password = ref('')
 const authError = ref('')
 const currentTab = ref('articles')
 const isDownloading = ref(false)
+const isUploading = ref(false)
+const selectedBackupFile = ref(null)
 
 // 从环境变量读取密码，不要硬编码在代码中
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || ''
@@ -200,6 +249,66 @@ const downloadBackup = async () => {
         console.error('下载备份失败:', error)
         alert('下载备份失败，请重试')
         isDownloading.value = false
+    }
+}
+
+// 选择备份文件
+const selectBackupFile = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+        if (!file.name.endsWith('.zip')) {
+            alert('请选择 zip 格式的备份文件')
+            event.target.value = ''
+            return
+        }
+        selectedBackupFile.value = file
+    }
+}
+
+// 上传并恢复备份
+const uploadBackup = async () => {
+    if (!selectedBackupFile.value) {
+        alert('请先选择备份文件')
+        return
+    }
+    
+    if (!confirm('恢复备份将替换同名文件并添加新文件，是否继续？\n\n注意：此操作不可撤销，建议先下载当前备份。')) {
+        return
+    }
+    
+    try {
+        isUploading.value = true
+        
+        const formData = new FormData()
+        formData.append('backup', selectedBackupFile.value)
+        
+        const response = await fetch('/api/admin/backup/restore', {
+            method: 'POST',
+            body: formData
+        })
+        
+        if (!response.ok) {
+            const text = await response.text()
+            console.error('服务器响应错误:', response.status, text)
+            throw new Error(`服务器返回错误: ${response.status}`)
+        }
+        
+        const result = await response.json()
+        
+        if (result.success) {
+            alert(`备份恢复成功！\n\n恢复了 ${result.data.restoredFiles} 个文件和 ${result.data.restoredDatabases} 个数据库`)
+            selectedBackupFile.value = null
+            // 清空文件选择器
+            const fileInput = document.querySelector('input[type="file"]')
+            if (fileInput) fileInput.value = ''
+        } else {
+            alert('恢复失败：' + result.message)
+        }
+    } catch (error) {
+        console.error('上传备份失败:', error)
+        alert('上传备份失败：' + error.message)
+    } finally {
+        isUploading.value = false
     }
 }
 </script>
@@ -429,17 +538,37 @@ const downloadBackup = async () => {
 .backup-desc {
     color: #b8c5d6;
     font-size: 14px;
-    margin: 0 0 24px 0;
+    margin: 0 0 32px 0;
+}
+
+.backup-section {
+    margin-bottom: 40px;
+    padding-bottom: 40px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.backup-section:last-of-type {
+    border-bottom: none;
+}
+
+.backup-section h3 {
+    color: #ffffff;
+    font-size: 18px;
+    margin: 0 0 8px 0;
+}
+
+.section-hint {
+    color: #7a8a9e;
+    font-size: 13px;
+    margin: 0 0 16px 0;
 }
 
 .backup-actions {
-    margin-bottom: 32px;
+    margin-bottom: 16px;
 }
 
 .backup-btn {
     padding: 14px 28px;
-    background: rgba(52, 152, 219, 0.3);
-    border: 1px solid rgba(52, 152, 219, 0.5);
     border-radius: 8px;
     color: #ffffff;
     font-size: 16px;
@@ -449,18 +578,85 @@ const downloadBackup = async () => {
     display: inline-flex;
     align-items: center;
     gap: 10px;
+    border: none;
 }
 
-.backup-btn:hover:not(:disabled) {
+.backup-btn.download {
+    background: rgba(52, 152, 219, 0.3);
+    border: 1px solid rgba(52, 152, 219, 0.5);
+}
+
+.backup-btn.download:hover:not(:disabled) {
     background: rgba(52, 152, 219, 0.4);
     border-color: rgba(52, 152, 219, 0.6);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
 }
 
+.backup-btn.upload {
+    background: rgba(46, 204, 113, 0.3);
+    border: 1px solid rgba(46, 204, 113, 0.5);
+}
+
+.backup-btn.upload:hover:not(:disabled) {
+    background: rgba(46, 204, 113, 0.4);
+    border-color: rgba(46, 204, 113, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3);
+}
+
 .backup-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.upload-area {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.file-input {
+    display: none;
+}
+
+.file-label {
+    flex: 1;
+    min-width: 200px;
+    padding: 12px 20px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 2px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: #b8c5d6;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+}
+
+.file-label:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.file-name {
+    color: #ffffff;
+    font-weight: 500;
+}
+
+.warning-text {
+    color: #e67e22;
+    font-size: 13px;
+    margin: 0;
+    padding: 10px 12px;
+    background: rgba(230, 126, 34, 0.1);
+    border-left: 3px solid #e67e22;
+    border-radius: 4px;
 }
 
 .backup-info h3 {

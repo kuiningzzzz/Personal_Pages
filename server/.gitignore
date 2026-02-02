@@ -6,3 +6,4 @@ database.sqlite-*
 data/
 dist/
 *.bat
+temp/
