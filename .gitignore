@@ -19,6 +19,13 @@ coverage
 .env.production
 .env.development
 
+# SSL 证书文件（敏感信息，不要提交到仓库）
+certs/*.key
+certs/*.crt
+certs/*.pem
+certs/*.csr
+certs/*.ca-bundle
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

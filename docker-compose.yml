@@ -7,11 +7,13 @@ services:
     container_name: personal-pages-frontend
     restart: unless-stopped
     ports:
-      - "80:80"  # 映射 HTTP 端口
+      - "80:80"    # 映射 HTTP 端口
+      - "443:443"  # 映射 HTTPS 端口
     volumes:
       - ./public/emoji:/usr/share/nginx/html/emoji  # 只挂载 emoji 目录，实时同步表情包
       - ./public/picture:/usr/share/nginx/html/picture  # 挂载 picture 目录
       - ./public/friend_avatar:/usr/share/nginx/html/friend_avatar  # 挂载头像目录
+      - ./certs:/etc/nginx/ssl:ro  # 挂载 SSL 证书目录（只读）
     depends_on:
       - backend
     networks:
