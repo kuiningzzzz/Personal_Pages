@@ -282,13 +282,7 @@ const downloadImage = () => {
 const handleImageError = (e) => {
     e.target.style.display = 'none'
 }
-计算图片的加载顺序（按行优先）
-const getLoadOrder = (columnIndex, positionInColumn) => {
-    // 加载顺序 = 行号 * 列数 + 列索引
-    return positionInColumn * columnCount.value + columnIndex
-}
 
-// 
 // 图片加载完成时更新真实尺寸
 const onImageLoad = (event, index) => {
     const img = event.target
