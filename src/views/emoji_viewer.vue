@@ -18,7 +18,13 @@
         <div v-else class="emoji-grid">
             <div v-for="col in columns" :key="col.index" class="emoji-column">
                 <div v-for="image in col.images" :key="image.src" class="emoji-item" @click="viewImage(image.src)">
-                    <img :src="image.src" :alt="`表情包 ${image.index + 1}`" @error="handleImageError" loading="lazy" />
+                    <img 
+                        :src="image.src" 
+                        :alt="`表情包 ${image.index + 1}`" 
+                        @error="handleImageError" 
+                        @load="onImageLoad($event, image.index)"
+                        loading="lazy" 
+                    />
                     <div class="emoji-overlay">
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -106,7 +112,8 @@ const columns = computed(() => {
         cols[minIndex].images.push(img)
         
         // 更新该列的高度：图片宽高比 + 间距权重
-        const aspectRatio = img.height / img.width
+        // 使用默认比例1:1，如果有真实尺寸则使用真实的
+        const aspectRatio = img.height && img.width ? img.height / img.width : 1
         colHeights[minIndex] += aspectRatio + gapRatio
     })
     
@@ -127,33 +134,24 @@ const updateColumnCount = () => {
     }
 }
 
-// 预加载图片并获取尺寸
-const preloadImages = async (imagePaths) => {
-    const loadImage = (src) => {
-        return new Promise((resolve) => {
-            const img = new Image()
-            img.onload = () => {
-                resolve({
-                    src,
-                    width: img.naturalWidth,
-                    height: img.naturalHeight
-                })
-            }
-            img.onerror = () => {
-                // 加载失败时使用默认的 1:1 比例
-                resolve({
-                    src,
-                    width: 1,
-                    height: 1
-                })
-            }
-            img.src = src
-        })
+// 快速初始化图片列表（使用默认尺寸）
+const initializeImages = (imagePaths) => {
+    return imagePaths.map((src, index) => ({
+        src,
+        index,
+        width: 1,  // 默认宽度
+        height: 1, // 默认高度（1:1比例）
+        loaded: false
+    }))
+}
+
+// 图片加载完成后更新尺寸（渐进式）
+const updateImageSize = (index, width, height) => {
+    if (imageInfos.value[index]) {
+        imageInfos.value[index].width = width
+        imageInfos.value[index].height = height
+        imageInfos.value[index].loaded = true
     }
-    
-    // 并行加载所有图片
-    const results = await Promise.all(imagePaths.map(loadImage))
-    return results
 }
 
 // 加载分类配置信息
@@ -194,8 +192,9 @@ const loadImages = async () => {
         } else {
             await loadImagesFromDirectory()
         }
-    } catch (error) {
-        console.error('加载表情包失败:', error)
+    } catch (error)快速初始化显示（使用默认尺寸）
+                imageInfos.value = initializeImages(data.images)
+                loading.value = false  // 立即显示图片
         // 降级方案：直接加载已知的图片
         await loadImagesFromDirectory()
     } finally {
@@ -224,7 +223,7 @@ const goBack = () => {
 }
 
 const viewImage = (imageSrc) => {
-    previewImage.value = imageSrc
+    previewImage.value initialize
 }
 
 const closePreview = () => {
@@ -244,6 +243,14 @@ const downloadImage = () => {
 
 const handleImageError = (e) => {
     e.target.style.display = 'none'
+}
+
+// 图片加载完成时更新真实尺寸
+const onImageLoad = (event, index) => {
+    const img = event.target
+    if (img.naturalWidth && img.naturalHeight) {
+        updateImageSize(index, img.naturalWidth, img.naturalHeight)
+    }
 }
 
 onMounted(() => {
