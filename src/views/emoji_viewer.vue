@@ -15,22 +15,27 @@
 
         <div v-if="loading" class="loading">加载中...</div>
         <div v-else-if="imageInfos.length === 0" class="empty">暂无表情包</div>
-        <div v-else class="emoji-grid">
-            <div v-for="col in columns" :key="col.index" class="emoji-column">
-                <div v-for="image in col.images" :key="image.src" class="emoji-item" @click="viewImage(image.src)">
-                    <img 
-                        :src="image.src" 
-                        :alt="`表情包 ${image.index + 1}`" 
-                        @error="handleImageError" 
-                        @load="onImageLoad($event, image.index)"
-                    />
-                    <div class="emoji-overlay">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                    </div>
+        <div v-else class="emoji-grid-row-ordered">
+            <!-- 按行优先顺序渲染，但用CSS控制每张图片的列位置 -->
+            <div 
+                v-for="image in rowOrderedImages" 
+                :key="image.src" 
+                class="emoji-item" 
+                :style="{ gridColumn: image.columnIndex + 1 }"
+                @click="viewImage(image.src)"
+            >
+                <img 
+                    :src="image.src" 
+                    :alt="`表情包 ${image.index + 1}`" 
+                    @error="handleImageError" 
+                    @load="onImageLoad($event, image.index)"
+                />
+                <div class="emoji-overlay">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
                 </div>
             </div>
         </div>
@@ -95,7 +100,7 @@ const columns = computed(() => {
     // 间距权重：假设列宽约300px，间距20px，比例约为 20/300 ≈ 0.067
     const gapRatio = 0.07
     
-    // 遍历所有图片，每次分配到高度最小的列
+    // 遍历所有图片，每次分配到高度最小的列，并记录每张图片在列中的位置
     imageInfos.value.forEach((img) => {
         // 找到当前高度最小的列
         let minHeight = colHeights[0]
@@ -107,8 +112,15 @@ const columns = computed(() => {
             }
         }
         
-        // 将图片分配到该列
-        cols[minIndex].images.push(img)
+        // 记录图片在列中的位置（用于计算加载优先级）
+        const positionInColumn = cols[minIndex].images.length
+        
+        // 将图片分配到该列，并添加位置信息
+        cols[minIndex].images.push({
+            ...img,
+            columnIndex: minIndex,
+            positionInColumn: positionInColumn
+        })
         
         // 更新该列的高度：图片宽高比 + 间距权重
         // 使用默认比例1:1，如果有真实尺寸则使用真实的
@@ -117,6 +129,29 @@ const columns = computed(() => {
     })
     
     return cols
+})
+
+// 按行优先顺序排列的图片列表（用于优化加载顺序）
+const rowOrderedImages = computed(() => {
+    const cols = columns.value
+    const result = []
+    
+    // 找出最长列的长度
+    const maxLength = Math.max(...cols.map(col => col.images.length))
+    
+    // 按行交叉取图片：第1行的所有列，第2行的所有列...
+    for (let row = 0; row < maxLength; row++) {
+        for (let colIndex = 0; colIndex < cols.length; colIndex++) {
+            if (cols[colIndex].images[row]) {
+                result.push({
+                    ...cols[colIndex].images[row],
+                    loadOrder: result.length  // 记录加载顺序
+                })
+            }
+        }
+    }
+    
+    return result
 })
 
 // 响应式调整列数
@@ -247,7 +282,13 @@ const downloadImage = () => {
 const handleImageError = (e) => {
     e.target.style.display = 'none'
 }
+计算图片的加载顺序（按行优先）
+const getLoadOrder = (columnIndex, positionInColumn) => {
+    // 加载顺序 = 行号 * 列数 + 列索引
+    return positionInColumn * columnCount.value + columnIndex
+}
 
+// 
 // 图片加载完成时更新真实尺寸
 const onImageLoad = (event, index) => {
     const img = event.target
@@ -356,6 +397,34 @@ watch(category, () => {
     display: flex;
     flex-direction: column;
     gap: 20px;
+}
+
+/* 新的行优先布局 - 使用CSS Grid，按行渲染但保持列布局 */
+.emoji-grid-row-ordered {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    grid-auto-flow: dense; /* 自动填充空隙 */
+}
+
+/* 响应式列数调整 */
+@media (max-width: 1200px) {
+    .emoji-grid-row-ordered {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .emoji-grid-row-ordered {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .emoji-grid-row-ordered {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .emoji-item {
