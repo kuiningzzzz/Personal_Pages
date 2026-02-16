@@ -23,7 +23,6 @@
                         :alt="`表情包 ${image.index + 1}`" 
                         @error="handleImageError" 
                         @load="onImageLoad($event, image.index)"
-                        loading="lazy" 
                     />
                     <div class="emoji-overlay">
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
@@ -175,6 +174,8 @@ const loadCategoryInfo = async () => {
 
 // 加载指定分类的所有图片
 const loadImages = async () => {
+    console.log('[Emoji] 开始加载图片列表...')
+    const startTime = performance.now()
     loading.value = true
     try {
         // 从服务器获取图片列表
@@ -183,8 +184,11 @@ const loadImages = async () => {
             const data = await response.json()
             if (data.success) {
                 images.value = data.images
-                // 预加载图片获取尺寸
-                imageInfos.value = await preloadImages(data.images)
+                console.log(`[Emoji] API返回 ${data.images.length} 张图片，耗时: ${(performance.now() - startTime).toFixed(2)}ms`)
+                // 快速初始化显示（使用默认尺寸）
+                imageInfos.value = initializeImages(data.images)
+                loading.value = false  // 立即显示图片
+                console.log(`[Emoji] 图片列表已显示，总耗时: ${(performance.now() - startTime).toFixed(2)}ms`)
             } else {
                 // 如果API不存在，使用前端扫描方式（开发环境）
                 await loadImagesFromDirectory()
@@ -192,9 +196,8 @@ const loadImages = async () => {
         } else {
             await loadImagesFromDirectory()
         }
-    } catch (error)快速初始化显示（使用默认尺寸）
-                imageInfos.value = initializeImages(data.images)
-                loading.value = false  // 立即显示图片
+    } catch (error) {
+        console.error('加载表情包失败:', error)
         // 降级方案：直接加载已知的图片
         await loadImagesFromDirectory()
     } finally {
@@ -215,7 +218,7 @@ const loadImagesFromDirectory = async () => {
     }
     const imagePaths = knownImages[category.value] || []
     images.value = imagePaths
-    imageInfos.value = await preloadImages(imagePaths)
+    imageInfos.value = initializeImages(imagePaths)
 }
 
 const goBack = () => {
@@ -223,7 +226,7 @@ const goBack = () => {
 }
 
 const viewImage = (imageSrc) => {
-    previewImage.value initialize
+    previewImage.value = imageSrc
 }
 
 const closePreview = () => {
@@ -251,6 +254,11 @@ const onImageLoad = (event, index) => {
     if (img.naturalWidth && img.naturalHeight) {
         updateImageSize(index, img.naturalWidth, img.naturalHeight)
     }
+    // 调试：记录首批图片加载完成
+    const loadedCount = imageInfos.value.filter(img => img.loaded).length
+    if (loadedCount <= 10) {
+        console.log(`[Emoji] 第 ${loadedCount} 张图片加载完成`)
+    }
 }
 
 onMounted(() => {
@@ -262,6 +270,12 @@ onMounted(() => {
 
 onUnmounted(() => {
     window.removeEventListener('resize', updateColumnCount)
+})
+
+// 监听分类变化，重新加载图片
+watch(category, () => {
+    loadCategoryInfo()
+    loadImages()
 })
 </script>
 
