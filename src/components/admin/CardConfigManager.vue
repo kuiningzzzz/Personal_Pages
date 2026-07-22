@@ -25,6 +25,12 @@
             >
                 友链卡片
             </button>
+            <button 
+                :class="['type-tab', { active: currentType === 'entertainment' }]"
+                @click="loadCardConfig('entertainment')"
+            >
+                娱乐卡片
+            </button>
         </div>
 
         <!-- 卡片列表 -->
@@ -50,7 +56,10 @@
                         </div>
                         <div class="card-preview">
                             <h3>{{ card.title }}</h3>
-                            <p>{{ card.desc }}</p>
+                            <p v-if="currentType !== 'entertainment'">{{ card.desc }}</p>
+                            <ul v-else class="entertainment-preview">
+                                <li v-for="item in card.items" :key="item">{{ item }}</li>
+                            </ul>
                             <div class="card-meta">
                                 <span v-if="card.category" class="card-category">{{ card.category }}</span>
                                 <span v-if="card.avatar" class="card-avatar-path">{{ card.avatar }}</span>
@@ -87,7 +96,7 @@
                             placeholder="输入卡片标题"
                         />
                     </div>
-                    <div class="form-group">
+                    <div v-if="currentType !== 'entertainment'" class="form-group">
                         <label>卡片描述</label>
                         <textarea 
                             v-model="cardForm.desc" 
@@ -95,6 +104,16 @@
                             placeholder="输入卡片描述"
                             rows="3"
                         ></textarea>
+                    </div>
+                    <div v-if="currentType === 'entertainment'" class="form-group">
+                        <label>娱乐条目</label>
+                        <textarea 
+                            v-model="itemsText" 
+                            class="form-textarea"
+                            placeholder="每行一个条目"
+                            rows="8"
+                        ></textarea>
+                        <p class="form-hint">每一行会显示为一条列表内容</p>
                     </div>
                     <!-- 友链特有字段：头像 -->
                     <div v-if="currentType === 'friends'" class="form-group">
@@ -107,7 +126,7 @@
                         <p class="form-hint">头像图片请先在“图片管理”中上传到“好友头像”分类</p>
                     </div>
                     <!-- 非友链特有字段：日期 -->
-                    <div v-if="currentType !== 'friends'" class="form-group">
+                    <div v-if="currentType !== 'friends' && currentType !== 'entertainment'" class="form-group">
                         <label>日期</label>
                         <input 
                             v-model="cardForm.date" 
@@ -115,7 +134,7 @@
                             placeholder="例如: 2025-01-28 或 施工中..."
                         />
                     </div>
-                    <div class="form-group">
+                    <div v-if="currentType !== 'entertainment'" class="form-group">
                         <label>链接</label>
                         <input 
                             v-model="cardForm.link" 
@@ -124,7 +143,7 @@
                         />
                     </div>
                     <!-- 非友链特有字段：分类 -->
-                    <div v-if="currentType !== 'friends'" class="form-group">
+                    <div v-if="currentType !== 'friends' && currentType !== 'entertainment'" class="form-group">
                         <label>分类</label>
                         <select 
                             v-model="cardForm.category" 
@@ -167,7 +186,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 
 const loading = ref(false)
 const currentType = ref('tutorials')
@@ -183,7 +202,20 @@ const cardForm = ref({
     category: '',
     avatar: '',
     downloadUrl: '',
-    repoUrl: ''
+    repoUrl: '',
+    items: []
+})
+
+const itemsText = computed({
+    get() {
+        return Array.isArray(cardForm.value.items) ? cardForm.value.items.join('\n') : ''
+    },
+    set(value) {
+        cardForm.value.items = value
+            .split('\n')
+            .map(item => item.trim())
+            .filter(Boolean)
+    }
 })
 
 // 加载卡片配置
@@ -207,7 +239,10 @@ const loadCardConfig = async (type) => {
 // 编辑卡片
 const editCard = (index) => {
     editingIndex.value = index
-    cardForm.value = { ...cards.value[index] }
+    cardForm.value = {
+        ...cards.value[index],
+        items: Array.isArray(cards.value[index].items) ? [...cards.value[index].items] : []
+    }
 }
 
 // 删除卡片
@@ -232,17 +267,37 @@ const moveCard = async (index, direction) => {
 
 // 保存卡片
 const saveCard = async () => {
-    if (!cardForm.value.title || !cardForm.value.desc) {
-        alert('请填写标题和描述')
+    if (!cardForm.value.title) {
+        alert('请填写标题')
         return
     }
-    // 友链需要头像和链接，其他卡片需要分类
-    if (currentType.value === 'friends') {
+    // 娱乐卡片需要至少一条内容；友链需要头像和链接，其他卡片需要描述和分类
+    if (currentType.value === 'entertainment') {
+        if (!cardForm.value.items || cardForm.value.items.length === 0) {
+            alert('请至少填写一条娱乐内容')
+            return
+        }
+        cardForm.value.desc = ''
+        cardForm.value.date = ''
+        cardForm.value.link = ''
+        cardForm.value.category = ''
+        cardForm.value.avatar = ''
+        cardForm.value.downloadUrl = ''
+        cardForm.value.repoUrl = ''
+    } else if (currentType.value === 'friends') {
+        if (!cardForm.value.desc) {
+            alert('请填写描述')
+            return
+        }
         if (!cardForm.value.avatar || !cardForm.value.link) {
             alert('请填写头像路径和链接')
             return
         }
     } else {
+        if (!cardForm.value.desc) {
+            alert('请填写描述')
+            return
+        }
         if (!cardForm.value.category) {
             alert('请选择分类')
             return
@@ -291,7 +346,8 @@ const closeModal = () => {
         category: '',
         avatar: '',
         downloadUrl: '',
-        repoUrl: ''
+        repoUrl: '',
+        items: []
     }
 }
 
@@ -447,6 +503,18 @@ onMounted(() => {
     font-size: 13px;
     color: #b8c5d6;
     line-height: 1.5;
+}
+
+.entertainment-preview {
+    margin: 0 0 8px 0;
+    padding-left: 18px;
+    color: #b8c5d6;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.entertainment-preview li {
+    margin-bottom: 4px;
 }
 
 .card-meta {

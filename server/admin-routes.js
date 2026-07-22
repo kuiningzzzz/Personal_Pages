@@ -490,7 +490,7 @@ router.get('/cards/:type', async (req, res) => {
     try {
         const { type } = req.params;
         
-        const stmt = cardDb.prepare('SELECT * FROM card_configs WHERE type = ?');
+        const stmt = cardDb.prepare('SELECT * FROM card_configs WHERE type = ? ORDER BY display_order ASC, id ASC');
         const rows = stmt.all(type);
         
         const cards = rows.map(row => JSON.parse(row.data));

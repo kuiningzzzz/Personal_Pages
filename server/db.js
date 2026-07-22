@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { migrateHomeContent } from './migrations/home-content.js';
+import { migrateEntertainmentCards } from './migrations/entertainment-cards.js';
 
 // 获取当前文件的目录
 const __filename = fileURLToPath(import.meta.url);
@@ -73,6 +74,7 @@ function initializeDatabase() {
         console.log('✓ 卡片数据库表已初始化');
 
         migrateHomeContent(cardDb);
+        migrateEntertainmentCards(cardDb);
 
         // 检查评论数据库是否有数据
         const commentCount = commentDb.prepare('SELECT COUNT(*) as count FROM comments').get();

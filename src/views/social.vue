@@ -23,40 +23,20 @@
             <h2>Entertainment</h2>
         </div>
         <div class="entertainment-container">
-            <div class="entertainment-section">
-                <h3>关于音乐</h3>
-                <ul>
-                    <li>虽然考了业余的钢琴十级但是由于考的时候还小+中学专注文化课，水平相当烂了（）只能说懂一点乐理，稍微会弹点低难度小曲儿</li>
-                    <li>平时听歌主要是日系，常听YOASOBI、夜鹿，以及BangDream企划的乐队歌曲</li>
-                    <li>没学过声乐，唱歌没有技巧全是感情但好在不怎么跑调，欢迎来约K！</li>
-                </ul>
-            </div>
-
-            <div class="entertainment-section">
-                <h3>关于游戏</h3>
-                <ul>
-                    <li>几乎涉猎除了乙女、gal、MOBA、FPS类以外的所有类型游戏（后两者是因为自己玩太菜了不喜欢玩doge）</li>
-                    <li>尤其偏好SLG（文明六）、rogue（死亡细胞）、沙盒生存（泰拉瑞亚）、开放世界探索（原神）、模拟经营（星露谷）</li>
-                    <li>游戏制作方面，有在考虑搓一个2D的RPG游戏，敬请期待</li>
-                </ul>
-            </div>
-
-            <div class="entertainment-section">
-                <h3>关于动漫和漫画</h3>
-                <ul>
-                    <li>新番随缘追，主要看有没有时间够不够闲</li>
-                    <li>其实更喜欢看漫画原作</li>
-                </ul>
-            </div>
-
-            <div class="entertainment-section">
-                <h3>关于网名</h3>
-                <ul>
-                    <li>绝大多数社交平台上的网名都是"奎宁"或"Quinine"，考虑到昵称重复问题，有时加上"zzzz"或者".exe未响应"等后缀，欢迎来找我玩！</li>
-                    <li>没错，奎宁就是你想的那个治疗疟疾的药物，随便看到的觉得好听就一直当网名用下去了（）</li>
-                    <li>但还请不要去网上开盒我）</li>
-                </ul>
-            </div>
+            <div v-if="entertainmentLoading" class="loading">加载中...</div>
+            <div v-else-if="entertainmentError" class="loading error">{{ entertainmentError }}</div>
+            <template v-else>
+                <div
+                    v-for="card in entertainmentCards"
+                    :key="card.title"
+                    class="entertainment-section"
+                >
+                    <h3>{{ card.title }}</h3>
+                    <ul>
+                        <li v-for="item in card.items" :key="item">{{ item }}</li>
+                    </ul>
+                </div>
+            </template>
         </div>
 
     </div>
@@ -68,6 +48,9 @@ import FriendCard from '../components/friend_card.vue'
 
 const friends = ref([])
 const loading = ref(true)
+const entertainmentCards = ref([])
+const entertainmentLoading = ref(true)
+const entertainmentError = ref('')
 
 // 从 API 加载友链数据
 const loadFriends = async () => {
@@ -84,8 +67,29 @@ const loadFriends = async () => {
     }
 }
 
+// 从 API 加载娱乐卡片数据
+const loadEntertainmentCards = async () => {
+    entertainmentLoading.value = true
+    entertainmentError.value = ''
+    try {
+        const response = await fetch('/api/admin/cards/entertainment')
+        const data = await response.json()
+        if (data.success) {
+            entertainmentCards.value = data.data
+        } else {
+            entertainmentError.value = data.message || '娱乐内容加载失败'
+        }
+    } catch (error) {
+        console.error('加载娱乐卡片失败:', error)
+        entertainmentError.value = '娱乐内容加载失败'
+    } finally {
+        entertainmentLoading.value = false
+    }
+}
+
 onMounted(() => {
     loadFriends()
+    loadEntertainmentCards()
 })
 </script>
 
@@ -132,6 +136,10 @@ onMounted(() => {
     color: #7a8a9e;
     font-size: 16px;
     width: 100%;
+}
+
+.loading.error {
+    color: #ff9b9b;
 }
 
 h1 {
