@@ -104,6 +104,96 @@ const backupUpload = multer({
     }
 });
 
+// ==================== 首页内容管理 API ====================
+
+router.get('/home-content', async (req, res) => {
+    try {
+        const row = cardDb.prepare('SELECT data FROM site_configs WHERE key = ?').get('home_content');
+
+        if (!row) {
+            return res.status(404).json({
+                success: false,
+                message: '首页内容配置不存在'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: JSON.parse(row.data)
+        });
+    } catch (error) {
+        console.error('获取首页内容失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取首页内容失败'
+        });
+    }
+});
+
+router.put('/home-content', async (req, res) => {
+    try {
+        const { profile, sections } = req.body;
+
+        if (!profile || typeof profile !== 'object' || !Array.isArray(sections)) {
+            return res.status(400).json({
+                success: false,
+                message: '首页内容格式错误'
+            });
+        }
+
+        const normalized = {
+            profile: {
+                avatar: String(profile.avatar || '').trim(),
+                name: String(profile.name || '').trim(),
+                bio: Array.isArray(profile.bio)
+                    ? profile.bio.map(item => String(item).trim()).filter(Boolean)
+                    : []
+            },
+            sections: sections.map(section => ({
+                title: String(section.title || '').trim(),
+                rows: Array.isArray(section.rows)
+                    ? section.rows.map(row => ({
+                        type: ['text', 'link', 'tags'].includes(row.type) ? row.type : 'text',
+                        label: String(row.label || '').trim(),
+                        value: String(row.value || '').trim(),
+                        href: String(row.href || '').trim(),
+                        items: Array.isArray(row.items)
+                            ? row.items.map(item => String(item).trim()).filter(Boolean)
+                            : []
+                    })).filter(row => row.label || row.value || row.items.length)
+                    : []
+            })).filter(section => section.title)
+        };
+
+        if (!normalized.profile.name) {
+            return res.status(400).json({
+                success: false,
+                message: '首页名称不能为空'
+            });
+        }
+
+        cardDb.prepare(`
+            INSERT INTO site_configs (key, data, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                data = excluded.data,
+                updated_at = CURRENT_TIMESTAMP
+        `).run('home_content', JSON.stringify(normalized));
+
+        res.json({
+            success: true,
+            message: '首页内容更新成功',
+            data: normalized
+        });
+    } catch (error) {
+        console.error('更新首页内容失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '更新首页内容失败'
+        });
+    }
+});
+
 // ==================== 文章管理 API ====================
 
 // 获取所有文章列表

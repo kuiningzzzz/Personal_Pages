@@ -28,6 +28,12 @@
             <!-- 功能标签页 -->
             <div class="admin-tabs">
                 <button 
+                    :class="['tab-btn', { active: currentTab === 'home' }]"
+                    @click="currentTab = 'home'"
+                >
+                    首页内容
+                </button>
+                <button 
                     :class="['tab-btn', { active: currentTab === 'articles' }]"
                     @click="currentTab = 'articles'"
                 >
@@ -67,8 +73,13 @@
 
             <!-- 内容区域 -->
             <div class="admin-main">
+                <!-- 首页内容管理 -->
+                <div v-if="currentTab === 'home'" class="tab-content">
+                    <HomeContentManager />
+                </div>
+
                 <!-- 文章管理 -->
-                <div v-if="currentTab === 'articles'" class="tab-content">
+                <div v-else-if="currentTab === 'articles'" class="tab-content">
                     <ArticleManager />
                 </div>
 
@@ -182,6 +193,7 @@ import ImageManager from '../components/admin/ImageManager.vue'
 import SourceManager from '../components/admin/SourceManager.vue'
 import CardConfigManager from '../components/admin/CardConfigManager.vue'
 import EmojiManager from '../components/admin/EmojiManager.vue'
+import HomeContentManager from '../components/admin/HomeContentManager.vue'
 
 const isAuthenticated = ref(false)
 const password = ref('')

@@ -1,5 +1,5 @@
 import express from 'express';
-import { commentDb } from './db.js';
+import { commentDb, cardDb } from './db.js';
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
@@ -14,6 +14,32 @@ const __dirname = dirname(__filename);
 const PUBLIC_DIR = process.env.NODE_ENV === 'production' 
     ? '/app/public' 
     : join(__dirname, '..', 'public');
+
+// ==================== 首页内容 API ====================
+
+router.get('/home-content', (req, res) => {
+    try {
+        const row = cardDb.prepare('SELECT data FROM site_configs WHERE key = ?').get('home_content');
+
+        if (!row) {
+            return res.status(404).json({
+                success: false,
+                message: '首页内容配置不存在'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: JSON.parse(row.data)
+        });
+    } catch (error) {
+        console.error('获取首页内容失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取首页内容失败'
+        });
+    }
+});
 
 // ==================== 文章内容 API ====================
 

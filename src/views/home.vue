@@ -1,53 +1,86 @@
 <script setup>
+import { ref, onMounted } from 'vue'
 import Card2to8 from '../components/card_2to8.vue'
 import WordBlock from '../components/wordblock.vue'
 import CommentArea from '../components/comment_area.vue'
+
+const defaultHomeContent = {
+    profile: {
+        avatar: '/picture/avatar.png',
+        name: '奎宁zzzz',
+        bio: ['你好！这里是奎宁zzzz，是一个热爱开发的计科大学生']
+    },
+    sections: [
+        {
+            title: 'EDUCATION',
+            rows: [
+                { type: 'text', label: '本科（在读）', value: '北京大学信息科学技术学院' },
+                { type: 'text', label: '专业', value: '计算机科学与技术' }
+            ]
+        },
+        {
+            title: 'CONTACT',
+            rows: [
+                { type: 'link', label: 'GitHub', value: 'kuiningzzzz', href: 'https://github.com/kuiningzzzz' },
+                { type: 'link', label: 'E-mail', value: 'quininezzzz@stu.pku.edu.cn', href: 'mailto:quininezzzz@stu.pku.edu.cn' }
+            ]
+        },
+        {
+            title: 'TECH STACK',
+            rows: [
+                { type: 'tags', label: 'Language', items: ['Python', 'C/C++', 'JavaScript', 'HTML/CSS'] },
+                { type: 'tags', label: 'Framework', items: ['Vue.js', 'Node.js', 'Flask', 'Express', 'uni-app'] },
+                { type: 'tags', label: 'Tools', items: ['VScode', 'Git', 'Docker', 'HbuilderX', 'SQL'] }
+            ]
+        }
+    ]
+}
+
+const homeContent = ref(defaultHomeContent)
+
+const loadHomeContent = async () => {
+    try {
+        const response = await fetch('/api/home-content')
+        const data = await response.json()
+        if (data.success) {
+            homeContent.value = data.data
+        }
+    } catch (error) {
+        console.error('加载首页内容失败:', error)
+    }
+}
+
+onMounted(() => {
+    loadHomeContent()
+})
 </script>
 
 <template>
     <div class="home-container">
         <div class="profile-card">
             <div class="avatar">
-                <img src="/picture/avatar.png" alt="头像" />
+                <img :src="homeContent.profile.avatar" alt="头像" />
             </div>
             <div class="info">
-                <h2 class="name">奎宁zzzz</h2>
+                <h2 class="name">{{ homeContent.profile.name }}</h2>
                 <div class="about">
-                    <p>你好！这里是奎宁zzzz，是一个热爱开发的计科大学生</p>
+                    <p v-for="line in homeContent.profile.bio" :key="line">{{ line }}</p>
                 </div>
             </div>
         </div>
         
-        <Card2to8 title="EDUCATION">
-            <p>本科（在读）：北京大学信息科学技术学院</p>
-            <p>专业：计算机科学与技术</p>
-        </Card2to8>
-
-        <Card2to8 title="CONTACT">
-            <p>GitHub：<a href="https://github.com/kuiningzzzz">kuiningzzzz</a></p>
-            <p>E-mail：<a href="mailto:quininezzzz@stu.pku.edu.cn">quininezzzz@stu.pku.edu.cn</a></p>
-        </Card2to8>
-
-        <Card2to8 title="TECH STACK">
-            <p>Language：
-                <WordBlock>Python</WordBlock>
-                <WordBlock>C/C++</WordBlock>
-                <WordBlock>JavaScript</WordBlock>
-                <WordBlock>HTML/CSS</WordBlock>
-            </p>
-            <p>Framework：
-                <WordBlock>Vue.js</WordBlock>
-                <WordBlock>Node.js</WordBlock>
-                <WordBlock>Flask</WordBlock>
-                <WordBlock>Express</WordBlock>
-                <WordBlock>uni-app</WordBlock>
-            </p>
-            <p>Tools：
-                <WordBlock>VScode</WordBlock>
-                <WordBlock>Git</WordBlock>
-                <WordBlock>Docker</WordBlock>
-                <WordBlock>HbuilderX</WordBlock>
-                <WordBlock>SQL</WordBlock>
+        <Card2to8 v-for="section in homeContent.sections" :key="section.title" :title="section.title">
+            <p v-for="(row, index) in section.rows" :key="`${section.title}-${index}`">
+                <template v-if="row.type === 'link'">
+                    {{ row.label }}：<a :href="row.href">{{ row.value }}</a>
+                </template>
+                <template v-else-if="row.type === 'tags'">
+                    {{ row.label }}：
+                    <WordBlock v-for="item in row.items" :key="item">{{ item }}</WordBlock>
+                </template>
+                <template v-else>
+                    {{ row.label }}：{{ row.value }}
+                </template>
             </p>
         </Card2to8>
 
