@@ -4,49 +4,27 @@ import Card2to8 from '../components/card_2to8.vue'
 import WordBlock from '../components/wordblock.vue'
 import CommentArea from '../components/comment_area.vue'
 
-const defaultHomeContent = {
-    profile: {
-        avatar: '/picture/avatar.png',
-        name: '奎宁zzzz',
-        bio: ['你好！这里是奎宁zzzz，是一个热爱开发的计科大学生']
-    },
-    sections: [
-        {
-            title: 'EDUCATION',
-            rows: [
-                { type: 'text', label: '本科（在读）', value: '北京大学信息科学技术学院' },
-                { type: 'text', label: '专业', value: '计算机科学与技术' }
-            ]
-        },
-        {
-            title: 'CONTACT',
-            rows: [
-                { type: 'link', label: 'GitHub', value: 'kuiningzzzz', href: 'https://github.com/kuiningzzzz' },
-                { type: 'link', label: 'E-mail', value: 'quininezzzz@stu.pku.edu.cn', href: 'mailto:quininezzzz@stu.pku.edu.cn' }
-            ]
-        },
-        {
-            title: 'TECH STACK',
-            rows: [
-                { type: 'tags', label: 'Language', items: ['Python', 'C/C++', 'JavaScript', 'HTML/CSS'] },
-                { type: 'tags', label: 'Framework', items: ['Vue.js', 'Node.js', 'Flask', 'Express', 'uni-app'] },
-                { type: 'tags', label: 'Tools', items: ['VScode', 'Git', 'Docker', 'HbuilderX', 'SQL'] }
-            ]
-        }
-    ]
-}
-
-const homeContent = ref(defaultHomeContent)
+const homeContent = ref(null)
+const loading = ref(true)
+const error = ref('')
 
 const loadHomeContent = async () => {
+    loading.value = true
+    error.value = ''
     try {
         const response = await fetch('/api/home-content')
         const data = await response.json()
         if (data.success) {
             homeContent.value = data.data
+        } else {
+            error.value = data.message || '信息获取失败，请刷新重试'
         }
     } catch (error) {
         console.error('加载首页内容失败:', error)
+        homeContent.value = null
+        error.value = '信息获取失败，请刷新重试'
+    } finally {
+        loading.value = false
     }
 }
 
@@ -57,6 +35,9 @@ onMounted(() => {
 
 <template>
     <div class="home-container">
+        <div v-if="loading" class="state-card">加载中...</div>
+        <div v-else-if="error" class="state-card error">{{ error }}</div>
+        <template v-else-if="homeContent">
         <div class="profile-card">
             <div class="avatar">
                 <img :src="homeContent.profile.avatar" alt="头像" />
@@ -83,6 +64,7 @@ onMounted(() => {
                 </template>
             </p>
         </Card2to8>
+        </template>
 
         <CommentArea pageId="home" />
 
@@ -160,6 +142,24 @@ p {
 
 a {
     color: #74aaff;
+}
+
+.state-card {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(16px);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    color: #b8c5d6;
+    font-size: 16px;
+    padding: 40px;
+    text-align: center;
+    width: 90%;
+    max-width: 1200px;
+}
+
+.state-card.error {
+    color: #ff9b9b;
 }
 
 /* 平板和手机响应式 */
