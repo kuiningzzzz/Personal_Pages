@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, toRaw } from 'vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 
 const authenticated = ref(false)
@@ -35,7 +35,14 @@ async function saveProfile() { busy.value = true; try { await api('/profile', js
 function moveCard(index, shift) { const target = index + shift; if (target < 0 || target >= cards.value.length) return; [cards.value[index], cards.value[target]] = [cards.value[target], cards.value[index]] }
 async function saveTypes() { busy.value = true; try { const j = await api('/resource-types', json('PUT', { types: types.value })); types.value = j.data; report('资源分类已保存') } catch (e) { report(e.message, true) } finally { busy.value = false } }
 function newEntry(nextKind = kind.value) { kind.value = nextKind; editingId.value = null; form.value = blank(); form.value.kind = nextKind; if (nextKind === 'resource') form.value.resource_type_id = types.value[0]?.id || null; tab.value = 'editor' }
-function editEntry(row) { editingId.value = row.id; form.value = structuredClone(row); tab.value = 'editor' }
+function editEntry(row) {
+  // Vue wraps list rows in proxies; structuredClone cannot clone a proxy directly.
+  const entry = structuredClone(toRaw(row))
+  editingId.value = entry.id
+  kind.value = entry.kind
+  form.value = entry
+  tab.value = 'editor'
+}
 async function saveEntry() { busy.value = true; try { const path = editingId.value ? `/entries/${editingId.value}` : '/entries'; await api(path, json(editingId.value ? 'PUT' : 'POST', form.value)); await loadEntries(); tab.value = kind.value; report('内容已保存') } catch (e) { report(e.message, true) } finally { busy.value = false } }
 async function deleteEntry(row) { if (!confirm(`确定删除“${row.title || '短帖'}”吗？`)) return; try { await api(`/entries/${row.id}`, { method: 'DELETE' }); await loadEntries(); report('已删除') } catch (e) { report(e.message, true) } }
 async function switchKind(next) { kind.value = next; tab.value = next; try { await loadEntries() } catch (e) { report(e.message, true) } }
