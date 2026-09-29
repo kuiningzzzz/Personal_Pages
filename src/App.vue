@@ -1,65 +1,36 @@
 <script setup>
+import { ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import Header from './components/header.vue'
 import Footer from './components/footer.vue'
+
+const route = useRoute()
+const turn = ref('page-next')
+const position = path => {
+  if (path.startsWith('/moments')) return 1
+  if (path.startsWith('/resource')) return 2
+  if (path.startsWith('/activities')) return 3
+  if (path.startsWith('/admin')) return 4
+  if (path.startsWith('/entry')) return 3
+  return 0
+}
+watch(() => route.path, (next, previous) => {
+  turn.value = position(next) < position(previous || '/') ? 'page-prev' : 'page-next'
+})
 </script>
 
 <template>
   <Header />
-  <router-view v-slot="{ Component, route }">
-    <transition name="fade-slide" mode="out-in">
-      <component :is="Component" :key="route.path" />
-    </transition>
-  </router-view>
+  <main class="site-main">
+    <router-view v-slot="{ Component, route: currentRoute }">
+      <Transition :name="turn" mode="out-in">
+        <component :is="Component" :key="currentRoute.fullPath" />
+      </Transition>
+    </router-view>
+  </main>
   <Footer />
 </template>
 
 <style>
-/* 全局样式，不加 scoped */
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 10px;
-  padding: 0;
-  background: linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #141821 100%);
-  min-height: 100vh;
-}
-
-/* 手机端调整 */
-@media (max-width: 768px) {
-  body {
-    margin: 5px;
-  }
-}
-
-@media (max-width: 480px) {
-  body {
-    margin: 0;
-  }
-}
-
-/* 页面切换动画 */
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-20px);
-}
-
-.fade-slide-enter-to,
-.fade-slide-leave-from {
-  opacity: 1;
-  transform: translateY(0);
-}
+@import './styles/site.css';
 </style>
-
-<style scoped></style>

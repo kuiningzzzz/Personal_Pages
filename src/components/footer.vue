@@ -1,144 +1,37 @@
-<template>
-    <footer class="footer-container">
-        <div class="footer-content">
-            <!-- 版权信息 -->
-            <div class="copyright">
-                <p>&copy; {{ currentYear }} 奎宁zzzz. All rights reserved.</p>
-            </div>
-
-            <!-- 备案信息 -->
-            <div class="beian-info">
-                <!-- ICP备案号 - 需要链接到工信部网站 -->
-                <a 
-                    href="https://beian.miit.gov.cn/" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    class="beian-link"
-                >
-                    鲁ICP备2025203944号-1
-                </a>
-            </div>
-
-            <!-- 其他信息（可选） -->
-            <div class="extra-info">
-                <span>Powered by Vue.js</span>
-            </div>
-        </div>
-    </footer>
-</template>
-
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 
-// 获取当前年份
-const currentYear = computed(() => new Date().getFullYear())
+const name = ref('')
+const icpNumber = ref('')
+onMounted(async () => {
+  try {
+    const [profile, settings] = await Promise.all([
+      fetch('/api/content/profile').then(response => response.json()),
+      fetch('/api/content/settings').then(response => response.json())
+    ])
+    name.value = profile.data.profile.name
+    icpNumber.value = settings.data.icpNumber
+  } catch { /* footer remains usable */ }
+})
 </script>
 
+<template>
+  <footer class="site-footer">
+    <div class="page-shell footer-inner">
+      <span>© {{ new Date().getFullYear() }} {{ name }}</span>
+      <div class="footer-links">
+        <a v-if="icpNumber" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ icpNumber }}</a>
+        <router-link to="/admin">内容管理 ↗</router-link>
+      </div>
+    </div>
+  </footer>
+</template>
+
 <style scoped>
-.footer-container {
-    margin-top: 60px;
-    padding: 32px 24px;
-    border-radius: 12px;
-    backdrop-filter: blur(16px);
-    background: rgba(15, 20, 25, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    color: #d1d9e6;
-}
-
-.footer-content {
-    max-width: 1200px;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-}
-
-/* 版权信息 */
-.copyright {
-    text-align: center;
-}
-
-.copyright p {
-    margin: 0;
-    font-size: 14px;
-    color: #a8b3c1;
-}
-
-/* 备案信息 */
-.beian-info {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    text-align: center;
-}
-
-.beian-link {
-    color: #8a9bb0;
-    text-decoration: none;
-    font-size: 13px;
-    transition: all 0.25s ease;
-    padding: 4px 8px;
-    border-radius: 4px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.beian-link:hover {
-    color: #b8c5d6;
-    background: rgba(255, 255, 255, 0.05);
-}
-
-/* 其他信息 */
-.extra-info {
-    font-size: 12px;
-    color: #7a8a9c;
-    margin-top: 8px;
-}
-
-/* 平板和手机响应式 */
-@media (max-width: 768px) {
-    .footer-container {
-        margin-top: 40px;
-        padding: 24px 16px;
-    }
-
-    .beian-info {
-        gap: 12px;
-    }
-
-    .beian-link {
-        font-size: 12px;
-    }
-
-    .copyright p {
-        font-size: 13px;
-    }
-}
-
-@media (max-width: 480px) {
-    .footer-container {
-        margin-top: 30px;
-        padding: 20px 12px;
-    }
-
-    .footer-content {
-        gap: 12px;
-    }
-
-    .copyright p {
-        font-size: 12px;
-    }
-
-    .beian-link {
-        font-size: 11px;
-        line-height: 1.6;
-    }
-
-    .extra-info {
-        font-size: 11px;
-    }
-}
+.site-footer { margin-top: 0; color: var(--ink); background: var(--accent-soft); font-size: 12px; font-weight: 700; }
+.footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 20px; min-height: 76px; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 22px; }
+a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--cocoa); }
+@media (max-width: 600px) { .footer-inner { align-items: flex-start; flex-direction: column; justify-content: center; gap: 10px; padding-block: 18px; } }
 </style>

@@ -1,17 +1,16 @@
+import './load-env.js';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import routes from './routes.js';
-import adminRoutes from './admin-routes.js';
-
-dotenv.config();
+import contentRoutes from './content-routes.js';
+import contentAdminRoutes from './content-admin-routes.js';
 
 const app = express();
-const PORT = process.env.SERVER_PORT || 3001;
+app.set('trust proxy', 1);
+const PORT = process.env.SERVER_PORT || 3002;
 
 // 中间件
 app.use(cors()); // 允许跨域请求
-app.use(express.json()); // 解析 JSON 请求体
+app.use(express.json({ limit: '2mb' })); // 解析 JSON 请求体
 app.use(express.urlencoded({ extended: true })); // 解析 URL 编码的请求体
 
 // 请求日志
@@ -21,24 +20,25 @@ app.use((req, res, next) => {
 });
 
 // API 路由
-app.use('/api', routes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/content', contentRoutes);
+app.use('/api/admin', contentAdminRoutes);
 
 // 根路径
 app.get('/', (req, res) => {
     res.json({
         message: 'Personal Pages API Server',
-        version: '1.0.0',
+        version: '2.0.0',
         endpoints: {
-            comments: {
-                get: 'GET /api/comments',
-                post: 'POST /api/comments',
-                delete: 'DELETE /api/comments/:id'
-            },
+            profile: 'GET /api/content/profile',
+            settings: 'GET /api/content/settings',
+            entries: 'GET /api/content/entries',
+            entry: 'GET /api/content/entries/:id',
+            resourceTypes: 'GET /api/content/resource-types',
             admin: {
-                articles: 'GET /api/admin/articles',
-                images: 'GET /api/admin/images',
-                cards: 'GET /api/admin/cards/:type'
+                login: 'POST /api/admin/login',
+                entries: 'GET, POST /api/admin/entries',
+                profile: 'GET, PUT /api/admin/profile',
+                upload: 'POST /api/admin/upload'
             }
         }
     });

@@ -1,59 +1,27 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import home from '../views/home.vue'
-import tutorial from '../views/tutorial.vue'
-import social from '../views/social.vue'
-import project from '../views/project.vue'
-import resource from '../views/resource.vue'
-import markdownViewer from '../views/markdown_viewer.vue'
-import emojiViewer from '../views/emoji_viewer.vue'
-import admin from '../views/admin.vue'
+import Home from '../views/home.vue'
+import Moments from '../views/moments.vue'
+import Resource from '../views/resource.vue'
+import Activities from '../views/activities.vue'
+import Entry from '../views/entry.vue'
+import Admin from '../views/admin.vue'
 
 const routes = [
-  {
-    path: '/',
-    name: 'home',
-    component: home
-  },
-  {
-    path: '/tutorial',
-    name: 'tutorial',
-    component: tutorial
-  },
-  {
-    path: '/project',
-    name: 'project',
-    component: project
-  },
-  {
-    path: '/resource',
-    name: 'resource',
-    component: resource
-  },
-  {
-    path: '/social',
-    name: 'social',
-    component: social
-  },
-  {
-    path: '/article',
-    name: 'article',
-    component: markdownViewer
-  },
-  {
-    path: '/emoji-viewer',
-    name: 'emoji-viewer',
-    component: emojiViewer
-  },
-  {
-    path: '/admin',
-    name: 'admin',
-    component: admin
-  }
+  { path: '/', component: Home },
+  { path: '/moments', component: Moments },
+  { path: '/resource', component: Resource },
+  { path: '/activities', component: Activities },
+  { path: '/entry/:id', component: Entry },
+  { path: '/admin', component: Admin },
+  { path: '/tutorial', redirect: '/moments' },
+  { path: '/project', redirect: '/resource' },
+  { path: '/social', redirect: '/' },
+  { path: '/article', redirect: '/moments' },
+  { path: '/:pathMatch(.*)*', redirect: '/' }
 ]
 
-const router = createRouter({
+export default createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  scrollBehavior(_to, _from, savedPosition) { return savedPosition || { top: 0 } }
 })
-
-export default router
