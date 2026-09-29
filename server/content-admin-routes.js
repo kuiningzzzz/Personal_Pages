@@ -2,10 +2,10 @@ import express from 'express';
 import session from 'express-session';
 import multer from 'multer';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { dirname, extname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { extname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { cardDb } from './db.js';
+import { auditAndCleanupUploads, publicRoot, rememberUpload } from './upload-cleanup.js';
 
 const router = express.Router();
 const password = process.env.ADMIN_PASSWORD || '';
@@ -65,7 +65,7 @@ router.put('/profile', (req, res) => {
         const insert = cardDb.prepare('INSERT INTO home_cards (title, content, display_order) VALUES (?, ?, ?)');
         cards.forEach((card, index) => insert.run(clean(card.title, 120), clean(card.content, 50000), index));
     })();
-    res.json({ success: true });
+    res.json({ success: true, ...auditAndCleanupUploads() });
 });
 
 router.get('/resource-types', (_req, res) => res.json({ success: true, data: cardDb.prepare('SELECT id, name, slug FROM resource_types ORDER BY display_order, id').all() }));
@@ -74,7 +74,7 @@ router.put('/settings', (req, res) => {
     const fields = ['momentsDescription', 'resourceDescription', 'activitiesMessage', 'icpNumber'];
     const data = Object.fromEntries(fields.map(field => [field, clean(req.body?.[field], 500)]));
     cardDb.prepare("UPDATE site_configs SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'page_settings'").run(JSON.stringify(data));
-    res.json({ success: true, data });
+    res.json({ success: true, data, ...auditAndCleanupUploads() });
 });
 router.put('/resource-types', (req, res) => {
     const types = req.body.types;
@@ -101,7 +101,7 @@ router.put('/resource-types', (req, res) => {
         const old = cardDb.prepare('SELECT id FROM resource_types').all();
         old.forEach(row => { if (!ids.includes(row.id)) cardDb.prepare('DELETE FROM resource_types WHERE id = ?').run(row.id); });
     })();
-    res.json({ success: true, data: cardDb.prepare('SELECT id, name, slug FROM resource_types ORDER BY display_order, id').all() });
+    res.json({ success: true, data: cardDb.prepare('SELECT id, name, slug FROM resource_types ORDER BY display_order, id').all(), ...auditAndCleanupUploads() });
 });
 
 router.get('/entries', (req, res) => {
@@ -133,25 +133,24 @@ router.post('/entries', (req, res) => {
     const now = new Date().toISOString();
     const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now);
-    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid), ...auditAndCleanupUploads() });
 });
 router.put('/entries/:id', (req, res) => {
     const data = validateEntry(req.body);
     if (data.error) return res.status(400).json({ success: false, message: data.error });
     const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=? WHERE id=?`)
         .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), req.params.id);
-    res.status(result.changes ? 200 : 404).json({ success: !!result.changes, message: result.changes ? '已保存' : '内容不存在' });
+    res.status(result.changes ? 200 : 404).json({ success: !!result.changes, message: result.changes ? '已保存' : '内容不存在', ...(result.changes ? auditAndCleanupUploads() : {}) });
 });
 router.delete('/entries/:id', (req, res) => {
     const result = cardDb.prepare('DELETE FROM entries WHERE id = ?').run(req.params.id);
-    res.status(result.changes ? 200 : 404).json({ success: !!result.changes });
+    res.status(result.changes ? 200 : 404).json({ success: !!result.changes, ...(result.changes ? auditAndCleanupUploads() : {}) });
 });
 
-const root = process.env.PUBLIC_DIR || (process.env.NODE_ENV === 'production' ? '/app/public' : join(dirname(fileURLToPath(import.meta.url)), '..', 'public'));
 const upload = multer({ storage: multer.diskStorage({
     destination: (req, file, cb) => {
         const subdir = file.mimetype.startsWith('image/') ? 'picture' : 'source';
-        const folder = join(root, subdir);
+        const folder = join(publicRoot, subdir);
         mkdirSync(folder, { recursive: true });
         cb(null, folder);
     },
@@ -165,7 +164,9 @@ const upload = multer({ storage: multer.diskStorage({
 router.post('/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, message: '请选择文件' });
     const dir = req.file.mimetype.startsWith('image/') ? 'picture' : 'source';
-    res.json({ success: true, url: `/${dir}/${req.file.filename}`, name: req.file.originalname });
+    const url = `/${dir}/${req.file.filename}`;
+    rememberUpload(url);
+    res.json({ success: true, url, name: req.file.originalname });
 });
 
 export default router;

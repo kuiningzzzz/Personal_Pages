@@ -108,6 +108,10 @@ function initializeDatabase() {
             );
             CREATE INDEX IF NOT EXISTS idx_entries_kind_status_date ON entries(kind, status, published_at DESC, id DESC);
             CREATE INDEX IF NOT EXISTS idx_entries_resource_type ON entries(resource_type_id);
+            CREATE TABLE IF NOT EXISTS managed_uploads (
+                url TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
         `);
         if (!cardDb.pragma('table_info(entries)').some(column => column.name === 'format')) {
             cardDb.exec("ALTER TABLE entries ADD COLUMN format TEXT NOT NULL DEFAULT 'article' CHECK (format IN ('article', 'short'))");

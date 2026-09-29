@@ -6,6 +6,7 @@ const authenticated = ref(false)
 const checking = ref(true)
 const password = ref('')
 const message = ref('')
+const hasWarnings = ref(false)
 const busy = ref(false)
 const tab = ref('profile')
 const profile = ref({ avatar: '', name: '', description: '' })
@@ -21,19 +22,25 @@ const tagsText = computed({ get: () => form.value.tags.join(', '), set: value =>
 const dateInput = computed({ get: () => { const date = new Date(form.value.published_at || Date.now()); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }, set: value => { form.value.published_at = value ? new Date(value).toISOString() : new Date().toISOString() } })
 const api = async (path, options = {}) => { const response = await fetch(`/api/admin${path}`, { credentials: 'same-origin', ...options }); const data = await response.json(); if (!data.success) throw new Error(data.message || '操作失败'); return data }
 const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-const report = (text, error = false) => { message.value = text; if (!error) setTimeout(() => { if (message.value === text) message.value = '' }, 4000) }
+const report = (text, error = false) => { hasWarnings.value = error; message.value = text; if (!error) setTimeout(() => { if (message.value === text) message.value = '' }, 4000) }
+const reportSave = (text, result) => {
+  const warnings = result.warnings || []
+  hasWarnings.value = warnings.length > 0
+  message.value = [text, result.deletedFiles ? `已清理 ${result.deletedFiles} 个未引用文件。` : '', ...warnings.map(item => `⚠ ${item}`)].filter(Boolean).join('\n')
+  if (!warnings.length) setTimeout(() => { if (message.value.startsWith(text)) message.value = '' }, 4000)
+}
 
 async function login() { busy.value = true; try { await api('/login', json('POST', { password: password.value })); password.value = ''; authenticated.value = true; await loadAll(); report('已登录') } catch (e) { report(e.message, true) } finally { busy.value = false } }
 async function logout() { await api('/logout', { method: 'POST' }); authenticated.value = false; entries.value = []; report('已退出') }
 async function loadAll() { await Promise.all([loadProfile(), loadTypes(), loadEntries(), loadSettings()]) }
 async function loadProfile() { const j = await api('/profile'); profile.value = j.data.profile; cards.value = j.data.cards }
 async function loadSettings() { const j = await api('/settings'); settings.value = j.data }
-async function saveSettings() { busy.value = true; try { const j = await api('/settings', json('PUT', settings.value)); settings.value = j.data; report('站点文案已保存') } catch (e) { report(e.message, true) } finally { busy.value = false } }
+async function saveSettings() { busy.value = true; try { const j = await api('/settings', json('PUT', settings.value)); settings.value = j.data; reportSave('站点文案已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
 async function loadTypes() { const j = await api('/resource-types'); types.value = j.data }
 async function loadEntries() { const j = await api(`/entries?kind=${kind.value}`); entries.value = j.data }
-async function saveProfile() { busy.value = true; try { await api('/profile', json('PUT', { profile: profile.value, cards: cards.value })); await loadProfile(); report('首页已保存') } catch (e) { report(e.message, true) } finally { busy.value = false } }
+async function saveProfile() { busy.value = true; try { const j = await api('/profile', json('PUT', { profile: profile.value, cards: cards.value })); await loadProfile(); reportSave('首页已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
 function moveCard(index, shift) { const target = index + shift; if (target < 0 || target >= cards.value.length) return; [cards.value[index], cards.value[target]] = [cards.value[target], cards.value[index]] }
-async function saveTypes() { busy.value = true; try { const j = await api('/resource-types', json('PUT', { types: types.value })); types.value = j.data; report('资源分类已保存') } catch (e) { report(e.message, true) } finally { busy.value = false } }
+async function saveTypes() { busy.value = true; try { const j = await api('/resource-types', json('PUT', { types: types.value })); types.value = j.data; reportSave('资源分类已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
 function newEntry(nextKind = kind.value) { kind.value = nextKind; editingId.value = null; form.value = blank(); form.value.kind = nextKind; if (nextKind === 'resource') form.value.resource_type_id = types.value[0]?.id || null; tab.value = 'editor' }
 function editEntry(row) {
   // Vue wraps list rows in proxies; structuredClone cannot clone a proxy directly.
@@ -43,15 +50,15 @@ function editEntry(row) {
   form.value = entry
   tab.value = 'editor'
 }
-async function saveEntry() { busy.value = true; try { const path = editingId.value ? `/entries/${editingId.value}` : '/entries'; await api(path, json(editingId.value ? 'PUT' : 'POST', form.value)); await loadEntries(); tab.value = kind.value; report('内容已保存') } catch (e) { report(e.message, true) } finally { busy.value = false } }
-async function deleteEntry(row) { if (!confirm(`确定删除“${row.title || '短帖'}”吗？`)) return; try { await api(`/entries/${row.id}`, { method: 'DELETE' }); await loadEntries(); report('已删除') } catch (e) { report(e.message, true) } }
+async function saveEntry() { busy.value = true; try { const path = editingId.value ? `/entries/${editingId.value}` : '/entries'; const j = await api(path, json(editingId.value ? 'PUT' : 'POST', form.value)); await loadEntries(); tab.value = kind.value; reportSave('内容已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
+async function deleteEntry(row) { if (!confirm(`确定删除“${row.title || '短帖'}”吗？`)) return; try { const j = await api(`/entries/${row.id}`, { method: 'DELETE' }); await loadEntries(); reportSave('已删除', j) } catch (e) { report(e.message, true) } }
 async function switchKind(next) { kind.value = next; tab.value = next; try { await loadEntries() } catch (e) { report(e.message, true) } }
 async function uploadFile(event, target) { const file = event.target.files?.[0]; if (!file) return; const data = new FormData(); data.append('file', file); busy.value = true; try { const j = await api('/upload', { method: 'POST', body: data }); if (target === 'avatar') profile.value.avatar = j.url; else if (target === 'cover') form.value.cover_image = j.url; else if (target === 'body') form.value.body += `\n\n${file.type.startsWith('image/') ? `![${j.name}](${j.url})` : `[${j.name}](${j.url})`}\n`; else if (target === 'action') form.value.actions.push({ label: 'Download', url: j.url }); report('上传成功') } catch (e) { report(e.message, true) } finally { busy.value = false; event.target.value = '' } }
 onMounted(async () => { try { const r = await fetch('/api/admin/session'); const j = await r.json(); authenticated.value = j.authenticated; if (authenticated.value) await loadAll() } catch (e) { report(e.message || '连接失败', true) } finally { checking.value = false } })
 </script>
 <template>
   <div class="page-shell admin-page"><div class="admin-title"><div><span class="eyebrow">站点后台</span><h1>内容管理</h1></div><button v-if="authenticated" class="ghost-button" @click="logout">退出登录</button></div>
-    <div v-if="message" class="notice" role="status">{{ message }}</div>
+    <div v-if="message" class="notice" :class="{ 'notice-warning': hasWarnings }" :role="hasWarnings ? 'alert' : 'status'">{{ message }}</div>
     <div v-if="checking" class="surface state">检查登录状态…</div>
     <form v-else-if="!authenticated" class="surface login" @submit.prevent="login"><h2>登录后台</h2><p>输入管理员密码，继续管理网站内容。</p><label>管理员密码<input v-model="password" type="password" required autocomplete="current-password" /></label><button class="primary-button" :disabled="busy">登录</button></form>
     <template v-else><nav class="admin-nav"><button :class="{ active: tab === 'profile' }" @click="tab = 'profile'">首页介绍</button><button :class="{ active: tab === 'moment' || (tab === 'editor' && kind === 'moment') }" @click="switchKind('moment')">动态</button><button :class="{ active: tab === 'resource' || (tab === 'editor' && kind === 'resource') }" @click="switchKind('resource')">资源帖子</button><button :class="{ active: tab === 'types' }" @click="tab = 'types'">资源分类</button><button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">站点文案</button></nav>

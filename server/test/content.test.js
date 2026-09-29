@@ -104,6 +104,51 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request(`/api/content/entries?kind=resource&type=${types[1].id}`)).body.total, 0);
         const swapped = [{ ...types[0], name: types[1].name }, { ...types[1], name: types[0].name }, ...types.slice(2)];
         assert.equal((await request('/api/admin/resource-types', write('PUT', { types: swapped }))).status, 200);
+
+        const uploadText = async name => {
+            const data = new FormData();
+            data.append('file', new Blob([name], { type: 'text/plain' }), name);
+            const result = await request('/api/admin/upload', { method: 'POST', body: data });
+            assert.equal(result.status, 200);
+            return result.body.url;
+        };
+        const sharedUrl = await uploadText('shared.txt');
+        const orphanUrl = await uploadText('orphan.txt');
+        const filePath = url => join(folder, 'public', url.slice(1));
+        const first = await request('/api/admin/entries', write('POST', {
+            ...moment, title: '附件文章',
+            body: `[附件](${sharedUrl}) [外部](https://example.com/file) [丢失](/source/missing.txt) [空链接]() ![空图片]() \`[代码里的链接]()\``
+        }));
+        assert.equal(first.status, 201);
+        assert.ok(first.body.warnings.some(item => item.includes('地址为空')));
+        assert.ok(first.body.warnings.some(item => item.includes('/source/missing.txt')));
+        assert.ok(!first.body.warnings.some(item => item.includes('代码里的链接')));
+        assert.ok(existsSync(filePath(sharedUrl)));
+        assert.ok(!existsSync(filePath(orphanUrl)));
+        assert.ok(!existsSync(filePath(uploaded.body.url)));
+
+        const second = await request('/api/admin/entries', write('POST', {
+            ...moment, title: '另一篇也引用', body: `![复用图片](${sharedUrl}?download=1)`
+        }));
+        assert.equal(second.status, 201);
+        const update = await request(`/api/admin/entries/${first.body.id}`, write('PUT', { ...moment, title: '附件文章', body: '已经移除链接' }));
+        assert.equal(update.status, 200);
+        assert.ok(existsSync(filePath(sharedUrl)), '另一篇帖子仍在引用文件');
+        const removed = await request(`/api/admin/entries/${second.body.id}`, { method: 'DELETE' });
+        assert.equal(removed.status, 200);
+        assert.equal(removed.body.deletedFiles, 1);
+        assert.ok(!existsSync(filePath(sharedUrl)));
+
+        const image = new FormData();
+        image.append('file', new Blob(['image'], { type: 'image/png' }), 'cover.png');
+        const imageUrl = (await request('/api/admin/upload', { method: 'POST', body: image })).body.url;
+        const withProfile = await request('/api/admin/profile', write('PUT', {
+            profile: { ...profile, avatar: imageUrl }, cards: [{ title: '资料', content: `[下载](${imageUrl})` }]
+        }));
+        assert.equal(withProfile.status, 200);
+        assert.ok(existsSync(filePath(imageUrl)));
+        await request('/api/admin/profile', write('PUT', { profile: { ...profile, avatar: '/picture/test.png' }, cards: [{ title: '资料', content: '' }] }));
+        assert.ok(!existsSync(filePath(imageUrl)));
     } finally {
         if (viteChild && viteChild.exitCode === null) {
             viteChild.kill();

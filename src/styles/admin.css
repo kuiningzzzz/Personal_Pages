@@ -2,7 +2,8 @@
 .admin-title, .section-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .admin-title { padding: 26px 30px; border-radius: 8px; background: var(--paper); box-shadow: 7px 8px 0 var(--sky); }
 .admin-title h1 { margin: 15px 0 0; font-family: var(--heading-font); font-size: clamp(36px, 5vw, 52px); font-weight: 900; letter-spacing: -.06em; }
-.notice { margin: 20px 0; padding: 12px 16px; border-radius: 5px; background: var(--accent-soft); color: var(--ink); font-size: 13px; font-weight: 800; box-shadow: 4px 4px 0 var(--sun); }
+.notice { margin: 20px 0; padding: 12px 16px; border-radius: 5px; background: var(--accent-soft); color: var(--ink); font-size: 13px; font-weight: 800; box-shadow: 4px 4px 0 var(--sun); white-space: pre-line; }
+.notice-warning { background: #fff1ce; }
 .login { max-width: 450px; margin: 54px auto; padding: 34px; }
 .login h2, .section-head h2, .action-editor h3 { font-family: var(--heading-font); }
 .login h2 { margin: 0 0 8px; font-size: 27px; }
