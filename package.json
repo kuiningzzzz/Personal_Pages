@@ -12,14 +12,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "highlight.js": "^11.11.1",
     "marked": "^17.0.1",
     "vue": "^3.5.22",
     "vue-router": "^4.6.3"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^7.1.11",
-    "vite-plugin-vue-devtools": "^8.0.3"
+    "vite": "^7.1.11"
   }
 }
