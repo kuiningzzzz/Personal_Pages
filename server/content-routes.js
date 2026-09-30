@@ -31,6 +31,7 @@ router.get('/entries', (req, res) => {
     const query = String(req.query.q || '').trim().slice(0, 200).toLocaleLowerCase();
     const terms = query.split(/\s+/u).filter(Boolean);
     const type = Number(req.query.type) || null;
+    const format = kind === 'moment' && ['short', 'article'].includes(req.query.format) ? req.query.format : null;
     const sort = req.query.sort === 'latest' ? 'latest' : 'relevance';
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(48, Math.max(1, Number.parseInt(req.query.limit, 10) || 12));
@@ -42,8 +43,8 @@ router.get('/entries', (req, res) => {
     }
     let rows = cardDb.prepare(`${entrySelect}
         WHERE e.kind = ? AND e.status = 'published' AND (? IS NULL OR e.resource_type_id = ?)
-        AND (e.kind != 'resource' OR e.parent_id IS ?)`)
-        .all(kind, kind === 'resource' ? type : null, kind === 'resource' ? type : null, parentId)
+        AND (e.kind != 'resource' OR e.parent_id IS ?) AND (? IS NULL OR e.format = ?)`)
+        .all(kind, kind === 'resource' ? type : null, kind === 'resource' ? type : null, parentId, format, format)
         .map(entry);
     if (terms.length) {
         rows = rows.map(row => {

@@ -14,6 +14,7 @@ onMounted(async () => {
   try {
     const result = await (await fetch(`/api/content/entries/${route.params.id}`)).json()
     if (!result.success) throw new Error(result.message)
+    if (result.data.kind === 'moment' && result.data.format === 'short') { router.replace('/moments'); return }
     if (result.data.kind === 'resource' && result.data.resource_kind === 'collection') { router.replace(entryPath(result.data)); return }
     entry.value = result.data
   } catch (cause) { error.value = cause.message || '内容加载失败' }
@@ -29,7 +30,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
       <ResourceBreadcrumbs v-if="entry.kind === 'resource'" :ancestors="entry.ancestors" :current="entry.title" />
       <router-link v-else class="back-link" to="/moments">← 返回动态</router-link>
       <article class="article">
-        <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '动态' }}</span><span v-if="entry.resource_type_name">{{ entry.resource_type_name }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time></div>
+        <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_type_name">{{ entry.resource_type_name }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time></div>
         <h1 v-if="entry.title">{{ entry.title }}</h1>
         <img v-if="entry.cover_image && entry.resource_kind !== 'gallery'" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
         <p v-if="entry.summary" class="lead">{{ entry.summary }}</p>

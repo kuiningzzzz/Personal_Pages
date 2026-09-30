@@ -20,6 +20,9 @@ const kind = ref('moment')
 const editingId = ref(null)
 const blank = () => ({ kind: kind.value, format: 'article', resource_kind: 'document', parent_id: null, member_ids: [], images: [], title: '', summary: '', cover_image: '', body: '', tags: [], resource_type_id: null, actions: [], status: 'published', published_at: new Date().toISOString() })
 const form = ref(blank())
+const isShort = computed(() => kind.value === 'moment' && form.value.format === 'short')
+const bodyLength = computed(() => [...String(form.value.body || '').trim()].length)
+const shortTooLong = computed(() => isShort.value && bodyLength.value > 500)
 const memberQuery = ref('')
 function descendants(id) {
   const found = new Set(id ? [id] : [])
@@ -86,7 +89,7 @@ function editEntry(row) {
   memberQuery.value = ''
   tab.value = 'editor'
 }
-async function saveEntry() { busy.value = true; try { const path = editingId.value ? `/entries/${editingId.value}` : '/entries'; const j = await api(path, json(editingId.value ? 'PUT' : 'POST', form.value)); await loadEntries(); tab.value = kind.value; reportSave('内容已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
+async function saveEntry() { if (shortTooLong.value) { report('短帖正文不能超过 500 字', true); return } busy.value = true; try { const path = editingId.value ? `/entries/${editingId.value}` : '/entries'; const j = await api(path, json(editingId.value ? 'PUT' : 'POST', form.value)); await loadEntries(); tab.value = kind.value; reportSave('内容已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
 async function deleteEntry(row) { if (!confirm(`确定删除“${row.title || '短帖'}”吗？${row.resource_kind === 'collection' ? '\n其中的成员会回到资源库首页。' : ''}`)) return; try { const j = await api(`/entries/${row.id}`, { method: 'DELETE' }); await loadEntries(); reportSave('已删除', j) } catch (e) { report(e.message, true) } }
 async function switchKind(next) { kind.value = next; tab.value = next; try { await loadEntries() } catch (e) { report(e.message, true) } }
 async function uploadFile(event, target) { const file = event.target.files?.[0]; if (!file) return; const data = new FormData(); data.append('file', file); busy.value = true; try { const j = await api('/upload', { method: 'POST', body: data }); if (target === 'avatar') profile.value.avatar = j.url; else if (target === 'cover') form.value.cover_image = j.url; else if (target === 'body') form.value.body += `\n\n${file.type.startsWith('image/') ? `![${j.name}](${j.url})` : `[${j.name}](${j.url})`}\n`; else if (target === 'action') form.value.actions.push({ label: 'Download', url: j.url }); report('上传成功') } catch (e) { report(e.message, true) } finally { busy.value = false; event.target.value = '' } }
@@ -128,10 +131,10 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
         <div v-else class="entry-admin-list"><div v-for="row in listedEntries" :key="row.id" class="surface entry-admin-row" :style="{ marginLeft: `${Math.min(row.depth, 5) * 18}px` }"><div><strong>{{ row.title || '短帖' }}</strong><small>{{ row.kind === 'resource' ? `${resourceLabel(row)} · ` : '' }}{{ row.status === 'draft' ? '草稿' : '已发布' }} · {{ new Date(row.published_at).toLocaleDateString('zh-CN') }}</small><small v-if="row.parent_id">所属：{{ resourceLocation(row) }}</small></div><div><button v-if="row.resource_kind === 'collection'" @click="newEntry('resource', 'document', row.id)">+ 子资源</button><button @click="editEntry(row)">编辑</button><button class="danger" @click="deleteEntry(row)">删除</button></div></div></div>
       </section>
       <section v-else-if="tab === 'editor'" class="admin-section">
-        <div class="section-head"><div><h2>{{ editingId ? '编辑' : '新建' }}{{ kind === 'moment' ? '动态' : resourceLabel(form) }}</h2><p>正文使用 Markdown，内容会用于搜索。</p></div><div class="head-actions"><button class="ghost-button" @click="tab = kind">返回列表</button><button class="primary-button" :disabled="busy" @click="saveEntry">保存内容</button></div></div>
+        <div class="section-head"><div><h2>{{ editingId ? '编辑' : '新建' }}{{ kind === 'moment' ? '动态' : resourceLabel(form) }}</h2><p>正文使用 Markdown，内容会用于搜索。</p></div><div class="head-actions"><button class="ghost-button" @click="tab = kind">返回列表</button><button class="primary-button" :disabled="busy || shortTooLong" @click="saveEntry">保存内容</button></div></div>
         <div class="surface editor-box">
           <div class="form-grid"><label>标题{{ form.format === 'short' ? '（可选）' : '' }}<input v-model="form.title" placeholder="给内容起个标题" /></label><label>发布状态<select v-model="form.status"><option value="published">已发布</option><option value="draft">草稿</option></select></label></div>
-          <div class="form-grid"><label>发布时间<input v-model="dateInput" type="datetime-local" /></label><label v-if="kind === 'moment'">动态形式<select v-model="form.format"><option value="article">文章</option><option value="short">短帖</option></select></label><label v-else>资源类型<select v-model.number="form.resource_type_id"><option :value="null">未分类</option><option v-for="type in types" :key="type.id" :value="type.id">{{ type.name }}</option></select></label></div>
+          <div class="form-grid"><label>发布时间<input v-model="dateInput" type="datetime-local" /></label><label v-if="kind === 'moment'">动态形式<select v-model="form.format"><option value="article">长文</option><option value="short">短帖</option></select></label><label v-else>资源类型<select v-model.number="form.resource_type_id"><option :value="null">未分类</option><option v-for="type in types" :key="type.id" :value="type.id">{{ type.name }}</option></select></label></div>
           <div v-if="kind === 'resource'" class="form-grid"><label>资源形态<select v-model="form.resource_kind"><option value="document">文档</option><option value="collection">合集</option><option value="gallery">图集</option></select></label><label>所属合集<select v-model="form.parent_id"><option :value="null">无 · 展示在资源库首页</option><option v-for="collection in parentCollections" :key="collection.id" :value="collection.id">{{ resourceLocation(collection) }} / {{ collection.title }}{{ collection.status === 'draft' ? '（草稿）' : '' }}</option></select></label></div>
           <p v-if="kind === 'resource' && form.parent_id" class="editor-hint">此内容只在所属合集中出现；如果上级合集是草稿，此内容也暂不对外展示。</p>
           <section v-if="kind === 'resource' && form.resource_kind === 'collection'" class="member-editor">
@@ -143,7 +146,8 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
           <div class="form-grid"><label>封面图片地址（可选）<input v-model="form.cover_image" placeholder="/picture/cover.png 或 https://..." /></label><label class="upload-label">上传封面图片<input type="file" accept="image/*" @change="uploadFile($event, 'cover')" /></label></div>
           <img v-if="form.cover_image" class="cover-preview" :src="form.cover_image" alt="当前封面预览" />
           <label>标签<input v-model="tagsText" placeholder="技术, 日常, Vue" /></label>
-          <label>{{ kind === 'resource' && form.resource_kind !== 'document' ? '介绍 · Markdown（可选）' : '正文 · Markdown' }}<textarea v-model="form.body" :rows="kind === 'resource' && form.resource_kind !== 'document' ? 6 : 16" placeholder="开始写作…"></textarea></label>
+          <label>{{ kind === 'resource' && form.resource_kind !== 'document' ? '介绍 · Markdown（可选）' : '正文 · Markdown' }}<textarea v-model="form.body" :rows="kind === 'resource' && form.resource_kind !== 'document' ? 6 : isShort ? 8 : 16" :aria-invalid="shortTooLong" :aria-describedby="isShort ? 'short-body-count' : undefined" placeholder="开始写作…"></textarea></label>
+          <p v-if="isShort" id="short-body-count" class="editor-hint" :class="{ 'count-warning': shortTooLong }" :role="shortTooLong ? 'alert' : undefined">{{ bodyLength }} / 500 字{{ shortTooLong ? `，请删减 ${bodyLength - 500} 字后保存。` : ' · 包含 Markdown 标记和链接地址；短帖只在列表中展示。' }}</p>
           <label class="upload-label">上传图片或文件并插入正文<input type="file" @change="uploadFile($event, 'body')" /></label>
           <details><summary>正文预览</summary><MarkdownContent :source="form.body" /></details>
           <section v-if="kind === 'resource' && form.resource_kind === 'gallery'" class="gallery-editor">

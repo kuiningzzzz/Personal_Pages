@@ -40,7 +40,7 @@ async function action(task, name) {
   catch (cause) { error.value = cause.message } finally { busy.value = false }
 }
 async function remove(task) {
-  if (!confirm('删除任务记录和任务日志？已发布的报告会保留，未被任何文章引用的任务附件会被清理。')) return
+  if (!confirm('删除任务记录和任务日志？已发布的报告会保留，未被任何内容引用的任务附件会被清理。')) return
   busy.value = true
   try { await request(`/tasks/${task.id}`, { method: 'DELETE' }); if (selected.value?.id === task.id) selected.value = null; await refresh() }
   catch (cause) { error.value = cause.message } finally { busy.value = false }

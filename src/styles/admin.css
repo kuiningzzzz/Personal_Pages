@@ -47,6 +47,7 @@ input[type='file'] { background: var(--paper-deep); }
 .head-actions { display: flex; gap: 8px; }
 .head-actions { flex-wrap: wrap; }
 .editor-hint { margin: -4px 0 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.editor-hint.count-warning { color: #a43b30; font-weight: 700; }
 .member-editor, .gallery-editor { margin: 26px 0; padding: 20px; border-radius: 6px; background: var(--paper-deep); }
 .member-editor h3, .gallery-editor h3 { margin: 0; font-size: 18px; }
 .member-editor .section-head > span, .gallery-editor .section-head > span { flex-shrink: 0; color: var(--muted); font-size: 12px; }

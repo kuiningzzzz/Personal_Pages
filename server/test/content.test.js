@@ -109,6 +109,26 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(shortResults.total, 1);
         assert.equal(shortResults.data[0].format, 'short');
         assert.match(shortResults.data[0].body, /散步/);
+        const filteredShort = (await request('/api/content/entries?kind=moment&format=short&limit=1')).body;
+        assert.equal(filteredShort.total, 1);
+        assert.equal(filteredShort.data[0].id, short.body.id);
+        const filteredArticles = (await request('/api/content/entries?kind=moment&format=article&limit=1&page=2')).body;
+        assert.equal(filteredArticles.total, 2, '类型过滤后的总数不能包含短帖或草稿');
+        assert.equal(filteredArticles.data[0].id, momentId, '类型过滤后再按时间排序分页');
+        assert.equal((await request('/api/content/entries?kind=moment&format=article&q=%E6%95%A3%E6%AD%A5')).body.total, 0, '搜索只匹配当前形式');
+        assert.equal((await request('/api/content/entries?kind=moment&format=short&q=%E6%97%A5%E5%B8%B8')).body.total, 1, '类型筛选仍可搜索标签');
+        const shortInput = { kind: 'moment', format: 'short', title: '', tags: [], status: 'published' };
+        const tooLong = await request('/api/admin/entries', write('POST', { ...shortInput, body: '记'.repeat(501) }));
+        assert.equal(tooLong.status, 400);
+        assert.match(tooLong.body.message, /500/);
+        const atLimit = await request('/api/admin/entries', write('POST', { ...shortInput, body: '记'.repeat(500) }));
+        assert.equal(atLimit.status, 201, '恰好 500 字可以新建');
+        assert.equal((await request(`/api/content/entries/${atLimit.body.id}`)).body.data.body.length, 500);
+        const unicodeBody = '📝'.repeat(500);
+        assert.equal((await request(`/api/admin/entries/${short.body.id}`, write('PUT', { ...shortInput, body: `  ${unicodeBody}\n` }))).status, 200, 'Unicode 字符按一个字计数，首尾空白不计入');
+        assert.equal((await request(`/api/admin/entries/${short.body.id}`, write('PUT', { ...shortInput, body: unicodeBody + '字', status: 'draft' }))).status, 400, '编辑和草稿也必须遵守 500 字上限');
+        assert.equal((await request(`/api/content/entries/${short.body.id}`)).body.data.body, unicodeBody, '拒绝的编辑不能截断或覆盖原正文');
+        assert.equal((await request('/api/admin/entries', write('POST', { ...moment, body: '文'.repeat(501) }))).status, 201, '文章不受短帖字数限制');
         const types = (await request('/api/content/resource-types')).body.data;
         const resource = { kind: 'resource', title: '示例工具', cover_image: '/picture/tool.png', body: '一个开源项目', tags: ['工具'], resource_type_id: types[0].id,
             actions: [{ label: 'Website', url: 'https://example.com' }], status: 'published' };

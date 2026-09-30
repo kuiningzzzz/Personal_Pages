@@ -122,6 +122,7 @@ function validateEntry(input, id = null) {
     const title = clean(input.title, 200);
     if (!title && format !== 'short') return { error: '标题不能为空' };
     if (format === 'short' && !clean(input.body, 100000)) return { error: '短帖正文不能为空' };
+    if (format === 'short' && [...String(input.body ?? '').trim()].length > 500) return { error: '短帖正文不能超过 500 字' };
     const coverImage = clean(input.cover_image, 2048);
     if (coverImage && !/^(https?:\/\/|\/[^/])/i.test(coverImage)) return { error: '封面图片地址无效' };
     const resourceTypeId = kind === 'resource' ? Number(input.resource_type_id) || null : null;
