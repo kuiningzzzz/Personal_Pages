@@ -24,7 +24,7 @@ onMounted(async () => {
 .activity-page { padding-top: 70px; padding-bottom: 80px; }
 .page-heading span { color: var(--accent); }
 .activity-card { position: relative; display: grid; place-items: center; min-height: 450px; margin-top: 32px; padding: 55px; border-radius: 10px; background: var(--paper); box-shadow: 7px 8px 0 var(--sky); }
-.activity-card::before { position: absolute; top: -12px; left: 46%; width: 85px; height: 25px; background: #d8c69f9c; transform: rotate(4deg); content: ''; }
+.activity-card::before { position: absolute; top: -12px; left: 46%; width: 85px; height: 25px; background: var(--tape); transform: rotate(4deg); content: ''; }
 .corner-note, .page-number { position: absolute; color: var(--cocoa); font-size: 12px; font-weight: 800; }
 .corner-note { top: 24px; left: 29px; }.page-number { right: 29px; bottom: 24px; }
 .activity-content { width: min(100%, 650px); padding: 38px 30px; border-radius: 8px; background: var(--accent-soft); box-shadow: 8px 8px 0 var(--sun); text-align: center; }

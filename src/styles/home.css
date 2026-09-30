@@ -1,7 +1,7 @@
 .home-page { padding-top: 38px; }
 .home-top { padding-bottom: 72px; }
-.intro { --stack: #c8d5d7; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(255px, 360px); align-items: center; gap: clamp(42px, 8vw, 120px); min-height: 470px; padding: 42px 54px 45px 42px; border-radius: 10px; background: var(--paper); box-shadow: 7px 8px 0 var(--stack); }
-.intro::before { position: absolute; top: -13px; left: 41px; width: 77px; height: 24px; background: #d8c69f9c; transform: rotate(-4deg); content: ''; }
+.intro { --stack: var(--home-stack); position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(255px, 360px); align-items: center; gap: clamp(42px, 8vw, 120px); min-height: 470px; padding: 42px 54px 45px 42px; border-radius: 10px; background: var(--paper); box-shadow: 7px 8px 0 var(--stack); }
+.intro::before { position: absolute; top: -13px; left: 41px; width: 77px; height: 24px; background: var(--tape); transform: rotate(-4deg); content: ''; }
 .intro::after { position: absolute; right: 24px; bottom: 22px; width: 54px; height: 7px; border-radius: 5px; background: var(--paper-deep); content: ''; }
 .intro-copy { position: relative; z-index: 1; min-width: 0; }
 .intro .eyebrow { margin-bottom: 20px; }
@@ -10,11 +10,11 @@
 .intro h1 span::after { position: absolute; z-index: -1; right: -.04em; bottom: .08em; left: -.03em; height: .34em; background: var(--sun); content: ''; }
 .intro p { max-width: 540px; margin: 0; padding-left: 16px; box-shadow: inset 4px 0 0 var(--denim); color: var(--muted); font-size: clamp(15px, 1.45vw, 18px); line-height: 1.9; white-space: pre-line; }
 .intro-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 32px; }
-.intro-link { display: inline-flex; align-items: center; justify-content: space-between; gap: 24px; min-width: 164px; min-height: 47px; padding: 9px 14px; border-radius: 5px; color: var(--paper); background: var(--ink); box-shadow: 4px 4px 0 var(--denim); font-size: 13px; font-weight: 800; text-decoration: none; transition: transform .25s ease, box-shadow .25s ease, background .25s ease; }
+.intro-link { display: inline-flex; align-items: center; justify-content: space-between; gap: 24px; min-width: 164px; min-height: 47px; padding: 9px 14px; border-radius: 5px; color: var(--button-ink); background: var(--button-bg); box-shadow: 4px 4px 0 var(--denim); font-size: 13px; font-weight: 800; text-decoration: none; transition: transform .25s ease, box-shadow .25s ease, background .25s ease; }
 .intro-link.secondary { color: var(--ink); background: var(--accent-soft); box-shadow: 4px 4px 0 var(--sun); }
 .intro-link:hover { transform: translate(-2px, -3px); box-shadow: 7px 8px 0 var(--denim); }
 .intro-link.secondary:hover { box-shadow: 7px 8px 0 var(--sun); }
-.portrait { position: relative; width: min(100%, 325px); margin: 0; padding: 10px 10px 30px; border-radius: 5px; background: #fffdf8; box-shadow: 10px 12px 0 var(--sun); transform: rotate(3deg); transition: transform .38s cubic-bezier(.2,.8,.2,1), box-shadow .38s ease; }
+.portrait { position: relative; width: min(100%, 325px); margin: 0; padding: 10px 10px 30px; border-radius: 5px; background: var(--portrait-paper); box-shadow: 10px 12px 0 var(--sun); transform: rotate(3deg); transition: transform .38s cubic-bezier(.2,.8,.2,1), box-shadow .38s ease; }
 .portrait::after { position: absolute; right: 13px; bottom: 8px; color: var(--soft); font-size: 10px; letter-spacing: .3em; content: '◼ ◼ ◼'; }
 .portrait:hover { transform: rotate(0) translateY(-6px) rotateY(-6deg); box-shadow: 13px 16px 0 var(--sun); }
 .portrait img { display: block; width: 100%; aspect-ratio: 1; border-radius: 3px; object-fit: cover; background: var(--sun); }
@@ -25,9 +25,9 @@
 .section-heading h2 { margin: 0; font-family: var(--heading-font); font-size: clamp(33px, 4vw, 51px); font-weight: 900; letter-spacing: -.06em; line-height: 1.2; }
 .section-heading h2 span { color: var(--cocoa); }
 .home-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
-.note-card { --stack: #d9b976; position: relative; min-width: 0; padding: 22px 23px 28px; border-radius: 8px; color: var(--ink); background: var(--paper); box-shadow: 7px 8px 0 var(--stack); transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease; }
-.note-card:nth-child(3n + 2) { --stack: #adbac1; background: #e6eceb; }
-.note-card:nth-child(3n + 3) { --stack: #cba96d; background: #f4e2c4; }
+.note-card { --stack: var(--note-stack); position: relative; min-width: 0; padding: 22px 23px 28px; border-radius: 8px; color: var(--ink); background: var(--paper); box-shadow: 7px 8px 0 var(--stack); transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease; }
+.note-card:nth-child(3n + 2) { --stack: var(--card-sky-stack); background: var(--card-sky); }
+.note-card:nth-child(3n + 3) { --stack: var(--card-warm-stack); background: var(--card-warm); }
 .note-card:hover { transform: translateY(-6px) rotateX(3deg); box-shadow: 11px 12px 0 var(--stack); }
 .note-card header { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; min-height: 83px; margin-bottom: 14px; padding-bottom: 15px; }
 .note-number { display: inline-block; padding: 5px 8px; border-radius: 3px; color: var(--cocoa); background: var(--accent-soft); font-family: Georgia, serif; font-size: 17px; font-weight: 700; line-height: 1; }

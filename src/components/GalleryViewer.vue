@@ -91,7 +91,7 @@ onUnmounted(() => { observer?.disconnect(); if (previewIndex.value >= 0) documen
 figcaption { padding: 11px 5px 4px; color: var(--muted); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
 .image-failed { display: grid; min-height: 180px; place-items: center; color: var(--muted); font-size: 12px; }
 .image-dialog { width: min(1200px, calc(100vw - 40px)); max-width: none; max-height: calc(100dvh - 40px); padding: 20px; border: 0; border-radius: 8px; color: var(--ink); background: var(--paper); box-shadow: 8px 8px 0 var(--denim); }
-.image-dialog::backdrop { background: #293b4dcc; }
+.image-dialog::backdrop { background: var(--dialog-backdrop); }
 .image-dialog-bar, .image-dialog-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 13px; }
 .image-dialog-bar { margin-bottom: 16px; font-weight: 800; }
 .image-dialog-stage { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; align-items: center; gap: 12px; }
