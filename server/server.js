@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import contentRoutes from './content-routes.js';
 import contentAdminRoutes from './content-admin-routes.js';
+import { startTasks, stopTasks } from './ai/tasks.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -62,7 +63,18 @@ app.use((err, req, res, next) => {
 });
 
 // 启动服务器
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`\n🚀 服务器运行在 http://localhost:${PORT}`);
     console.log(`📝 API 文档: http://localhost:${PORT}\n`);
+    startTasks();
 });
+let closing = false;
+async function shutdown() {
+    if (closing) return;
+    closing = true;
+    server.close();
+    await stopTasks();
+    process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

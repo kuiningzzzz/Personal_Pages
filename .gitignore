@@ -39,6 +39,8 @@ certs/*.ca-bundle
 *.tsbuildinfo
 
 .eslintcache
+.tmp-harness-inspect/
+server/data/
 
 # Cypress
 /cypress/videos/

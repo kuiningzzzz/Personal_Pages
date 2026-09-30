@@ -36,7 +36,6 @@ services:
       dockerfile: Dockerfile
       args:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
-        ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.aliyun.com/alpine}
     container_name: personal-pages-backend
     restart: unless-stopped
     ports:
@@ -46,6 +45,7 @@ services:
       - SERVER_PORT=3002
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - SESSION_SECRET=${SESSION_SECRET:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
     volumes:
       - ./server/data:/app/data  # 挂载数据库到项目目录，方便查看和备份
       - ./public:/app/public  # 挂载宿主机的 public 目录

@@ -6,6 +6,11 @@ yarn-error.log*
 
 # 开发文件
 .env.local
+.env
+.env.*
+!.env.example
+data
+test
 .env.*.local
 
 # IDE 配置

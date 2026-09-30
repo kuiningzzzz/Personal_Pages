@@ -27,7 +27,7 @@ export function rememberUpload(url) {
     cardDb.prepare('INSERT OR IGNORE INTO managed_uploads (url) VALUES (?)').run(url);
 }
 
-function localFile(raw) {
+export function localFile(raw) {
     const value = String(raw || '').trim();
     if (!value || /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(value)) return null;
     let pathname;
@@ -59,6 +59,7 @@ export function auditAndCleanupUploads() {
         const tokens = marked.lexer(source || '');
         marked.walkTokens(tokens, token => {
             if (token.type === 'link' || token.type === 'image') inspect(token.href, place, true);
+            if (token.type === 'html') for (const match of token.text.matchAll(/(?:href|src)\s*=\s*["']([^"']*)["']/gi)) inspect(match[1], place, true);
         });
     };
 
@@ -77,6 +78,15 @@ export function auditAndCleanupUploads() {
     }
     const settings = cardDb.prepare("SELECT data FROM site_configs WHERE key = 'page_settings'").get();
     if (settings) for (const [key, value] of Object.entries(JSON.parse(settings.data))) markdown(value, `站点文案「${key}」`);
+
+    // Active and failed jobs own their inputs until submission or explicit deletion.
+    // Published jobs transfer ownership to the resulting entry's Markdown links.
+    for (const file of cardDb.prepare("SELECT f.url FROM ai_task_files f JOIN ai_tasks t ON t.id = f.task_id WHERE t.status != 'published'").all()) inspect(file.url, 'AI 学习任务附件');
+    for (const task of cardDb.prepare("SELECT title, draft FROM ai_tasks WHERE status != 'published'").all()) {
+        const draft = JSON.parse(task.draft);
+        markdown(draft.body, `AI 任务「${task.title}」草稿`);
+        for (const action of draft.actions || []) inspect(action.url, `AI 任务「${task.title}」按钮`);
+    }
 
     let deletedFiles = 0;
     for (const { url } of cardDb.prepare('SELECT url FROM managed_uploads').all()) {

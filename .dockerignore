@@ -8,6 +8,10 @@ dist
 
 # 环境变量文件（开发环境）
 .env.development
+.env
+.env.*
+!.env.example
+.tmp-*
 .env.local
 .env.*.local
 

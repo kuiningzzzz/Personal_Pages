@@ -16,7 +16,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
     const folder = mkdtempSync(join(tmpdir(), 'personal-pages-test-'));
     const port = await freePort();
     const child = spawn(process.execPath, ['server.js'], { cwd: new URL('..', import.meta.url),
-        env: { ...process.env, DATA_DIR: folder, PUBLIC_DIR: join(folder, 'public'), SERVER_PORT: String(port), ADMIN_PASSWORD: 'test-secret-123', SESSION_SECRET: 'test-session-secret-123' }, stdio: ['ignore', 'pipe', 'pipe'] });
+        env: { ...process.env, DEEPSEEK_API_KEY: '', DATA_DIR: folder, PUBLIC_DIR: join(folder, 'public'), SERVER_PORT: String(port), ADMIN_PASSWORD: 'test-secret-123', SESSION_SECRET: 'test-session-secret-123' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', data => { output += data; });
     child.stderr.on('data', data => { output += data; });
@@ -38,8 +38,25 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         }
         assert.ok(ready, '服务应成功启动');
         assert.equal((await request('/api/admin/profile')).status, 401);
+        assert.equal((await request('/api/admin/ai/config')).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'wrong' }))).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'test-secret-123' }))).status, 200);
+        const aiConfig = (await request('/api/admin/ai/config')).body.data;
+        assert.equal(aiConfig.model, 'deepseek-flash');
+        assert.equal(aiConfig.keyConfigured, false);
+        assert.ok(!Object.hasOwn(aiConfig, 'apiKey'));
+        assert.equal((await request('/api/admin/ai/config', write('PUT', { ...aiConfig, maxOutputTokens: 1 }))).status, 400);
+        assert.equal((await request('/api/admin/ai/config', write('PUT', { ...aiConfig, model: 'other-model', apiKey: 'test-secret', reportInstructions: '中文讲解' }))).status, 200);
+        const updatedAiConfig = (await request('/api/admin/ai/config')).body.data;
+        assert.equal(updatedAiConfig.model, 'deepseek-flash');
+        assert.equal(updatedAiConfig.reportInstructions, '中文讲解');
+        assert.ok(!Object.hasOwn(updatedAiConfig, 'apiKey'));
+        assert.equal((await request('/api/admin/ai/tasks/missing')).status, 404);
+        const disabledAiUpload = new FormData();
+        disabledAiUpload.append('files', new Blob(['temporary learning source']), 'disabled-learning.txt');
+        assert.equal((await request('/api/admin/ai/tasks', { method: 'POST', body: disabledAiUpload })).status, 400);
+        const { readdirSync } = await import('node:fs');
+        assert.deepEqual(readdirSync(join(folder, 'public', 'source')), [], '拒绝的任务上传应被清除');
         const profile = { avatar: '/picture/test.png', name: '测试站点', description: '新的描述' };
         assert.equal((await request('/api/admin/profile', write('PUT', { profile, cards: [{ title: '测试卡片', content: '**加粗**' }] }))).status, 200);
         assert.equal((await request('/api/content/profile')).body.data.cards[0].content, '**加粗**');
