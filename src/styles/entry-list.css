@@ -3,6 +3,13 @@
 .list-intro .eyebrow { margin-bottom: 8px; }
 .heading-mark { color: var(--accent); }
 .list-intro .page-description { margin: 14px 0 0; font-size: 15px; }
+.collection-description { max-width: 760px; margin-top: 18px; font-size: 14px; }
+.list-intro > .tags { margin-top: 18px; }
+.entry-top small { color: var(--muted); font-size: 11px; }
+.collection-art { position: relative; display: grid; place-items: center; height: 100%; background: var(--accent-soft); }
+.collection-art > span { position: absolute; width: 62%; height: 52%; border-radius: 4px; background: var(--sun); transform: translate(8px, 8px); }
+.collection-art > span:nth-child(2) { background: var(--paper); transform: translate(-6px, -6px); box-shadow: 5px 5px 0 var(--cocoa); }
+.collection-art strong { z-index: 1; transform: translate(-6px, -6px); color: var(--ink); font-size: 19px; }
 .type-nav { display: flex; gap: 7px; overflow-x: auto; margin: 0 0 26px; padding: 2px 2px 8px; scrollbar-width: none; }
 .type-nav::-webkit-scrollbar { display: none; }
 .type-nav button { position: relative; flex: none; min-height: 42px; padding: 7px 18px; border: 0; border-radius: 5px; color: var(--muted); background: var(--paper); box-shadow: 3px 3px 0 var(--paper-deep); font-size: 13px; font-weight: 800; transition: color .2s ease, background-color .2s ease, transform .2s ease; }

@@ -72,6 +72,9 @@ export function auditAndCleanupUploads() {
         markdown(row.body, `${place}正文`);
         for (const action of JSON.parse(row.actions || '[]')) inspect(action.url, `${place}按钮「${action.label}」`);
     }
+    for (const image of cardDb.prepare('SELECT g.url, g.display_order, e.title FROM gallery_images g JOIN entries e ON e.id = g.entry_id').all()) {
+        inspect(image.url, `图集「${image.title}」第 ${image.display_order + 1} 张图片`, true);
+    }
     const settings = cardDb.prepare("SELECT data FROM site_configs WHERE key = 'page_settings'").get();
     if (settings) for (const [key, value] of Object.entries(JSON.parse(settings.data))) markdown(value, `站点文案「${key}」`);
 

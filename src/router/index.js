@@ -10,6 +10,8 @@ const routes = [
   { path: '/', component: Home },
   { path: '/moments', component: Moments },
   { path: '/resource', component: Resource },
+  { path: '/resource/collection/:collectionId', component: Resource },
+  { path: '/resource/gallery/:id', component: Entry },
   { path: '/activities', component: Activities },
   { path: '/entry/:id', component: Entry },
   { path: '/admin', component: Admin },

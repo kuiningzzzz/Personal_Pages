@@ -6,6 +6,7 @@ import { extname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { cardDb } from './db.js';
 import { auditAndCleanupUploads, publicRoot, rememberUpload } from './upload-cleanup.js';
+import { imagesFor, saveResourceExtras, validateStructure } from './resource-structure.js';
 
 const router = express.Router();
 const password = process.env.ADMIN_PASSWORD || '';
@@ -107,11 +108,13 @@ router.put('/resource-types', (req, res) => {
 router.get('/entries', (req, res) => {
     const kind = req.query.kind === 'resource' ? 'resource' : 'moment';
     const rows = cardDb.prepare('SELECT * FROM entries WHERE kind = ? ORDER BY published_at DESC, id DESC').all(kind)
-        .map(row => ({ ...row, tags: JSON.parse(row.tags), actions: JSON.parse(row.actions) }));
+        .map(row => ({ ...row, tags: JSON.parse(row.tags), actions: JSON.parse(row.actions), images: imagesFor(row.id) }));
     res.json({ success: true, data: rows });
 });
 
-function validateEntry(input) {
+function validateEntry(input, id = null) {
+    const structure = validateStructure(input, id);
+    if (structure.error) return structure;
     const kind = input.kind === 'resource' ? 'resource' : 'moment';
     const format = kind === 'moment' && input.format === 'short' ? 'short' : 'article';
     const title = clean(input.title, 200);
@@ -123,23 +126,45 @@ function validateEntry(input) {
     if (kind === 'resource' && resourceTypeId && !cardDb.prepare('SELECT id FROM resource_types WHERE id = ?').get(resourceTypeId)) return { error: '请选择有效的资源类型' };
     const date = input.published_at ? new Date(input.published_at) : new Date();
     if (Number.isNaN(date.getTime())) return { error: '发布时间格式错误' };
+    const images = [];
+    if (structure.resourceKind === 'gallery') {
+        if (!Array.isArray(input.images) || input.images.length > 500) return { error: '图集图片列表无效，最多 500 张' };
+        for (const [index, image] of input.images.entries()) {
+            const url = clean(image?.url, 2048);
+            if (!/^(https?:\/\/|\/[^/])/i.test(url)) return { error: `第 ${index + 1} 张图片地址无效` };
+            images.push({ url, caption: clean(image?.caption, 500),
+                width: Math.min(50000, Math.max(0, Number.parseInt(image?.width, 10) || 0)),
+                height: Math.min(50000, Math.max(0, Number.parseInt(image?.height, 10) || 0)) });
+        }
+    }
     return { kind, format, title, summary: clean(input.summary, 1000), coverImage, body: clean(input.body, 100000),
         tags: JSON.stringify(normalizeTags(input.tags)), resourceTypeId, actions: JSON.stringify(kind === 'resource' ? normalizeActions(input.actions) : []),
-        status: input.status === 'draft' ? 'draft' : 'published', publishedAt: date.toISOString() };
+        status: input.status === 'draft' ? 'draft' : 'published', publishedAt: date.toISOString(), ...structure, images };
 }
 router.post('/entries', (req, res) => {
     const data = validateEntry(req.body);
     if (data.error) return res.status(400).json({ success: false, message: data.error });
     const now = new Date().toISOString();
-    const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now);
-    res.status(201).json({ success: true, id: Number(result.lastInsertRowid), ...auditAndCleanupUploads() });
+    const id = cardDb.transaction(() => {
+        const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at,resource_kind,parent_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now, data.resourceKind, data.parentId);
+        const id = Number(result.lastInsertRowid);
+        saveResourceExtras(id, data);
+        return id;
+    })();
+    res.status(201).json({ success: true, id, ...auditAndCleanupUploads() });
 });
 router.put('/entries/:id', (req, res) => {
-    const data = validateEntry(req.body);
+    const id = Number(req.params.id);
+    if (!cardDb.prepare('SELECT id FROM entries WHERE id = ?').get(id)) return res.status(404).json({ success: false, message: '内容不存在' });
+    const data = validateEntry(req.body, id);
     if (data.error) return res.status(400).json({ success: false, message: data.error });
-    const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=? WHERE id=?`)
-        .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), req.params.id);
+    const result = cardDb.transaction(() => {
+        const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=?,resource_kind=?,parent_id=? WHERE id=?`)
+            .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), data.resourceKind, data.parentId, id);
+        saveResourceExtras(id, data);
+        return result;
+    })();
     res.status(result.changes ? 200 : 404).json({ success: !!result.changes, message: result.changes ? '已保存' : '内容不存在', ...(result.changes ? auditAndCleanupUploads() : {}) });
 });
 router.delete('/entries/:id', (req, res) => {

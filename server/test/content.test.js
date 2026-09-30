@@ -149,6 +149,83 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.ok(existsSync(filePath(imageUrl)));
         await request('/api/admin/profile', write('PUT', { profile: { ...profile, avatar: '/picture/test.png' }, cards: [{ title: '资料', content: '' }] }));
         assert.ok(!existsSync(filePath(imageUrl)));
+
+        // Nested collections hide their members from all root listings and searches.
+        const collection = { kind: 'resource', resource_kind: 'collection', title: '游戏收藏', body: '整理游戏资源', status: 'published', parent_id: null };
+        const outer = await request('/api/admin/entries', write('POST', collection));
+        assert.equal(outer.status, 201);
+        const outerId = outer.body.id;
+        const nested = await request('/api/admin/entries', write('POST', { ...collection, title: '截图收藏', parent_id: outerId }));
+        assert.equal(nested.status, 201);
+        const nestedId = nested.body.id;
+        const childDocument = await request('/api/admin/entries', write('POST', { ...resource, title: '安装说明', parent_id: outerId }));
+        assert.equal(childDocument.status, 201);
+        const galleryFile = new FormData();
+        galleryFile.append('file', new Blob(['gallery-image'], { type: 'image/png' }), 'gallery.png');
+        const galleryUrl = (await request('/api/admin/upload', { method: 'POST', body: galleryFile })).body.url;
+        const gallery = { kind: 'resource', resource_kind: 'gallery', title: '藏在合集的图集', parent_id: nestedId, tags: ['截图'], status: 'published',
+            images: [{ url: galleryUrl, caption: '游戏画面', width: 1920, height: 1080 }, { url: 'https://example.com/photo.jpg', caption: '外部图片' }] };
+        const createdGallery = await request('/api/admin/entries', write('POST', gallery));
+        assert.equal(createdGallery.status, 201);
+        const galleryId = createdGallery.body.id;
+        assert.ok(existsSync(filePath(galleryUrl)), '图集中的图片必须纳入引用保护');
+        const rootResources = (await request('/api/content/entries?kind=resource')).body.data;
+        assert.ok(rootResources.some(row => row.id === outerId));
+        assert.ok(!rootResources.some(row => [nestedId, galleryId, childDocument.body.id].includes(row.id)));
+        assert.equal((await request('/api/content/entries?kind=resource&q=' + encodeURIComponent(gallery.title))).body.total, 0);
+        const outerList = (await request(`/api/content/entries?kind=resource&parent=${outerId}`)).body.data;
+        assert.deepEqual(new Set(outerList.map(row => row.id)), new Set([nestedId, childDocument.body.id]));
+        const nestedList = (await request(`/api/content/entries?kind=resource&parent=${nestedId}`)).body.data;
+        assert.equal(nestedList[0].id, galleryId);
+        assert.equal(nestedList[0].image_count, 2);
+        assert.equal(nestedList[0].cover_image, galleryUrl);
+        const galleryDetail = (await request(`/api/content/entries/${galleryId}`)).body.data;
+        assert.deepEqual(galleryDetail.ancestors.map(row => row.id), [outerId, nestedId]);
+        assert.deepEqual(galleryDetail.images.map(image => image.caption), ['游戏画面', '外部图片']);
+        assert.equal((await request('/api/admin/entries?kind=resource')).body.data.find(row => row.id === galleryId).images.length, 2);
+
+        // Failed moves are atomic and cannot create a collection cycle.
+        assert.equal((await request(`/api/admin/entries/${outerId}`, write('PUT', { ...collection, parent_id: outerId, member_ids: [] }))).status, 400);
+        assert.equal((await request(`/api/admin/entries/${outerId}`, write('PUT', { ...collection, parent_id: nestedId }))).status, 400);
+        assert.equal((await request(`/api/admin/entries/${nestedId}`, write('PUT', { ...collection, title: '截图收藏', parent_id: outerId, member_ids: [outerId] }))).status, 400);
+        assert.equal((await request(`/api/admin/entries/${outerId}`, write('PUT', { ...resource, resource_kind: 'document' }))).status, 400);
+        assert.equal((await request('/api/admin/entries', write('POST', { ...resource, parent_id: galleryId }))).status, 400);
+        assert.deepEqual((await request(`/api/content/entries/${galleryId}`)).body.data.ancestors.map(row => row.id), [outerId, nestedId]);
+
+        const assigned = await request(`/api/admin/entries/${outerId}`, write('PUT', { ...collection, member_ids: [nestedId, resourceId] }));
+        assert.equal(assigned.status, 200);
+        assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.parent_id, outerId);
+        assert.equal((await request(`/api/content/entries/${childDocument.body.id}`)).body.data.parent_id, null);
+        await request(`/api/admin/entries/${outerId}`, write('PUT', { ...collection, status: 'draft' }));
+        assert.equal((await request(`/api/content/entries/${galleryId}`)).status, 404);
+        assert.equal((await request(`/api/content/entries?kind=resource&parent=${nestedId}`)).status, 404);
+        assert.ok(existsSync(filePath(galleryUrl)), '草稿合集里的图片仍需保留');
+        await request(`/api/admin/entries/${outerId}`, write('PUT', collection));
+
+        // Gallery order and captions can be edited; deletion releases the last image reference.
+        const reordered = await request(`/api/admin/entries/${galleryId}`, write('PUT', { ...gallery, images: [...gallery.images].reverse() }));
+        assert.equal(reordered.status, 200);
+        assert.equal((await request(`/api/content/entries/${galleryId}`)).body.data.images[0].caption, '外部图片');
+        const extraImage = new FormData();
+        extraImage.append('file', new Blob(['extra-image'], { type: 'image/png' }), 'extra.png');
+        const extraUrl = (await request('/api/admin/upload', { method: 'POST', body: extraImage })).body.url;
+        await request(`/api/admin/entries/${galleryId}`, write('PUT', { ...gallery, images: [...gallery.images, { url: extraUrl, caption: '临时图片' }] }));
+        await request(`/api/admin/entries/${resourceId}`, write('PUT', { ...resource, parent_id: outerId, body: `共用图片：![共享](${extraUrl})` }));
+        await request(`/api/admin/entries/${galleryId}`, write('PUT', gallery));
+        assert.ok(existsSync(filePath(extraUrl)), '移出图集的图片仍被文档引用');
+        const unshared = await request(`/api/admin/entries/${resourceId}`, write('PUT', { ...resource, parent_id: outerId }));
+        assert.equal(unshared.body.deletedFiles, 1);
+        assert.ok(!existsSync(filePath(extraUrl)));
+        assert.ok(existsSync(filePath(galleryUrl)));
+        await request(`/api/admin/entries/${outerId}`, { method: 'DELETE' });
+        assert.equal((await request(`/api/content/entries/${nestedId}`)).body.data.parent_id, null);
+        assert.deepEqual((await request(`/api/content/entries/${galleryId}`)).body.data.ancestors.map(row => row.id), [nestedId]);
+        await request(`/api/admin/entries/${nestedId}`, { method: 'DELETE' });
+        assert.equal((await request(`/api/content/entries/${galleryId}`)).body.data.parent_id, null);
+        const deletedGallery = await request(`/api/admin/entries/${galleryId}`, { method: 'DELETE' });
+        assert.equal(deletedGallery.status, 200);
+        assert.equal(deletedGallery.body.deletedFiles, 1);
+        assert.ok(!existsSync(filePath(galleryUrl)));
     } finally {
         if (viteChild && viteChild.exitCode === null) {
             viteChild.kill();

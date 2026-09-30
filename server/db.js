@@ -119,6 +119,25 @@ function initializeDatabase() {
         if (!cardDb.pragma('table_info(entries)').some(column => column.name === 'cover_image')) {
             cardDb.exec("ALTER TABLE entries ADD COLUMN cover_image TEXT NOT NULL DEFAULT ''");
         }
+        if (!cardDb.pragma('table_info(entries)').some(column => column.name === 'resource_kind')) {
+            cardDb.exec("ALTER TABLE entries ADD COLUMN resource_kind TEXT NOT NULL DEFAULT 'document' CHECK (resource_kind IN ('document', 'collection', 'gallery'))");
+        }
+        if (!cardDb.pragma('table_info(entries)').some(column => column.name === 'parent_id')) {
+            cardDb.exec('ALTER TABLE entries ADD COLUMN parent_id INTEGER REFERENCES entries(id) ON DELETE SET NULL');
+        }
+        cardDb.exec(`
+            CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(parent_id);
+            CREATE TABLE IF NOT EXISTS gallery_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entry_id INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+                url TEXT NOT NULL,
+                caption TEXT NOT NULL DEFAULT '',
+                width INTEGER NOT NULL DEFAULT 0,
+                height INTEGER NOT NULL DEFAULT 0,
+                display_order INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_gallery_images_entry ON gallery_images(entry_id, display_order, id);
+        `);
         if (!cardDb.prepare('SELECT id FROM profile WHERE id = 1').get()) {
             const legacy = JSON.parse(cardDb.prepare('SELECT data FROM site_configs WHERE key = ?').get('home_content').data);
             const description = Array.isArray(legacy.profile.bio) ? legacy.profile.bio.join('\n') : String(legacy.profile.bio || '');
