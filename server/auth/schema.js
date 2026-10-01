@@ -29,7 +29,16 @@ export function migrateUsers(db) {
             count INTEGER NOT NULL,
             expires_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS user_blacklist (
+            email TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+        );
+        CREATE TRIGGER IF NOT EXISTS blacklist_revoke_sessions AFTER INSERT ON user_blacklist BEGIN
+            DELETE FROM user_sessions WHERE user_id IN (SELECT id FROM users WHERE email = NEW.email);
+        END;
     `);
+    if (!db.pragma('table_info(users)').some(column => column.name === 'reply_notifications')) {
+        db.exec('ALTER TABLE users ADD COLUMN reply_notifications INTEGER NOT NULL DEFAULT 1 CHECK (reply_notifications IN (0,1))');
+    }
     if (!db.pragma('table_info(registration_codes)').some(column => column.name === 'purpose')) {
         db.exec("ALTER TABLE registration_codes ADD COLUMN purpose TEXT NOT NULL DEFAULT 'register' CHECK (purpose IN ('register', 'password-reset'))");
     }

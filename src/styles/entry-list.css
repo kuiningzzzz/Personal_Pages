@@ -52,6 +52,7 @@ a.entry-title:hover { text-decoration: underline; text-decoration-color: var(--a
 .summary { display: -webkit-box; margin: 10px 0 13px; overflow: hidden; color: var(--muted); font-size: 14px; line-height: 1.7; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .short-entry { min-height: 0; }
 .short-entry.without-cover .entry-content { grid-column: 2 / -1; padding-right: 4px; }
+.short-comments { grid-column: 2 / -1; grid-row: 2; min-width: 0; margin: 0 0 24px; padding: 20px 0 0; box-shadow: 0 -2px 0 var(--stack); }
 .entry-bottom { display: flex; justify-content: space-between; align-items: end; gap: 12px; margin-top: auto; }
 .entry-bottom > a { color: var(--ink); font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
 .entry-bottom > a:hover { color: var(--cocoa); }
@@ -79,6 +80,7 @@ a.entry-title:hover { text-decoration: underline; text-decoration-color: var(--a
   .entry-index { font-size: 18px; }
   .entry-content { padding-right: 0; }
   .entry-visual { grid-column: 2; grid-row: 2; width: 100%; height: 150px; margin: 0 0 20px; }
+  .short-comments { grid-row: 3; }
   .entry-art strong { writing-mode: horizontal-tb; }
   .entry-bottom { margin-top: 8px; }
 }

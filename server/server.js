@@ -10,12 +10,15 @@ import { createUserRoutes } from './auth/routes.js';
 import { createRegistrationMailer } from './auth/mail.js';
 import { createSubscriptionRoutes } from './subscriptions/routes.js';
 import { createSubscriptionService, siteOrigin } from './subscriptions/service.js';
+import { createCommentRoutes } from './comments/routes.js';
+import { createDiscussionMailService } from './comments/mail-service.js';
 
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.SERVER_PORT || 3002;
 const userMailer = createRegistrationMailer();
 const subscriptions = createSubscriptionService({ db: cardDb, mailer: userMailer, origin: siteOrigin() });
+const discussionMail = createDiscussionMailService({ db: cardDb, mailer: userMailer, origin: siteOrigin() });
 
 // 中间件
 app.use(cors()); // 允许跨域请求
@@ -24,7 +27,7 @@ app.use(express.urlencoded({ extended: true })); // 解析 URL 编码的请求�
 
 // 请求日志
 app.use((req, res, next) => {
-    const userPaths = ['/api/auth/config', '/api/auth/session', '/api/auth/code', '/api/auth/register', '/api/auth/login', '/api/auth/reset-password', '/api/auth/logout'];
+    const userPaths = ['/api/auth/config', '/api/auth/session', '/api/auth/code', '/api/auth/register', '/api/auth/login', '/api/auth/reset-password', '/api/auth/settings', '/api/auth/logout'];
     const loggedPath = req.path.startsWith('/api/auth') ? (userPaths.includes(req.path) ? req.path : '/api/auth') : req.path.startsWith('/api/subscriptions') ? '/api/subscriptions' : req.url;
     console.log(`${new Date().toISOString()} - ${req.method} ${loggedPath}`);
     next();
@@ -35,6 +38,7 @@ app.use('/api/content', contentRoutes);
 app.use('/api/admin', contentAdminRoutes);
 app.use('/api/auth', createUserRoutes({ db: cardDb, mailer: userMailer, secret: process.env.SESSION_SECRET || randomBytes(32).toString('hex') }));
 app.use('/api/subscriptions', createSubscriptionRoutes({ db: cardDb }));
+app.use('/api/comments', createCommentRoutes({ db: cardDb }));
 
 // 根路径
 app.get('/', (req, res) => {
@@ -48,6 +52,7 @@ app.get('/', (req, res) => {
             entry: 'GET /api/content/entries/:id',
             resourceTypes: 'GET /api/content/resource-types',
             subscriptions: 'GET, POST /api/subscriptions',
+            comments: 'GET, POST /api/comments/:entryId',
             users: { session: 'GET /api/auth/session', code: 'POST /api/auth/code', register: 'POST /api/auth/register', login: 'POST /api/auth/login', resetPassword: 'POST /api/auth/reset-password', logout: 'POST /api/auth/logout' },
             admin: {
                 login: 'POST /api/admin/login',
@@ -69,7 +74,7 @@ app.use((req, res) => {
 
 // 错误处理
 app.use((err, req, res, next) => {
-    if (req.path.startsWith('/api/auth') || req.path.startsWith('/api/subscriptions')) {
+    if (req.path.startsWith('/api/auth') || req.path.startsWith('/api/subscriptions') || req.path.startsWith('/api/comments') || req.path.startsWith('/api/admin/moderation')) {
         // JSON parser errors may carry the submitted body. Do not print the
         // error object or parser message for authentication requests.
         console.error('用户接口错误:', err.type === 'entity.parse.failed' ? 'INVALID_JSON' : err.type === 'entity.too.large' ? 'REQUEST_TOO_LARGE' : 'INTERNAL_ERROR');
@@ -89,6 +94,7 @@ const server = app.listen(PORT, () => {
     console.log(`📝 API 文档: http://localhost:${PORT}\n`);
     startTasks();
     subscriptions.start();
+    discussionMail.start();
 });
 let closing = false;
 async function shutdown() {
@@ -96,6 +102,7 @@ async function shutdown() {
     closing = true;
     server.close();
     await subscriptions.stop();
+    await discussionMail.stop();
     await stopTasks();
     process.exit(0);
 }

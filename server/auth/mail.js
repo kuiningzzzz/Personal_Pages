@@ -44,6 +44,17 @@ ${summary ? `<p style="font-size:15px;line-height:1.8;color:#59636b;white-space:
     };
 }
 
+export function discussionMessage({ kind, siteName, title, name, body, details, url, manageUrl }) {
+    const report = kind === 'report';
+    const heading = report ? '有一条新的评论举报' : '有人回复了你的评论';
+    const footer = report ? '请在管理后台查看举报记录并处理。' : '如果您不愿接收回复提醒邮件，可以通过“个人账号 → 账号设置 → 接收回复提醒邮件”关闭。';
+    return {
+        subject: `【${siteName}】${heading}：${title}`.replace(/[\r\n]/g, ' ').slice(0, 240),
+        text: `${siteName}\n\n${heading}\n${title}\n\n${name}\n${details}\n${body}\n\n查看内容：${url}\n${report ? '举报内容处理' : '账号设置'}：${manageUrl}\n\n${footer}`,
+        html: `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="color-scheme" content="light only"></head><body style="margin:0;background:#f4efe6;color:#293b4d;font-family:'Microsoft YaHei',Arial,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:30px 18px"><tr><td align="center"><table role="presentation" width="100%" style="max-width:520px"><tr><td style="padding:0 0 20px;font-size:22px;font-weight:800">${escape(siteName)}</td></tr><tr><td style="padding:0 6px 7px 0;background:#c8d5d7;border-radius:6px"><div style="padding:28px;background:#fffbf4;border-radius:6px"><span style="padding:5px 10px;background:#f3ddb8;font-size:12px">${heading}</span><h1 style="font-size:24px;line-height:1.5;margin:20px 0">${escape(title)}</h1><p style="font-weight:700">${escape(name)}</p><p style="white-space:pre-wrap;font-size:14px;line-height:1.8">${escape(details)}</p><div style="padding:16px;background:#f4e2c4;white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.8">${escape(body)}</div><p style="margin-top:24px"><a href="${escape(url)}" style="color:#293b4d;font-weight:700">查看内容 ↗</a></p><p style="font-size:12px;color:#59636b;line-height:1.8">${footer}<br><a href="${escape(manageUrl)}" style="color:#293b4d">${report ? '前往举报内容处理' : '前往账号设置'}</a></p></div></td></tr></table></td></tr></table></body></html>`
+    };
+}
+
 export function createRegistrationMailer(env = process.env) {
     const user = String(env.QQ_SMTP_USER || '').trim();
     const pass = String(env.QQ_SMTP_AUTH_CODE || '').replace(/\s/g, '');
@@ -63,11 +74,18 @@ export function createRegistrationMailer(env = process.env) {
     };
     return {
         enabled,
+        ownerEmail: user,
         async send({ email, code, siteName, purpose }) {
             await deliver(email, siteName, verificationMessage({ siteName, code, purpose }));
         },
         async sendNotification({ email, ...fields }) {
             await deliver(email, fields.siteName, subscriptionMessage(fields));
+        },
+        async sendReplyNotification({ email, ...fields }) {
+            await deliver(email, fields.siteName, discussionMessage({ ...fields, kind: 'reply' }));
+        },
+        async sendReportNotification(fields) {
+            await deliver(user, fields.siteName, discussionMessage({ ...fields, kind: 'report' }));
         }
     };
 }

@@ -1,23 +1,81 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import GalleryViewer from '../components/GalleryViewer.vue'
 import ResourceBreadcrumbs from '../components/ResourceBreadcrumbs.vue'
+import CommentsPanel from '../components/CommentsPanel.vue'
+import { lockPageScroll, trapFocus } from '../lib/layers'
 import { entryPath, resourceLabel } from '../lib/resources'
 
 const route = useRoute()
 const router = useRouter()
 const entry = ref(null)
 const error = ref('')
+const headings = ref([])
+const activeSection = ref('')
+const sidebar = ref(null)
+const readingPane = ref(null)
+const drawerTrigger = ref(null)
+const media = window.matchMedia('(max-width: 900px)')
+const mobile = ref(media.matches)
+const drawerOpen = ref(false)
+const outline = computed(() => [...headings.value, ...(entry.value?.resource_kind === 'gallery' ? [{ id: `gallery-${entry.value.id}`, text: '图集', level: 1 }] : [])])
+const minimumLevel = computed(() => Math.min(...outline.value.map(item => item.level), 6))
+let releaseScroll, frame = 0, resizeObserver
+function trackSection() {
+  frame = 0
+  if (!outline.value.length) { activeSection.value = ''; return }
+  let current = outline.value[0].id
+  for (const item of outline.value) {
+    const element = document.getElementById(item.id)
+    if (element && element.getBoundingClientRect().top <= Math.max(120, window.innerHeight * .22)) current = item.id
+  }
+  activeSection.value = current
+}
+function scheduleTracking() { if (!frame) frame = requestAnimationFrame(trackSection) }
+function closeDrawer(restoreFocus = false) { drawerOpen.value = false; if (restoreFocus) drawerTrigger.value?.focus() }
+async function jumpTo(id) {
+  closeDrawer()
+  await nextTick()
+  document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  activeSection.value = id
+}
+function drawerKeys(event) {
+  if (!mobile.value || !drawerOpen.value) return
+  if (event.key === 'Escape') { event.preventDefault(); closeDrawer(true) }
+  trapFocus(event, sidebar.value)
+}
+function screenChanged(event) { mobile.value = event.matches; if (!event.matches) closeDrawer() }
+watch(drawerOpen, async open => {
+  releaseScroll?.(); releaseScroll = null
+  if (open && mobile.value) {
+    releaseScroll = lockPageScroll()
+    await nextTick(); sidebar.value?.querySelector('button')?.focus()
+  }
+})
+watch(outline, async () => { await nextTick(); scheduleTracking() })
 onMounted(async () => {
+  media.addEventListener('change', screenChanged)
+  window.addEventListener('scroll', scheduleTracking, { passive: true })
+  window.addEventListener('resize', scheduleTracking, { passive: true })
   try {
     const result = await (await fetch(`/api/content/entries/${route.params.id}`)).json()
     if (!result.success) throw new Error(result.message)
     if (result.data.kind === 'moment' && result.data.format === 'short') { router.replace('/moments'); return }
     if (result.data.kind === 'resource' && result.data.resource_kind === 'collection') { router.replace(entryPath(result.data)); return }
     entry.value = result.data
+    await nextTick()
+    if (window.ResizeObserver && readingPane.value) { resizeObserver = new ResizeObserver(scheduleTracking); resizeObserver.observe(readingPane.value) }
+    if (mobile.value && Number(route.query.comment) > 0) drawerOpen.value = true
+    scheduleTracking()
   } catch (cause) { error.value = cause.message || '内容加载失败' }
+})
+onUnmounted(() => {
+  releaseScroll?.(); cancelAnimationFrame(frame); resizeObserver?.disconnect()
+  media.removeEventListener('change', screenChanged)
+  window.removeEventListener('scroll', scheduleTracking)
+  window.removeEventListener('resize', scheduleTracking)
 })
 const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
 </script>
@@ -29,23 +87,45 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
     <template v-else>
       <ResourceBreadcrumbs v-if="entry.kind === 'resource'" :ancestors="entry.ancestors" :current="entry.title" />
       <router-link v-else class="back-link" to="/moments">← 返回动态</router-link>
+      <div class="reading-layout">
+        <Teleport to="body" :disabled="!mobile">
+          <aside :id="`reading-sidebar-${entry.id}`" ref="sidebar" class="reading-sidebar" :class="{ 'drawer-open': drawerOpen, 'mobile-sidebar': mobile }" :role="mobile ? 'dialog' : 'complementary'" :aria-modal="mobile && drawerOpen ? true : undefined" :aria-hidden="mobile && !drawerOpen ? true : undefined" aria-label="目录与评论" @keydown="drawerKeys">
+            <div v-if="mobile" class="drawer-heading"><strong>目录与评论</strong><button type="button" aria-label="收起目录与评论" @click="closeDrawer(true)">×</button></div>
+            <section class="toc-panel"><h2>本页目录</h2><nav v-if="outline.length" aria-label="文章目录"><a v-for="item in outline" :key="item.id" :href="`#${item.id}`" :class="{ active: activeSection === item.id }" :style="{ '--depth': item.level - minimumLevel }" :aria-current="activeSection === item.id ? 'location' : undefined" @click.prevent="jumpTo(item.id)">{{ item.text }}</a></nav><p v-else>这页没有章节标题。</p></section>
+            <CommentsPanel :entry-id="entry.id" />
+          </aside>
+        </Teleport>
+        <div ref="readingPane" class="reading-content">
       <article class="article">
         <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_type_name">{{ entry.resource_type_name }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time></div>
         <h1 v-if="entry.title">{{ entry.title }}</h1>
         <img v-if="entry.cover_image && entry.resource_kind !== 'gallery'" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
         <p v-if="entry.summary" class="lead">{{ entry.summary }}</p>
         <div v-if="entry.tags.length" class="tags"><span v-for="tag in entry.tags" :key="tag">#{{ tag }}</span></div>
-        <MarkdownContent :source="entry.body" />
+        <MarkdownContent :source="entry.body" :heading-prefix="`entry-${entry.id}-section-`" @outline="headings = $event" />
         <div v-if="entry.actions.length" class="actions"><a v-for="action in entry.actions" :key="action.label + action.url" class="ghost-button" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
       </article>
-      <GalleryViewer v-if="entry.resource_kind === 'gallery'" :images="entry.images" />
+      <section v-if="entry.resource_kind === 'gallery'" :id="`gallery-${entry.id}`" class="gallery-section"><h2>图集</h2><GalleryViewer :images="entry.images" /></section>
+        </div>
+      </div>
+      <Teleport v-if="mobile" to="body"><button ref="drawerTrigger" type="button" class="reading-drawer-trigger" :aria-expanded="drawerOpen" :aria-controls="`reading-sidebar-${entry.id}`" @click="drawerOpen = true">目录 / 评论</button><Transition name="drawer-backdrop"><div v-if="drawerOpen" class="reading-drawer-backdrop" aria-hidden="true" @click="closeDrawer(true)"></div></Transition></Teleport>
     </template>
   </div>
 </template>
 
 <style scoped>
-.detail-page { max-width: 920px; padding-top: 47px; padding-bottom: 80px; }
-.gallery-page { max-width: 1120px; }
+.detail-page { width: min(1400px, calc(100% - 56px)); max-width: 1400px; padding-top: 47px; padding-bottom: 80px; }
+.reading-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: 26px; align-items: start; }
+.reading-content { min-width: 0; }
+.reading-sidebar { position: sticky; top: 105px; display: flex; flex-direction: column; gap: 18px; min-width: 0; height: calc(100dvh - 130px); padding: 0 5px 6px 0; }
+.toc-panel { flex: none; padding: 16px; border-radius: 6px; background: var(--card-sky); box-shadow: 4px 5px 0 var(--card-sky-stack); }
+.toc-panel h2 { margin: 0 0 12px; color: var(--ink); font-size: 16px; font-weight: 800; }
+.toc-panel nav { max-height: 28vh; overflow-y: auto; padding-right: 3px; scrollbar-width: thin; }
+.toc-panel a { display: block; padding: 6px 0 6px calc(var(--depth) * 9px); color: var(--muted); font-size: max(11px, calc(13px - var(--depth) * .5px)); line-height: 1.65; overflow-wrap: anywhere; text-decoration: none; transition: color .2s ease, font-size .2s ease; }
+.toc-panel a.active { color: var(--link); font-size: 16px; font-weight: 800; }
+.toc-panel p { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.gallery-section { scroll-margin-top: 105px; margin-top: 38px; }
+.gallery-section > h2 { color: var(--ink); font-family: var(--heading-font); font-size: 24px; }
 .gallery-page .article { padding: clamp(26px, 4vw, 42px); }
 .gallery-page .article h1 { margin-top: 10px; }
 .gallery-page .article .tags { margin-bottom: 18px; }
@@ -61,6 +141,18 @@ h1 { margin: 28px 0 18px; font-family: var(--heading-font); font-size: clamp(34p
 .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 34px; }
 .tags span { padding: 3px 8px; border-radius: 3px; color: var(--ink); background: var(--accent-soft); font-size: 12px; font-weight: 700; }
 .article :deep(.markdown) { color: var(--ink); font-size: 15px; line-height: 1.9; }
+.article :deep(.markdown h1), .article :deep(.markdown h2), .article :deep(.markdown h3), .article :deep(.markdown h4), .article :deep(.markdown h5), .article :deep(.markdown h6) { scroll-margin-top: 110px; }
+.article > h1, .article > .lead, .article > .tags, .article > .markdown { max-width: 800px; margin-inline: auto; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 48px; padding-top: 24px; }
 @media (max-width: 640px) { .detail-page { padding-top: 32px; } .article { padding: 36px 25px 38px; } }
+.reading-drawer-trigger { position: fixed; z-index: 125; left: 0; top: 38%; padding: 12px 10px; border: 0; border-radius: 0 5px 5px 0; color: var(--ink); background: var(--accent-soft); box-shadow: 4px 5px 0 var(--sun); font-size: 12px; font-weight: 800; writing-mode: vertical-rl; }
+.reading-drawer-backdrop { position: fixed; inset: 0; z-index: 140; background: var(--dialog-backdrop); }
+.drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink); font-size: 14px; }
+.drawer-heading button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px; background: var(--paper-deep); color: var(--ink); font-size: 22px; line-height: 1; }
+.reading-sidebar.mobile-sidebar { position: fixed; z-index: 150; top: 0; bottom: 0; left: 0; width: 66.666vw; height: 100dvh; padding: 20px 12px 20px 10px; padding-top: max(20px, env(safe-area-inset-top)); gap: 14px; background: var(--page-bg); transform: translateX(-108%); visibility: hidden; pointer-events: none; transition: transform .32s cubic-bezier(.22,.72,.18,1), visibility .32s; }
+.reading-sidebar.mobile-sidebar.drawer-open { transform: translateX(0); visibility: visible; pointer-events: auto; }
+.drawer-backdrop-enter-active, .drawer-backdrop-leave-active { transition: opacity .32s ease; }
+.drawer-backdrop-enter-from, .drawer-backdrop-leave-to { opacity: 0; }
+@media (max-width: 900px) { .reading-layout { grid-template-columns: minmax(0, 1fr); } .detail-page { width: calc(100% - 36px); } .article { padding: 34px 26px; } }
+@media (prefers-reduced-motion: reduce) { .reading-sidebar.mobile-sidebar, .drawer-backdrop-enter-active, .drawer-backdrop-leave-active, .toc-panel a { transition: none; } }
 </style>

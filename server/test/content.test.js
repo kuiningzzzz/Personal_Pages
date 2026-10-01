@@ -16,7 +16,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
     const folder = mkdtempSync(join(tmpdir(), 'personal-pages-test-'));
     const port = await freePort();
     const child = spawn(process.execPath, ['server.js'], { cwd: new URL('..', import.meta.url),
-        env: { ...process.env, DEEPSEEK_API_KEY: '', DATA_DIR: folder, PUBLIC_DIR: join(folder, 'public'), SERVER_PORT: String(port), ADMIN_PASSWORD: 'test-secret-123', SESSION_SECRET: 'test-session-secret-123' }, stdio: ['ignore', 'pipe', 'pipe'] });
+        env: { ...process.env, DEEPSEEK_API_KEY: '', QQ_SMTP_USER: '', QQ_SMTP_AUTH_CODE: '', DATA_DIR: folder, PUBLIC_DIR: join(folder, 'public'), SERVER_PORT: String(port), ADMIN_PASSWORD: 'test-secret-123', SESSION_SECRET: 'test-session-secret-123' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', data => { output += data; });
     child.stderr.on('data', data => { output += data; });
@@ -39,8 +39,14 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.ok(ready, '服务应成功启动');
         assert.equal((await request('/api/admin/profile')).status, 401);
         assert.equal((await request('/api/admin/ai/config')).status, 401);
+        assert.equal((await request('/api/admin/moderation/reports')).status, 401);
+        assert.equal((await request('/api/admin/moderation/blacklist')).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'wrong' }))).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'test-secret-123' }))).status, 200);
+        assert.equal((await request('/api/admin/moderation/reports')).status, 200);
+        assert.equal((await request('/api/admin/moderation/blacklist')).status, 200);
+        assert.equal((await request('/api/admin/moderation/blacklist', write('POST', { email: 'ban-test@example.com' }))).status, 200);
+        assert.equal((await request('/api/admin/moderation/blacklist', write('DELETE', { email: 'ban-test@example.com' }))).status, 200);
         const aiConfig = (await request('/api/admin/ai/config')).body.data;
         assert.equal(aiConfig.model, 'deepseek-flash');
         assert.equal(aiConfig.keyConfigured, false);

@@ -1,10 +1,12 @@
 <script setup>
-import { computed } from 'vue'
-import { renderMarkdown } from '../lib/markdown'
-const props = defineProps({ source: { type: String, default: '' } })
-const html = computed(() => renderMarkdown(props.source))
+import { computed, watch } from 'vue'
+import { renderMarkdownDocument } from '../lib/markdown'
+const props = defineProps({ source: { type: String, default: '' }, headingPrefix: { type: String, default: '' } })
+const emit = defineEmits(['outline'])
+const rendered = computed(() => renderMarkdownDocument(props.source, { headingPrefix: props.headingPrefix }))
+watch(rendered, value => emit('outline', value.outline), { immediate: true })
 </script>
-<template><div class="markdown" v-html="html"></div></template>
+<template><div class="markdown" v-html="rendered.html"></div></template>
 <style>
 .markdown { color: var(--muted); line-height: 1.85; overflow-wrap: anywhere; }
 .markdown > :first-child { margin-top: 0; }

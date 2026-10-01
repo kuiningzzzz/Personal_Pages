@@ -55,7 +55,7 @@ export function createSubscriptionService({ db, mailer, origin, clock = Date.now
             const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(item.user_id);
             const graph = resourceGraph(db);
             const finish = status => db.prepare('UPDATE subscription_deliveries SET status = ? WHERE event_id = ? AND user_id = ?').run(status, item.event_id, item.user_id);
-            if (!user || !canNotify(entry, graph) || !subscribedToEntry(entry, graph, records(user.id), item.event_id)) { finish('skipped'); continue; }
+            if (!user || db.prepare('SELECT email FROM user_blacklist WHERE email=?').get(user.email) || !canNotify(entry, graph) || !subscribedToEntry(entry, graph, records(user.id), item.event_id)) { finish('skipped'); continue; }
             const claimed = db.transaction(() => {
                 const delivery = db.prepare('SELECT status FROM subscription_deliveries WHERE event_id = ? AND user_id = ?').get(item.event_id, item.user_id);
                 if (delivery?.status !== 'pending') return false;

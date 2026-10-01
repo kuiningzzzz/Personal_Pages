@@ -38,6 +38,12 @@
 .account-card dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; font-size: 17px; font-weight: 700; }
 .account-note { margin: 26px 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
 .account-actions { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
+.account-settings { margin: 24px 0 30px; padding: 18px; border-radius: 5px; background: var(--paper-deep); }
+.account-settings h2 { margin: 0 0 18px; font-size: 17px; }
+.auth-card .setting-toggle { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; margin: 0; }
+.setting-toggle span { display: grid; gap: 8px; }
+.auth-card .setting-toggle input { flex: none; width: 20px; height: 20px; margin: 0; padding: 0; accent-color: var(--accent); box-shadow: none; cursor: pointer; }
+.settings-message { margin: 14px 0 0; color: var(--ink); font-size: 12px; }
 @media (max-width: 600px) {
   .auth-page { padding-block: 30px 52px; }
   .auth-card { padding: 23px 20px; }

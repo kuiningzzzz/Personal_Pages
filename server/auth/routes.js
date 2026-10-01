@@ -10,15 +10,16 @@ const derive = promisify(scrypt);
 const scryptOptions = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const digest = token => createHash('sha256').update(token).digest('hex');
 export const normalizeEmail = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
-const validEmail = value => value.length <= 254 && /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i.test(value);
+export const validEmail = value => value.length <= 254 && /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i.test(value);
 const normalizeUsername = value => typeof value === 'string' ? value.trim().normalize('NFKC') : '';
 const usernameKey = value => normalizeUsername(value).toLowerCase();
-const publicUser = row => ({ id: row.id, username: row.username, email: row.email, createdAt: row.created_at });
+const publicUser = row => ({ id: row.id, username: row.username, email: row.email, createdAt: row.created_at, replyNotifications: Boolean(row.reply_notifications) });
+export const isBlacklisted = (db, email) => Boolean(db.prepare('SELECT email FROM user_blacklist WHERE email = ?').get(normalizeEmail(email)));
 const equalHex = (a, b) => Boolean(a && b && a.length === b.length && timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex')));
 
 export function sessionUser(db, req, now = Date.now()) {
     const token = String(req.get('cookie') || '').match(/(?:^|;\s*)pp_user_session=([a-f0-9]{64})(?:;|$)/)?.[1];
-    return token ? db.prepare('SELECT u.* FROM user_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?').get(digest(token), now) : null;
+    return token ? db.prepare('SELECT u.* FROM user_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND NOT EXISTS (SELECT 1 FROM user_blacklist b WHERE b.email = u.email)').get(digest(token), now) : null;
 }
 
 export async function hashPassword(password) {
@@ -121,6 +122,7 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
         const purpose = req.body?.purpose ?? 'register';
         if (!['register', 'password-reset'].includes(purpose)) return error(res, 400, '验证码用途无效');
         if (!validEmail(email)) return error(res, 400, '请填写有效的邮箱地址');
+        if (isBlacklisted(db, email)) return error(res, 403, '该账号已封禁，请联系站点管理员');
         if (!mailer.enabled) return error(res, 503, '邮箱验证服务尚未配置，请稍后再来');
         if (!throttle(res, 'code-ip', req.ip, 10, 15 * 60 * 1000)) return;
         const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
@@ -174,6 +176,7 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
         const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
         if (!/^[\p{L}\p{N}_-]{2,24}$/u.test(username)) return error(res, 400, '用户名需为 2–24 个汉字、字母、数字、下划线或连字符');
         if (!validEmail(email)) return error(res, 400, '请填写有效的邮箱地址');
+        if (isBlacklisted(db, email)) return error(res, 403, '该账号已封禁，请联系站点管理员');
         if (typeof password !== 'string' || [...password].length < 8 || [...password].length > 128) return error(res, 400, '密码长度需为 8–128 个字符');
         if (!/^\d{6}$/.test(code)) return error(res, 400, '请填写 6 位邮箱验证码');
         if (db.prepare('SELECT id FROM users WHERE username_key = ?').get(usernameKey(username))) return error(res, 409, '这个用户名已被使用，请换一个');
@@ -186,13 +189,14 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
             // simultaneous registration must not reuse an already checked code.
             const current = checkCode(email, code);
             if (current.error) return current;
+            if (isBlacklisted(db, email)) return { error: '该账号已封禁，请联系站点管理员', banned: true };
             if (db.prepare('SELECT id FROM users WHERE email = ? OR username_key = ?').get(email, usernameKey(username))) return { error: '邮箱或用户名已注册，请检查后重试', conflict: true };
             const created = db.prepare('INSERT INTO users (username, username_key, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)')
                 .run(username, usernameKey(username), email, passwordHash, new Date(clock()).toISOString());
             db.prepare('DELETE FROM registration_codes WHERE email = ?').run(email);
             return db.prepare('SELECT * FROM users WHERE id = ?').get(Number(created.lastInsertRowid));
         })();
-        if (outcome.error) return error(res, outcome.conflict ? 409 : 400, outcome.error);
+        if (outcome.error) return error(res, outcome.banned ? 403 : outcome.conflict ? 409 : 400, outcome.error);
         openSession(req, res, outcome);
         res.status(201).json({ success: true, user: publicUser(outcome) });
     }));
@@ -203,6 +207,7 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
         const password = req.body?.password;
         const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
         if (!validEmail(email)) return error(res, 400, '请填写有效的邮箱地址');
+        if (isBlacklisted(db, email)) return error(res, 403, '该账号已封禁，请联系站点管理员');
         if (typeof password !== 'string' || [...password].length < 8 || [...password].length > 128) return error(res, 400, '密码长度需为 8–128 个字符');
         if (password !== req.body?.confirmPassword) return error(res, 400, '两次输入的新密码不一致');
         if (!/^\d{6}$/.test(code)) return error(res, 400, '请填写 6 位邮箱验证码');
@@ -215,6 +220,7 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
             if (current.error) return current;
             const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
             if (!row) return { error: '此用户尚未注册', missing: true };
+            if (isBlacklisted(db, email)) return { error: '该账号已封禁，请联系站点管理员', banned: true };
             db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, row.id);
             db.prepare('DELETE FROM registration_codes WHERE email = ?').run(email);
             db.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(row.id);
@@ -223,7 +229,7 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
             }
             return row;
         })();
-        if (outcome.error) return error(res, outcome.missing ? 404 : 400, outcome.error);
+        if (outcome.error) return error(res, outcome.banned ? 403 : outcome.missing ? 404 : 400, outcome.error);
         openSession(req, res, outcome);
         res.json({ success: true, message: '密码已重设，已为你登录；其他设备需重新登录', user: publicUser(outcome) });
     }));
@@ -236,7 +242,9 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
         if (!throttle(res, 'login-identity', identity.includes('@') ? normalizeEmail(identity) : usernameKey(identity), 10, 15 * 60 * 1000)) return;
         const row = identity.includes('@') ? db.prepare('SELECT * FROM users WHERE email = ?').get(normalizeEmail(identity)) : db.prepare('SELECT * FROM users WHERE username_key = ?').get(usernameKey(identity));
         if (!row) return error(res, 404, '此用户尚未注册');
+        if (isBlacklisted(db, row.email)) return error(res, 403, '该账号已封禁，请联系站点管理员');
         if (!await passwordVerifier(password, row.password_hash)) return error(res, 401, '密码不正确，请重新输入');
+        if (isBlacklisted(db, row.email)) return error(res, 403, '该账号已封禁，请联系站点管理员');
         // A password reset may finish while scrypt is running. Never recreate
         // an old-password session after that reset revoked existing sessions.
         if (db.prepare('SELECT password_hash FROM users WHERE id = ?').get(row.id)?.password_hash !== row.password_hash) return error(res, 401, '密码已更新，请使用新密码登录');
@@ -244,6 +252,13 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
         openSession(req, res, row);
         res.json({ success: true, user: publicUser(row) });
     }));
+    router.post('/settings', (req, res) => {
+        const row = sessionUser(db, req, clock());
+        if (!row) return error(res, 401, '请先登录');
+        if (typeof req.body?.replyNotifications !== 'boolean') return error(res, 400, '账号设置无效');
+        db.prepare('UPDATE users SET reply_notifications = ? WHERE id = ?').run(req.body.replyNotifications ? 1 : 0, row.id);
+        res.json({ success: true, user: publicUser({ ...row, reply_notifications: req.body.replyNotifications ? 1 : 0 }) });
+    });
     router.post('/logout', (req, res) => {
         const token = tokenFor(req);
         if (token) db.prepare('DELETE FROM user_sessions WHERE token_hash = ?').run(digest(token));

@@ -9,7 +9,7 @@ const safeUrl = (value, image = false) => {
   return ''
 }
 
-export function renderMarkdown(source) {
+export function renderMarkdownDocument(source, { headingPrefix = '' } = {}) {
   const text = String(source || '').replace(/\+\+([^+\n]+)\+\+/g, '<u>$1</u>')
   const doc = new DOMParser().parseFromString(marked.parse(text, { gfm: true, breaks: true }), 'text/html')
   const walk = node => {
@@ -34,5 +34,15 @@ export function renderMarkdown(source) {
     }
   }
   walk(doc.body)
-  return doc.body.innerHTML
+  const outline = []
+  if (headingPrefix) {
+    const prefix = headingPrefix.replace(/[^a-zA-Z0-9_-]/g, '-')
+    doc.body.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((heading, index) => {
+      const id = `${prefix}${index + 1}`
+      heading.id = id
+      outline.push({ id, text: heading.textContent.trim() || '未命名章节', level: Number(heading.tagName.slice(1)) })
+    })
+  }
+  return { html: doc.body.innerHTML, outline }
 }
+export const renderMarkdown = source => renderMarkdownDocument(source).html

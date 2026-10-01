@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import MarkdownContent from './MarkdownContent.vue'
 import ShortPostBody from './ShortPostBody.vue'
+import CommentsPanel from './CommentsPanel.vue'
 import ResourceBreadcrumbs from './ResourceBreadcrumbs.vue'
 import SubscribeButton from './SubscribeButton.vue'
 import SubscriptionControls from './SubscriptionControls.vue'
@@ -151,6 +152,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
               <div v-if="kind === 'resource' && row.actions?.length" class="entry-actions"><a v-for="action in row.actions" :key="action.label + action.url" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
               <div v-if="kind === 'resource' && row.resource_kind === 'collection'" class="collection-subscribe"><SubscribeButton scope="collection" :target-id="row.id" :label="row.title" /></div>
             </div>
+            <div v-if="isShort(row)" class="short-comments"><CommentsPanel :entry-id="row.id" inline :focus-comment-id="row.id === Number(route.query.post) ? Number(route.query.comment) || null : null" /></div>
           </article>
         </div>
       </Transition>
