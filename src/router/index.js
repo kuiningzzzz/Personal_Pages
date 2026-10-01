@@ -5,6 +5,9 @@ import Resource from '../views/resource.vue'
 import Activities from '../views/activities.vue'
 import Entry from '../views/entry.vue'
 import Admin from '../views/admin.vue'
+import Auth from '../views/auth.vue'
+import Account from '../views/account.vue'
+import { loadVisitor } from '../lib/auth'
 
 const routes = [
   { path: '/', component: Home },
@@ -15,6 +18,10 @@ const routes = [
   { path: '/activities', component: Activities },
   { path: '/entry/:id', component: Entry },
   { path: '/admin', component: Admin },
+  { path: '/login', component: Auth },
+  { path: '/register', component: Auth },
+  { path: '/reset-password', component: Auth },
+  { path: '/account', component: Account, beforeEnter: async () => await loadVisitor(true) ? true : { path: '/login', query: { redirect: '/account' } } },
   { path: '/tutorial', redirect: '/moments' },
   { path: '/project', redirect: '/resource' },
   { path: '/social', redirect: '/' },

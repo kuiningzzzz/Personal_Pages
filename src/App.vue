@@ -11,6 +11,7 @@ const position = path => {
   if (path.startsWith('/resource')) return 2
   if (path.startsWith('/activities')) return 3
   if (path.startsWith('/admin')) return 4
+  if (['/login', '/register', '/reset-password', '/account'].includes(path)) return 5
   if (path.startsWith('/entry')) return 3
   return 0
 }

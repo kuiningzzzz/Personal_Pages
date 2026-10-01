@@ -6,6 +6,7 @@ import { migrateHomeContent } from './migrations/home-content.js';
 import { migrateEntertainmentCards } from './migrations/entertainment-cards.js';
 import { migrateContentV2 } from './migrations/content-v2.js';
 import { migrateAi } from './ai/schema.js';
+import { migrateUsers } from './auth/schema.js';
 
 // 获取当前文件的目录
 const __filename = fileURLToPath(import.meta.url);
@@ -159,6 +160,7 @@ function initializeDatabase() {
         }
         migrateContentV2(cardDb);
         migrateAi(cardDb);
+        migrateUsers(cardDb);
 
         // 检查评论数据库是否有数据
         const commentCount = commentDb.prepare('SELECT COUNT(*) as count FROM comments').get();

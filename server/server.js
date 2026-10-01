@@ -4,6 +4,10 @@ import cors from 'cors';
 import contentRoutes from './content-routes.js';
 import contentAdminRoutes from './content-admin-routes.js';
 import { startTasks, stopTasks } from './ai/tasks.js';
+import { randomBytes } from 'node:crypto';
+import { cardDb } from './db.js';
+import { createUserRoutes } from './auth/routes.js';
+import { createRegistrationMailer } from './auth/mail.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -16,13 +20,16 @@ app.use(express.urlencoded({ extended: true })); // 解析 URL 编码的请求�
 
 // 请求日志
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    const userPaths = ['/api/auth/config', '/api/auth/session', '/api/auth/code', '/api/auth/register', '/api/auth/login', '/api/auth/reset-password', '/api/auth/logout'];
+    const loggedPath = req.path.startsWith('/api/auth') ? (userPaths.includes(req.path) ? req.path : '/api/auth') : req.url;
+    console.log(`${new Date().toISOString()} - ${req.method} ${loggedPath}`);
     next();
 });
 
 // API 路由
 app.use('/api/content', contentRoutes);
 app.use('/api/admin', contentAdminRoutes);
+app.use('/api/auth', createUserRoutes({ db: cardDb, mailer: createRegistrationMailer(), secret: process.env.SESSION_SECRET || randomBytes(32).toString('hex') }));
 
 // 根路径
 app.get('/', (req, res) => {
@@ -35,6 +42,7 @@ app.get('/', (req, res) => {
             entries: 'GET /api/content/entries',
             entry: 'GET /api/content/entries/:id',
             resourceTypes: 'GET /api/content/resource-types',
+            users: { session: 'GET /api/auth/session', code: 'POST /api/auth/code', register: 'POST /api/auth/register', login: 'POST /api/auth/login', resetPassword: 'POST /api/auth/reset-password', logout: 'POST /api/auth/logout' },
             admin: {
                 login: 'POST /api/admin/login',
                 entries: 'GET, POST /api/admin/entries',
@@ -55,6 +63,13 @@ app.use((req, res) => {
 
 // 错误处理
 app.use((err, req, res, next) => {
+    if (req.path.startsWith('/api/auth')) {
+        // JSON parser errors may carry the submitted body. Do not print the
+        // error object or parser message for authentication requests.
+        console.error('用户接口错误:', err.type === 'entity.parse.failed' ? 'INVALID_JSON' : err.type === 'entity.too.large' ? 'REQUEST_TOO_LARGE' : 'INTERNAL_ERROR');
+        const status = [400, 413].includes(err.status) ? err.status : 500;
+        return res.status(status).json({ success: false, message: status === 400 ? '请求数据格式无效' : status === 413 ? '请求数据过大' : '服务器内部错误' });
+    }
     console.error('服务器错误:', err);
     res.status(500).json({
         success: false,
