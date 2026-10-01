@@ -26,6 +26,24 @@ ${reset ? '<p style="font-size:14px;line-height:1.8">重设后会自动登录，
     };
 }
 
+export function subscriptionMessage({ siteName, title, summary, label, url, manageUrl }) {
+    return {
+        subject: `【${siteName}】新${label}：${title}`.replace(/[\r\n]/g, ' ').slice(0, 240),
+        text: `${siteName}\n\n你订阅的内容有更新\n\n${label}：${title}\n${summary || ''}\n\n查看新内容：${url}\n\n管理或取消订阅：${manageUrl}\n\n这封邮件仅因你主动订阅而发送。`,
+        html: `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="color-scheme" content="light only"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;background:#f4efe6;color:#293b4d;font-family:'Microsoft YaHei',Arial,sans-serif">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:36px 18px;background:#f4efe6"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px">
+<tr><td style="padding:0 0 24px;font-size:22px;font-weight:800"><span style="color:#d49b4a">▌</span> ${escape(siteName)}</td></tr>
+<tr><td style="background:#c8d5d7;border-radius:8px;padding:0 7px 8px 0"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="background:#fffbf4;border-radius:8px;padding:32px 26px">
+<span style="display:inline-block;background:#f3ddb8;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700">你订阅的内容有更新</span>
+<p style="margin:22px 0 8px;color:#59636b;font-size:13px">新${escape(label)}</p><h1 style="font-size:25px;line-height:1.5;margin:0 0 16px;overflow-wrap:anywhere">${escape(title)}</h1>
+${summary ? `<p style="font-size:15px;line-height:1.8;color:#59636b;white-space:pre-wrap">${escape(summary)}</p>` : ''}
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:24px"><tr><td style="background:#c8d5d7;border-radius:5px;padding:0 4px 5px 0"><a href="${escape(url)}" style="display:inline-block;background:#f3ddb8;padding:13px 20px;border-radius:5px;color:#293b4d;font-size:14px;font-weight:800;text-decoration:none">查看新内容 ↗</a></td></tr></table>
+<p style="font-size:12px;line-height:1.8;color:#59636b;margin:24px 0 0">你可以随时在网站上<a href="${escape(manageUrl)}" style="color:#293b4d">管理或取消订阅</a>。</p>
+</td></tr></table></td></tr><tr><td style="padding:22px 2px;font-size:12px;color:#827f79;line-height:1.8">这封邮件仅因你主动订阅而发送。不需要回复，也无需提供邮箱权限。</td></tr></table></td></tr></table></body></html>`
+    };
+}
+
 export function createRegistrationMailer(env = process.env) {
     const user = String(env.QQ_SMTP_USER || '').trim();
     const pass = String(env.QQ_SMTP_AUTH_CODE || '').replace(/\s/g, '');
@@ -38,13 +56,18 @@ export function createRegistrationMailer(env = process.env) {
         disableFileAccess: true, disableUrlAccess: true,
         logger: false, debug: false
     }) : null;
+    const deliver = async (email, siteName, message) => {
+        if (!transport) throw new Error('MAIL_NOT_CONFIGURED');
+        const result = await transport.sendMail({ from: { name: siteName, address: user }, to: { address: email }, ...message });
+        if (!result.accepted?.length) throw new Error('MAIL_NOT_ACCEPTED');
+    };
     return {
         enabled,
         async send({ email, code, siteName, purpose }) {
-            if (!transport) throw new Error('MAIL_NOT_CONFIGURED');
-            const message = verificationMessage({ siteName, code, purpose });
-            const result = await transport.sendMail({ from: { name: siteName, address: user }, to: { address: email }, ...message });
-            if (!result.accepted?.length) throw new Error('MAIL_NOT_ACCEPTED');
+            await deliver(email, siteName, verificationMessage({ siteName, code, purpose }));
+        },
+        async sendNotification({ email, ...fields }) {
+            await deliver(email, fields.siteName, subscriptionMessage(fields));
         }
     };
 }

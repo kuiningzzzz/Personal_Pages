@@ -20,7 +20,7 @@ async function logout() {
     <section class="auth-card surface account-card">
       <p v-if="error" class="auth-notice error" role="alert">{{ error }}</p>
       <dl><div><dt>用户名</dt><dd>{{ visitor.username }}</dd></div><div><dt>注册邮箱</dt><dd>{{ visitor.email }}</dd></div><div><dt>加入时间</dt><dd>{{ joined(visitor.createdAt) }}</dd></div></dl>
-      <p class="account-note">你的邮箱仅在这里对你本人显示。订阅、评论和广场活动将在后续更新中开放。</p>
+      <p class="account-note">你的邮箱仅在这里对你本人显示。可以在动态或资源库中订阅新内容，随时取消。评论和广场活动将在后续更新中开放。</p>
       <div class="account-actions"><router-link class="primary-button" to="/moments">去看看动态 ↗</router-link><button class="ghost-button" :disabled="busy" @click="logout">{{ busy ? '退出中…' : '退出登录' }}</button></div>
     </section>
   </div>

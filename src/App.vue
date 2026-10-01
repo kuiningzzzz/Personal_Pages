@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Header from './components/header.vue'
 import Footer from './components/footer.vue'
+import SubscriptionToast from './components/SubscriptionToast.vue'
 
 const route = useRoute()
 const turn = ref('page-next')
@@ -30,6 +31,7 @@ watch(() => route.path, (next, previous) => {
     </router-view>
   </main>
   <Footer />
+  <SubscriptionToast />
 </template>
 
 <style>

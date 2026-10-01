@@ -5,6 +5,7 @@
 .list-intro .page-description { margin: 14px 0 0; font-size: 15px; }
 .collection-description { max-width: 760px; margin-top: 18px; font-size: 14px; }
 .list-intro > .tags { margin-top: 18px; }
+.collection-subscribe { margin-top: 16px; }
 .entry-top small { color: var(--muted); font-size: 11px; }
 .collection-art { position: relative; display: grid; place-items: center; height: 100%; background: var(--accent-soft); }
 .collection-art > span { position: absolute; width: 62%; height: 52%; border-radius: 4px; background: var(--sun); transform: translate(8px, 8px); }

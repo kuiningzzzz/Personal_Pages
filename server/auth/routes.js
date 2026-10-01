@@ -16,6 +16,11 @@ const usernameKey = value => normalizeUsername(value).toLowerCase();
 const publicUser = row => ({ id: row.id, username: row.username, email: row.email, createdAt: row.created_at });
 const equalHex = (a, b) => Boolean(a && b && a.length === b.length && timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex')));
 
+export function sessionUser(db, req, now = Date.now()) {
+    const token = String(req.get('cookie') || '').match(/(?:^|;\s*)pp_user_session=([a-f0-9]{64})(?:;|$)/)?.[1];
+    return token ? db.prepare('SELECT u.* FROM user_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?').get(digest(token), now) : null;
+}
+
 export async function hashPassword(password) {
     const salt = randomBytes(16).toString('hex');
     const key = await derive(password, salt, 64, scryptOptions);
@@ -106,7 +111,7 @@ export function createUserRoutes({ db, mailer, secret, clock = Date.now, passwor
     router.get('/config', (_req, res) => res.json({ success: true, data: { emailEnabled: mailer.enabled, codeTtlSeconds: CODE_TTL / 1000, resendSeconds: RESEND_DELAY / 1000 } }));
     router.get('/session', (req, res) => {
         const token = tokenFor(req);
-        const row = token ? db.prepare(`SELECT u.* FROM user_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`).get(digest(token), clock()) : null;
+        const row = sessionUser(db, req, clock());
         if (token && !row) clearCookie(req, res);
         res.json({ success: true, user: row ? publicUser(row) : null });
     });
