@@ -18,11 +18,17 @@ RUN npm ci --omit=dev --registry="${NPM_REGISTRY}"
 # 运行阶段：只保留运行所需依赖，减小镜像体积
 FROM node:24-bookworm-slim
 
+# 国内服务器构建时可通过 docker compose build --build-arg 覆盖 Debian 镜像源
+ARG DEBIAN_MIRROR=mirrors.tuna.tsinghua.edu.cn
+
 # 设置工作目录
 WORKDIR /app
 
-# 安装健康检查工具
-RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates fonts-dejavu-core fonts-noto-cjk && \
+# 安装健康检查工具（先把 Debian 官方源换成国内镜像，避免 CJK 字体下载过慢）
+RUN for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+        [ -f "$f" ] && sed -i "s#deb.debian.org#${DEBIAN_MIRROR}#g; s#security.debian.org#${DEBIAN_MIRROR}#g" "$f" || true; \
+    done; \
+    apt-get update && apt-get install -y --no-install-recommends wget ca-certificates fonts-dejavu-core fonts-noto-cjk && \
     rm -rf /var/lib/apt/lists/*
 
 # 复制生产依赖
