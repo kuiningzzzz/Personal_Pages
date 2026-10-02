@@ -7,6 +7,8 @@ import CommentsPanel from './CommentsPanel.vue'
 import ResourceBreadcrumbs from './ResourceBreadcrumbs.vue'
 import SubscribeButton from './SubscribeButton.vue'
 import SubscriptionControls from './SubscriptionControls.vue'
+import PaginationNav from './PaginationNav.vue'
+import { CONTENT_PAGE_SIZE } from '../lib/pagination'
 import { entryPath, resourceLabel } from '../lib/resources'
 import { loadSubscriptions } from '../lib/subscriptions'
 
@@ -37,13 +39,15 @@ watch(input, value => {
   clearTimeout(timer)
   timer = setTimeout(() => { query.value = value.trim(); page.value = 1 }, 250)
 })
+watch(sort, () => { page.value = 1 }, { flush: 'sync' })
 watch([query, selectedType, selectedFormat, sort, page], load)
 
 async function load() {
   const id = ++requestId
   pending.value = true
   error.value = ''
-  const params = new URLSearchParams({ kind: props.kind, q: query.value, sort: sort.value, page: String(page.value), limit: '10' })
+  const params = new URLSearchParams({ kind: props.kind, q: query.value, sort: sort.value, page: String(page.value), limit: String(CONTENT_PAGE_SIZE) })
+  if (linkedPost.value && !loaded.value && !query.value) params.set('locate', String(linkedPost.value.id))
   if (props.kind === 'resource' && !props.collectionId && selectedType.value) params.set('type', String(selectedType.value))
   if (props.kind === 'moment' && selectedFormat.value) params.set('format', selectedFormat.value)
   if (props.collectionId) params.set('parent', String(props.collectionId))
@@ -52,13 +56,9 @@ async function load() {
     const result = await response.json()
     if (!result.success) throw new Error(result.message)
     if (id === requestId) {
-      rows.value = result.data
-      // Short posts have no detail page. A mail link keeps that specific post
-      // readable in the list, even after it has fallen off the first page.
-      if (linkedPost.value && page.value === 1 && !query.value && (!selectedFormat.value || selectedFormat.value === linkedPost.value.format)) {
-        rows.value = [linkedPost.value, ...rows.value.filter(row => row.id !== linkedPost.value.id)]
-      }
       total.value = result.total
+      if (result.page !== page.value) { page.value = result.page; return }
+      rows.value = result.data
       loaded.value = true
       resultVersion.value++
     }
@@ -136,7 +136,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <div v-else-if="!rows.length" :key="`empty-${resultVersion}`" class="surface state">{{ query ? '没有找到匹配的内容' : '这里还没有内容' }}</div>
         <div v-else :key="resultVersion" class="entry-list">
           <article v-for="(row, index) in rows" :id="`entry-${row.id}`" :key="row.id" class="entry" :class="{ 'short-entry': isShort(row), 'without-cover': isShort(row) && !row.cover_image }">
-            <span class="entry-index" aria-hidden="true">{{ String((page - 1) * 10 + index + 1).padStart(2, '0') }}</span>
+            <span class="entry-index" aria-hidden="true">{{ String((page - 1) * CONTENT_PAGE_SIZE + index + 1).padStart(2, '0') }}</span>
             <component :is="isShort(row) ? 'div' : RouterLink" v-if="!isShort(row) || row.cover_image" class="entry-visual" :class="{ 'collection-visual': row.resource_kind === 'collection', 'gallery-visual': row.resource_kind === 'gallery' }" :to="isShort(row) ? undefined : entryPath(row)" :aria-label="isShort(row) ? undefined : `查看${row.title || '这条动态'}`">
               <img v-if="row.cover_image" :src="row.cover_image" :alt="`${row.title || '动态'}的封面`" loading="lazy" />
               <span v-else-if="row.resource_kind === 'collection'" class="collection-art" aria-hidden="true"><span></span><span></span><strong>合集</strong></span>
@@ -158,11 +158,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
       </Transition>
     </div>
 
-    <div v-if="total > 10" class="pagination">
-      <button class="ghost-button" type="button" :disabled="page === 1 || pending" @click="changePage(page - 1)">← 上一页</button>
-      <span>{{ page }} / {{ Math.ceil(total / 10) }}</span>
-      <button class="ghost-button" type="button" :disabled="page * 10 >= total || pending" @click="changePage(page + 1)">下一页 →</button>
-    </div>
+    <PaginationNav :page="page" :total-pages="Math.ceil(total / CONTENT_PAGE_SIZE)" :disabled="pending" @change="changePage" />
   </div>
 </template>
 

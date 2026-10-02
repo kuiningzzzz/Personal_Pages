@@ -254,7 +254,12 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         // Gallery order and captions can be edited; deletion releases the last image reference.
         const reordered = await request(`/api/admin/entries/${galleryId}`, write('PUT', { ...gallery, images: [...gallery.images].reverse() }));
         assert.equal(reordered.status, 200);
-        assert.equal((await request(`/api/content/entries/${galleryId}`)).body.data.images[0].caption, '外部图片');
+        const editedGallery = (await request(`/api/content/entries/${galleryId}`)).body.data;
+        assert.equal(editedGallery.images[0].caption, '外部图片');
+        for (const id of [outerId, nestedId]) {
+            const ancestor = (await request(`/api/content/entries/${id}`)).body.data;
+            assert.ok(Date.parse(ancestor.updated_at) >= Date.parse(editedGallery.updated_at), '编辑图集同步所有上级合集时间');
+        }
         const extraImage = new FormData();
         extraImage.append('file', new Blob(['extra-image'], { type: 'image/png' }), 'extra.png');
         const extraUrl = (await request('/api/admin/upload', { method: 'POST', body: extraImage })).body.url;
@@ -275,6 +280,45 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(deletedGallery.status, 200);
         assert.equal(deletedGallery.body.deletedFiles, 1);
         assert.ok(!existsSync(filePath(galleryUrl)));
+
+        // Public search pages stay complete and distinct. Short-post mail links
+        // locate their real page rather than pushing a sixteenth item into it.
+        const momentIds = [];
+        for (let i = 0; i < 31; i++) {
+            const result = await request('/api/admin/entries', write('POST', { ...moment, format: 'short',
+                title: `分页短帖 ${i}`, body: '分页验收数据', tags: ['分页验收动态'], published_at: new Date(Date.UTC(2030, 0, 1, 0, i)).toISOString() }));
+            assert.equal(result.status, 201); momentIds.push(result.body.id);
+        }
+        const momentQuery = '/api/content/entries?kind=moment&q=' + encodeURIComponent('分页验收动态');
+        const momentPages = await Promise.all([1, 2, 3].map(n => request(`${momentQuery}&page=${n}`)));
+        assert.deepEqual(momentPages.map(p => p.body.data.length), [15, 15, 1]);
+        assert.deepEqual(momentPages.flatMap(p => p.body.data.map(r => r.id)), [...momentIds].reverse());
+        assert.equal((await request(`${momentQuery}&page=90`)).body.page, 3);
+        const located = (await request(`/api/content/entries?kind=moment&format=short&limit=15&locate=${momentIds[0]}`)).body;
+        assert.equal(located.page, 3);
+        assert.ok(located.data.some(r => r.id === momentIds[0]));
+        assert.ok(located.data.length <= 15);
+        const resourceIds = [];
+        for (let i = 0; i < 16; i++) {
+            const result = await request('/api/admin/entries', write('POST', { ...resource, title: `分页资源 ${i}`,
+                tags: ['分页验收资源'], resource_kind: i === 15 ? 'collection' : 'document', parent_id: null }));
+            assert.equal(result.status, 201); resourceIds.push(result.body.id);
+        }
+        const pagedCollection = resourceIds.at(-1);
+        const childIds = [];
+        for (let i = 0; i < 16; i++) {
+            const result = await request('/api/admin/entries', write('POST', { ...resource, title: `分页成员 ${i}`,
+                tags: ['分页验收资源'], parent_id: pagedCollection }));
+            assert.equal(result.status, 201); childIds.push(result.body.id);
+        }
+        const resourceQuery = '/api/content/entries?kind=resource&q=' + encodeURIComponent('分页验收资源');
+        for (const [parent, ids] of [[null, resourceIds], [pagedCollection, childIds]]) {
+            const query = resourceQuery + (parent ? `&parent=${parent}` : '');
+            const pages = await Promise.all([1, 2].map(n => request(`${query}&page=${n}`)));
+            assert.deepEqual(pages.map(p => p.body.data.length), [15, 1]);
+            assert.deepEqual(new Set(pages.flatMap(p => p.body.data.map(r => r.id))), new Set(ids));
+            assert.ok(pages.every(p => p.body.total === 16));
+        }
     } finally {
         if (viteChild && viteChild.exitCode === null) {
             viteChild.kill();

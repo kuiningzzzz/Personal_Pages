@@ -33,8 +33,8 @@ router.get('/entries', (req, res) => {
     const type = Number(req.query.type) || null;
     const format = kind === 'moment' && ['short', 'article'].includes(req.query.format) ? req.query.format : null;
     const sort = req.query.sort === 'latest' ? 'latest' : 'relevance';
-    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(48, Math.max(1, Number.parseInt(req.query.limit, 10) || 12));
+    let page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(48, Math.max(1, Number.parseInt(req.query.limit, 10) || 15));
     const parentId = kind === 'resource' && req.query.parent ? Number(req.query.parent) : null;
     if (parentId !== null) {
         if (!Number.isSafeInteger(parentId) || parentId <= 0) return res.status(400).json({ success: false, message: '合集地址无效' });
@@ -63,6 +63,12 @@ router.get('/entries', (req, res) => {
         return b.published_at.localeCompare(a.published_at) || b.id - a.id;
     });
     const total = rows.length;
+    // Mail links to short posts open the page containing that post, without
+    // inserting an extra item or displacing another item from the first page.
+    const locatedIndex = kind === 'moment' && !terms.length && req.query.locate
+        ? rows.findIndex(row => row.id === Number(req.query.locate) && row.format === 'short') : -1;
+    if (locatedIndex >= 0) page = Math.floor(locatedIndex / limit) + 1;
+    page = Math.min(page, Math.max(1, Math.ceil(total / limit)));
     // 列表仅返回摘要；正文仍用于搜索，详情接口返回完整内容。
     const data = rows.slice((page - 1) * limit, page * limit).map(({ body, actions, ...rest }) => ({ ...rest, body: rest.format === 'short' ? body : '', actions: kind === 'resource' ? actions : [] }));
     res.json({ success: true, data, total, page, limit });

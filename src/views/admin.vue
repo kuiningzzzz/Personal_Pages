@@ -1,10 +1,12 @@
 <script setup>
-import { ref, computed, onMounted, toRaw } from 'vue'
+import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import { resourceLabel } from '../lib/resources'
 import AiLearningAdmin from '../components/AiLearningAdmin.vue'
 import ModerationAdmin from '../components/ModerationAdmin.vue'
+import PaginationNav from '../components/PaginationNav.vue'
+import { adminListing } from '../lib/admin-list'
 
 const authenticated = ref(false)
 const checking = ref(true)
@@ -54,13 +56,24 @@ const memberCandidates = computed(() => {
   const query = memberQuery.value.trim().toLocaleLowerCase()
   return entries.value.filter(row => !excluded.has(row.id) && (!query || `${row.title} ${row.tags.join(' ')} ${resourceLocation(row)}`.toLocaleLowerCase().includes(query)))
 })
-const listedEntries = computed(() => {
-  if (kind.value !== 'resource') return entries.value.map(row => ({ ...row, depth: 0 }))
-  const result = [], seen = new Set()
-  const walk = (parent, depth) => { for (const row of entries.value.filter(item => item.parent_id === parent)) if (!seen.has(row.id)) { seen.add(row.id); result.push({ ...row, depth }); walk(row.id, depth + 1) } }
-  walk(null, 0)
-  return result
-})
+const listQuery = ref('')
+const listSort = ref('updated')
+const listPage = ref(1)
+const expandedCollections = ref(new Set())
+const listHeading = ref(null)
+const listing = computed(() => adminListing(entries.value, { kind: kind.value, query: listQuery.value, sort: listSort.value, page: listPage.value, expanded: expandedCollections.value }))
+watch([listQuery, listSort, kind], () => { listPage.value = 1 }, { flush: 'sync' })
+watch(() => listing.value.totalPages, pages => { if (listPage.value > pages) listPage.value = pages })
+function toggleCollection(id) {
+  const next = new Set(expandedCollections.value)
+  if (next.has(id)) next.delete(id); else next.add(id)
+  expandedCollections.value = next
+}
+function changePage(page) {
+  listPage.value = page
+  listHeading.value?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+}
+const listDate = row => new Date(row[listSort.value === 'created' ? 'created_at' : 'updated_at']).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 const tagsText = computed({ get: () => form.value.tags.join(', '), set: value => { form.value.tags = value.split(/[,，\n]/).map(x => x.trim()).filter(Boolean) } })
 const dateInput = computed({ get: () => { const date = new Date(form.value.published_at || Date.now()); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) }, set: value => { form.value.published_at = value ? new Date(value).toISOString() : new Date().toISOString() } })
 const api = async (path, options = {}) => { const response = await fetch(`/api/admin${path}`, { credentials: 'same-origin', ...options }); const data = await response.json(); if (!data.success) throw new Error(data.message || '操作失败'); return data }
@@ -83,7 +96,7 @@ async function loadTypes() { const j = await api('/resource-types'); types.value
 async function loadEntries() { const j = await api(`/entries?kind=${kind.value}`); entries.value = j.data }
 async function saveProfile() { busy.value = true; try { const j = await api('/profile', json('PUT', { profile: profile.value, cards: cards.value })); await loadProfile(); reportSave('首页已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
 function moveCard(index, shift) { const target = index + shift; if (target < 0 || target >= cards.value.length) return; [cards.value[index], cards.value[target]] = [cards.value[target], cards.value[index]] }
-async function saveTypes() { busy.value = true; try { const j = await api('/resource-types', json('PUT', { types: types.value })); types.value = j.data; reportSave('资源分类已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
+async function saveTypes() { busy.value = true; try { const j = await api('/resource-types', json('PUT', { types: types.value })); types.value = j.data; await loadEntries(); reportSave('资源分类已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
 function newEntry(nextKind = kind.value, resourceKind = 'document', parentId = null) { kind.value = nextKind; editingId.value = null; form.value = blank(); form.value.kind = nextKind; form.value.resource_kind = resourceKind; form.value.parent_id = parentId; memberQuery.value = ''; if (nextKind === 'resource') form.value.resource_type_id = types.value[0]?.id || null; tab.value = 'editor' }
 function editEntry(row) {
   // Vue wraps list rows in proxies; structuredClone cannot clone a proxy directly.
@@ -127,16 +140,34 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
     <div v-if="message" class="notice" :class="{ 'notice-warning': hasWarnings }" :role="hasWarnings ? 'alert' : 'status'">{{ message }}</div>
     <div v-if="checking" class="surface state">检查登录状态…</div>
     <form v-else-if="!authenticated" class="surface login" @submit.prevent="login"><h2>登录后台</h2><p>输入管理员密码，继续管理网站内容。</p><label>管理员密码<input v-model="password" type="password" required autocomplete="current-password" /></label><button class="primary-button" :disabled="busy">登录</button></form>
-    <template v-else><nav class="admin-nav"><button :class="{ active: tab === 'profile' }" @click="tab = 'profile'">首页介绍</button><button :class="{ active: tab === 'moment' || (tab === 'editor' && kind === 'moment') }" @click="switchKind('moment')">动态</button><button :class="{ active: tab === 'resource' || (tab === 'editor' && kind === 'resource') }" @click="switchKind('resource')">资源库</button><button :class="{ active: tab === 'learning' }" @click="tab = 'learning'">AI 学习</button><button :class="{ active: tab === 'reports' }" @click="tab = 'reports'">举报内容处理</button><button :class="{ active: tab === 'blacklist' }" @click="tab = 'blacklist'">黑名单用户</button><button :class="{ active: tab === 'types' }" @click="tab = 'types'">资源分类</button><button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">站点文案</button></nav>
+    <template v-else><nav class="admin-nav"><button :class="{ active: tab === 'profile' }" @click="tab = 'profile'">首页介绍</button><button :class="{ active: tab === 'moment' || (tab === 'editor' && kind === 'moment') }" @click="switchKind('moment')">动态</button><button :class="{ active: tab === 'resource' || (tab === 'editor' && kind === 'resource') }" @click="switchKind('resource')">资源库</button><button :class="{ active: tab === 'learning' }" @click="tab = 'learning'">AI 学习</button><button :class="{ active: tab === 'reports' }" @click="tab = 'reports'">举报内容处理</button><button :class="{ active: tab === 'blacklist' }" @click="tab = 'blacklist'">黑名单用户</button><button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">站点文案</button></nav>
       <AiLearningAdmin v-if="tab === 'learning'" @notice="report" />
       <ModerationAdmin v-if="tab === 'reports' || tab === 'blacklist'" :mode="tab" />
       <section v-if="tab === 'profile'" class="admin-section"><div class="section-head"><div><h2>个人介绍</h2><p>头像、名称、描述和下方卡片都会实时显示在首页。</p></div><button class="primary-button" :disabled="busy" @click="saveProfile">保存首页</button></div><div class="surface editor-box"><div class="form-grid"><label>头像地址<input v-model="profile.avatar" placeholder="/picture/avatar.png" /></label><label>显示名称<input v-model="profile.name" placeholder="你的名字" /></label></div><label>上传头像<input type="file" accept="image/*" @change="uploadFile($event, 'avatar')" /></label><img v-if="profile.avatar" :src="profile.avatar" class="avatar-preview" alt="当前头像" /><label>描述<textarea v-model="profile.description" rows="4" placeholder="简单介绍一下自己"></textarea></label></div><div class="section-head card-head"><div><h2>介绍卡片</h2><p>卡片内容支持 Markdown，使用 ++文字++ 添加下划线。</p></div><button class="ghost-button" @click="cards.push({ title: '', content: '' })">+ 添加卡片</button></div><div v-for="(card, index) in cards" :key="index" class="surface editor-box card-editor"><div class="card-controls"><strong>卡片 {{ index + 1 }}</strong><div><button @click="moveCard(index, -1)" :disabled="index === 0">上移</button><button @click="moveCard(index, 1)" :disabled="index === cards.length - 1">下移</button><button @click="cards.splice(index, 1)">删除</button></div></div><label>卡片标题<input v-model="card.title" placeholder="例如：联系方式" /></label><label>卡片内容 · Markdown<textarea v-model="card.content" rows="6" placeholder="支持链接、代码块、加粗、斜体、划去、下划线"></textarea></label><details><summary>预览</summary><MarkdownContent :source="card.content" /></details></div></section>
-      <section v-else-if="tab === 'types'" class="admin-section"><div class="section-head"><div><h2>资源大类</h2><p>大类用于资源库根界面的筛选和订阅。合集成员自动继承父合集的大类；删除大类后，该类根内容及其成员变为未分类。</p></div><button class="primary-button" :disabled="busy" @click="saveTypes">保存大类</button></div><div class="surface editor-box"><div v-for="(type, index) in types" :key="type.id || index" class="type-row"><input v-model="type.name" placeholder="大类名称" /><button @click="types.splice(index, 1)">删除</button></div><button class="ghost-button" @click="types.push({ name: '' })">+ 添加大类</button></div></section>
       <section v-else-if="tab === 'settings'" class="admin-section"><div class="section-head"><div><h2>站点文案</h2><p>编辑各页面介绍和页脚备案信息。</p></div><button class="primary-button" :disabled="busy" @click="saveSettings">保存文案</button></div><div class="surface editor-box"><label>动态页介绍<textarea v-model="settings.momentsDescription" rows="3"></textarea></label><label>资源库介绍<textarea v-model="settings.resourceDescription" rows="3"></textarea></label><label>活动页施工说明<textarea v-model="settings.activitiesMessage" rows="3"></textarea></label><label>备案号<input v-model="settings.icpNumber" placeholder="留空则不显示" /></label></div></section>
       <section v-else-if="tab === 'moment' || tab === 'resource'" class="admin-section">
-        <div class="section-head"><div><h2>{{ tab === 'moment' ? '动态' : '资源库' }}</h2><p>编辑、发布或保留草稿。合集成员只在对应合集里展示。</p></div><div v-if="tab === 'resource'" class="head-actions"><button class="primary-button" @click="newEntry('resource')">+ 文档</button><button class="ghost-button" @click="newEntry('resource', 'collection')">+ 合集</button><button class="ghost-button" @click="newEntry('resource', 'gallery')">+ 图集</button></div><button v-else class="primary-button" @click="newEntry('moment')">+ 新建动态</button></div>
-        <div v-if="!entries.length" class="surface state">暂无内容</div>
-        <div v-else class="entry-admin-list"><div v-for="row in listedEntries" :key="row.id" class="surface entry-admin-row" :style="{ marginLeft: `${Math.min(row.depth, 5) * 18}px` }"><div><strong>{{ row.title || '短帖' }}</strong><small>{{ row.kind === 'resource' ? `${resourceLabel(row)} · ` : '' }}{{ row.status === 'draft' ? '草稿' : '已发布' }} · {{ new Date(row.published_at).toLocaleDateString('zh-CN') }}</small><small v-if="row.parent_id">所属：{{ resourceLocation(row) }}</small></div><div><button v-if="row.resource_kind === 'collection'" @click="newEntry('resource', 'document', row.id)">+ 子资源</button><button @click="editEntry(row)">编辑</button><button class="danger" @click="deleteEntry(row)">删除</button></div></div></div>
+        <div ref="listHeading" class="section-head list-heading"><div><h2>{{ tab === 'moment' ? '动态' : '资源库' }}</h2><p>编辑、发布或保留草稿。合集成员只在对应合集里展示。</p></div><div v-if="tab === 'resource'" class="head-actions"><button class="primary-button" @click="newEntry('resource')">+ 文档</button><button class="ghost-button" @click="newEntry('resource', 'collection')">+ 合集</button><button class="ghost-button" @click="newEntry('resource', 'gallery')">+ 图集</button></div><button v-else class="primary-button" @click="newEntry('moment')">+ 新建动态</button></div>
+        <details v-if="tab === 'resource'" class="category-manager">
+          <summary>资源分类管理 <span>{{ types.length }} 个大类</span></summary>
+          <div class="category-content">
+            <p>大类用于根界面的筛选和订阅，合集成员自动继承父合集的大类。删除大类后，相关内容变为未分类。</p>
+            <div v-for="(type, index) in types" :key="type.id || `new-${index}`" class="type-row"><input v-model="type.name" placeholder="大类名称" :aria-label="`大类 ${index + 1} 名称`" /><button type="button" @click="types.splice(index, 1)">删除</button></div>
+            <div class="head-actions"><button class="ghost-button" type="button" @click="types.push({ name: '' })">+ 添加大类</button><button class="primary-button" type="button" :disabled="busy" @click="saveTypes">保存大类</button></div>
+          </div>
+        </details>
+        <div class="admin-list-toolbar">
+          <label>搜索内容<input v-model="listQuery" type="search" placeholder="标题、标签、摘要或正文" /></label>
+          <label>排序<select v-model="listSort"><option value="updated">最新修改</option><option value="created">最新创建</option></select></label>
+        </div>
+        <div class="admin-list-meta"><span>{{ listQuery.trim() ? '搜索结果' : '全部内容' }} · {{ listing.total }} {{ kind === 'resource' ? '个根项目' : '条动态' }}</span><small v-if="listQuery.trim() && kind === 'resource'">匹配内容按所属合集展示</small></div>
+        <div v-if="!listing.rows.length" class="surface state">{{ listQuery.trim() ? '没有找到匹配的内容' : '暂无内容' }}</div>
+        <div v-else class="entry-admin-list">
+          <template v-for="row in listing.rows" :key="row.rowKey">
+            <div v-if="row.fold" class="collection-fold" :style="{ marginLeft: `${Math.min(row.depth, 5) * 18}px` }"><button type="button" :aria-label="`${row.expanded ? '收起' : '展开'}合集 ${row.title} 的成员`" :aria-expanded="row.expanded" @click="toggleCollection(row.id)">{{ row.expanded ? '收起' : `展开其余 ${row.hidden} 项` }} <span aria-hidden="true">{{ row.expanded ? '↑' : '↓' }}</span></button></div>
+            <div v-else class="surface entry-admin-row" :style="{ marginLeft: `${Math.min(row.depth, 5) * 18}px` }"><div><strong>{{ row.title || '短帖' }}</strong><small>{{ row.kind === 'resource' ? `${resourceLabel(row)} · ` : row.format === 'short' ? '短帖 · ' : '长文 · ' }}{{ row.status === 'draft' ? '草稿' : '已发布' }} · {{ listSort === 'created' ? '创建' : '修改' }}：{{ listDate(row) }}</small><small v-if="row.parent_id">所属：{{ resourceLocation(row) }}</small></div><div><button v-if="row.resource_kind === 'collection'" @click="newEntry('resource', 'document', row.id)">+ 子资源</button><button @click="editEntry(row)">编辑</button><button class="danger" @click="deleteEntry(row)">删除</button></div></div>
+          </template>
+        </div>
+        <PaginationNav :page="listing.page" :total-pages="listing.totalPages" @change="changePage" />
       </section>
       <section v-else-if="tab === 'editor'" class="admin-section">
         <div class="section-head"><div><h2>{{ editingId ? '编辑' : '新建' }}{{ kind === 'moment' ? '动态' : resourceLabel(form) }}</h2><p>正文使用 Markdown，内容会用于搜索。</p></div><div class="head-actions"><button class="ghost-button" @click="tab = kind">返回列表</button><button class="primary-button" :disabled="busy || shortTooLong" @click="saveEntry">保存内容</button></div></div>

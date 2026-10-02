@@ -61,7 +61,6 @@ a.entry-title:hover { text-decoration: underline; text-decoration-color: var(--a
 .entry-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
 .entry-actions a { display: inline-flex; padding: 5px 8px; border-radius: 3px; color: var(--ink); background: var(--accent-soft); box-shadow: 3px 3px 0 var(--sun); font-size: 11px; font-weight: 700; text-decoration: none; transition: transform .2s ease; }
 .entry-actions a:hover { transform: translateY(-2px); background: var(--accent-soft); }
-.pagination { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 35px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .note-turn-enter-active, .note-turn-leave-active { transition: transform .4s cubic-bezier(.22,.72,.18,1), opacity .4s ease; backface-visibility: hidden; transform-origin: center top; }
 .note-turn-enter-from { opacity: 0; transform: rotateX(-8deg) translateY(22px); }
 .note-turn-leave-to { opacity: 0; transform: rotateX(8deg) translateY(-22px); }
