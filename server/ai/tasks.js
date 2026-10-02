@@ -9,6 +9,7 @@ import { publicRoot, auditAndCleanupUploads, localFile } from '../upload-cleanup
 import { publicAncestors } from '../resource-structure.js';
 import { collectionTree, directory, localReferences, allowedUrls, readSource, imageSource, pdfPage, importAsset } from './sources.js';
 import { MODEL, HARNESS_VERSION, budgetReminder } from './prompt.js';
+import { INITIAL_BUDGET, BUDGET_INCREMENT, MAX_BUDGET } from './budget.js';
 
 const dataRoot = process.env.DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 export const taskRoot = join(dataRoot, 'ai');
@@ -47,8 +48,8 @@ export function createTask(input, files) {
     if (!prompt && !links.length && !files.length) throw new Error('请提供资料文件、链接或学习要求');
     const id = randomUUID();
     cardDb.transaction(() => {
-        cardDb.prepare('INSERT INTO ai_tasks (id,title,prompt,links,collection_id,settings,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
-            .run(id, String(input.title || '学习报告').trim().slice(0, 200), prompt, JSON.stringify(links), collectionId, JSON.stringify(settings()), now(), now());
+        cardDb.prepare('INSERT INTO ai_tasks (id,title,prompt,links,collection_id,settings,budget,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+            .run(id, String(input.title || '学习报告').trim().slice(0, 200), prompt, JSON.stringify(links), collectionId, JSON.stringify(settings()), INITIAL_BUDGET, now(), now());
         for (const file of files) cardDb.prepare('INSERT INTO ai_task_files (task_id,url,name,kind) VALUES (?,?,?,?)').run(id, file.url, file.name, file.kind);
         event(id, 'queued', '任务已加入队列，源资料已保护');
     })();
@@ -73,7 +74,7 @@ export function failTask(id, reason, status = 'failed') {
     if (!task || !['queued', 'running'].includes(task.status)) return;
     const draft = JSON.parse(task.draft);
     const failure = { title: `${task.title} · ${status === 'cancelled' ? '已取消' : '生成失败'}`, summary: String(reason).slice(0, 1000), tags: ['AI学习', '任务异常'],
-        body: `# ${status === 'cancelled' ? '学习任务已取消' : '学习报告生成失败'}\n\n${reason}\n\n主模型迭代：${task.iterations} / ${task.budget}（总上限 48）。\n\n${draft.body ? '## 已保存的未完成内容\n\n' + draft.body : '尚未保存报告正文。'}` };
+        body: `# ${status === 'cancelled' ? '学习任务已取消' : '学习报告生成失败'}\n\n${reason}\n\n主模型迭代：${task.iterations} / ${task.budget}（总上限 ${MAX_BUDGET}）。\n\n${draft.body ? '## 已保存的未完成内容\n\n' + draft.body : '尚未保存报告正文。'}` };
     mkdirSync(join(taskRoot, id), { recursive: true });
     writeFileSync(join(taskRoot, id, 'error.md'), sourceHeader(id) + failure.body, 'utf8');
     cardDb.transaction(() => {
@@ -125,10 +126,10 @@ export async function dispatch(id, method, args = {}, signal) {
         }
         case 'read_document': return JSON.parse(task.draft);
         case 'extend_budget': {
-            if (task.budget >= 48) throw new Error('已达到 48 次总上限，请提交报告');
-            const budget = Math.min(48, task.budget + 8);
+            if (task.budget >= MAX_BUDGET) throw new Error(`已达到 ${MAX_BUDGET} 次总上限，请提交报告`);
+            const budget = Math.min(MAX_BUDGET, task.budget + BUDGET_INCREMENT);
             cardDb.prepare('UPDATE ai_tasks SET budget=?,updated_at=? WHERE id=?').run(budget, now(), id);
-            event(id, 'budget', `已增加 8 次迭代，当前预算 ${budget}`);
+            event(id, 'budget', `已增加 ${budget - task.budget} 次迭代，当前预算 ${budget}`);
             return { budget, remaining: budget - task.iterations };
         }
         case 'submit_document': {
@@ -179,7 +180,7 @@ export function retryTask(id) {
     if (!task || !['failed', 'cancelled'].includes(task.status)) throw new Error('只有失败或取消的任务可以重试');
     if (active?.id === id) throw new Error('任务正在停止，请稍后重试');
     destination(task.collection_id, true);
-    cardDb.prepare("UPDATE ai_tasks SET status='queued',iterations=0,budget=16,error='',result_entry_id=NULL,settings=?,usage='{}',updated_at=? WHERE id=?").run(JSON.stringify(settings()), now(), id);
+    cardDb.prepare("UPDATE ai_tasks SET status='queued',iterations=0,budget=?,error='',result_entry_id=NULL,settings=?,usage='{}',updated_at=? WHERE id=?").run(INITIAL_BUDGET, JSON.stringify(settings()), now(), id);
     event(id, 'queued', '重新开始学习，保留源资料和已保存草稿');
     setImmediate(pump);
 }

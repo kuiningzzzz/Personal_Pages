@@ -7,10 +7,11 @@ import { cardDb } from '../db.js';
 import { publicRoot, rememberUpload, auditAndCleanupUploads } from '../upload-cleanup.js';
 import { publicAncestors } from '../resource-structure.js';
 import { MODEL, HARNESS_VERSION } from './prompt.js';
+import { INITIAL_BUDGET, BUDGET_INCREMENT, MAX_BUDGET } from './budget.js';
 import { createTask, getTask, taskView, settings, cancelTask, retryTask, taskRoot, taskStopping } from './tasks.js';
 
 const router = express.Router();
-router.get('/config', (_req, res) => res.json({ success: true, data: { ...settings(), model: MODEL, harnessVersion: HARNESS_VERSION, keyConfigured: !!process.env.DEEPSEEK_API_KEY } }));
+router.get('/config', (_req, res) => res.json({ success: true, data: { ...settings(), model: MODEL, harnessVersion: HARNESS_VERSION, initialIterations: INITIAL_BUDGET, iterationIncrement: BUDGET_INCREMENT, maxIterations: MAX_BUDGET, keyConfigured: !!process.env.DEEPSEEK_API_KEY } }));
 router.put('/config', (req, res) => {
     const maxOutputTokens = Number(req.body.maxOutputTokens);
     const taskTimeoutMinutes = Number(req.body.taskTimeoutMinutes);

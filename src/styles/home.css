@@ -9,10 +9,10 @@
 .welcome-copy { width: min(100%, 620px); text-align: center; perspective: 1000px; transition: opacity .32s ease, transform .4s ease; }
 .welcome-copy p { margin: 0 0 9px; color: var(--welcome-accent); font-size: clamp(14px, 1.8vw, 19px); line-height: 1.65; overflow-wrap: anywhere; animation: welcome-line .56s cubic-bezier(.22,.75,.14,1) var(--welcome-delay) both; }
 .welcome-copy p:first-child { color: var(--welcome-ink); font-size: clamp(20px, 2.6vw, 28px); font-weight: 800; margin-bottom: 14px; }
-.welcome-enter { display: inline-flex; align-items: center; justify-content: center; gap: 26px; margin-top: 24px; padding: 13px 26px; min-height: 48px; border: 0; border-radius: 5px; color: var(--welcome-bg); background: var(--welcome-ink); box-shadow: 4px 5px 0 var(--welcome-accent); font-size: 14px; font-weight: 800; visibility: hidden; animation: welcome-button .5s 1.32s cubic-bezier(.22,.75,.14,1) both; }
+.welcome-enter { display: inline-flex; flex: 1; min-width: 0; align-items: center; justify-content: center; gap: 12px; margin-top: 24px; padding: 13px 16px; min-height: 48px; border: 0; border-radius: 5px; color: var(--welcome-bg); background: var(--welcome-ink); box-shadow: 4px 5px 0 var(--welcome-accent); font-size: 14px; font-weight: 800; visibility: hidden; animation: welcome-button .5s 1.32s cubic-bezier(.22,.75,.14,1) both; }
 .welcome-enter:hover { background: var(--welcome-accent); }.welcome-enter:focus-visible { outline-color: var(--welcome-accent); }
-.welcome-enter span { font-size: 19px; font-weight: 500; }
-.welcome-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; }.welcome-silent { gap: 10px; background: var(--welcome-accent); box-shadow: 4px 5px 0 var(--welcome-record-stack); }.welcome-silent svg { width: 21px; height: 21px; }
+.welcome-enter span { white-space: nowrap; }.welcome-enter svg { flex: none; width: 21px; height: 21px; }
+.welcome-actions { display: flex; justify-content: center; width: min(100%, 343px); margin-inline: auto; gap: 15px; }
 .welcome-status { display: grid; place-items: center; height: 100%; margin: 0; color: var(--welcome-ink); }
 .welcome-leaving { pointer-events: none; }.welcome-leaving .welcome-copy { opacity: 0; transform: translateY(-24px) rotateX(10deg); }.welcome-leaving .welcome-copy p, .welcome-leaving .welcome-enter { animation: none; visibility: visible; }
 .home-revealing .content-stage { visibility: hidden; }.home-revealing .home-card, .turntable.reveal-pending :deep(.player-console) { opacity: 0; animation: none; }.reveal-pending { background: transparent; box-shadow: none; }
