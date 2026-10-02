@@ -298,10 +298,16 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(located.page, 3);
         assert.ok(located.data.some(r => r.id === momentIds[0]));
         assert.ok(located.data.length <= 15);
+        assert.equal((await request(`/api/admin/entries/${momentIds[0]}`, write('PUT', { ...moment, format: 'short',
+            title: '分页短帖 0', body: '分页验收数据已更新', tags: ['分页验收动态'], published_at: '2030-01-01T00:00:00.000Z' }))).status, 200);
+        assert.equal((await request(`${momentQuery}&sort=latest`)).body.data[0].id, momentIds.at(-1), '最新发布只按发布时间');
+        assert.equal((await request(`${momentQuery}&sort=updated`)).body.data[0].id, momentIds[0], '最新修改把旧帖的新修改排在前面');
+        assert.equal((await request('/api/content/entries?kind=moment&sort=updated')).body.data[0].id, momentIds[0]);
         const resourceIds = [];
         for (let i = 0; i < 16; i++) {
             const result = await request('/api/admin/entries', write('POST', { ...resource, title: `分页资源 ${i}`,
-                tags: ['分页验收资源'], resource_kind: i === 15 ? 'collection' : 'document', parent_id: null }));
+                tags: ['分页验收资源'], resource_kind: i === 15 ? 'collection' : 'document', parent_id: null,
+                published_at: i === 15 ? '2020-01-01T00:00:00.000Z' : new Date(Date.UTC(2030, 0, 1, 0, i)).toISOString() }));
             assert.equal(result.status, 201); resourceIds.push(result.body.id);
         }
         const pagedCollection = resourceIds.at(-1);
@@ -312,6 +318,8 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
             assert.equal(result.status, 201); childIds.push(result.body.id);
         }
         const resourceQuery = '/api/content/entries?kind=resource&q=' + encodeURIComponent('分页验收资源');
+        assert.equal((await request(`${resourceQuery}&sort=latest`)).body.data[0].id, resourceIds[14]);
+        assert.equal((await request(`${resourceQuery}&sort=updated`)).body.data[0].id, pagedCollection, '子内容更新使旧合集在最新修改排序中优先');
         for (const [parent, ids] of [[null, resourceIds], [pagedCollection, childIds]]) {
             const query = resourceQuery + (parent ? `&parent=${parent}` : '');
             const pages = await Promise.all([1, 2].map(n => request(`${query}&page=${n}`)));

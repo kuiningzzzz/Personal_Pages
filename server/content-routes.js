@@ -32,7 +32,7 @@ router.get('/entries', (req, res) => {
     const terms = query.split(/\s+/u).filter(Boolean);
     const type = Number(req.query.type) || null;
     const format = kind === 'moment' && ['short', 'article'].includes(req.query.format) ? req.query.format : null;
-    const sort = req.query.sort === 'latest' ? 'latest' : 'relevance';
+    const sort = ['latest', 'updated'].includes(req.query.sort) ? req.query.sort : 'relevance';
     let page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(48, Math.max(1, Number.parseInt(req.query.limit, 10) || 15));
     const parentId = kind === 'resource' && req.query.parent ? Number(req.query.parent) : null;
@@ -60,7 +60,8 @@ router.get('/entries', (req, res) => {
     }
     rows.sort((a, b) => {
         if (terms.length && sort === 'relevance' && a.score !== b.score) return b.score - a.score;
-        return b.published_at.localeCompare(a.published_at) || b.id - a.id;
+        const field = sort === 'updated' ? 'updated_at' : 'published_at';
+        return Date.parse(b[field]) - Date.parse(a[field]) || b.id - a.id;
     });
     const total = rows.length;
     // Mail links to short posts open the page containing that post, without

@@ -24,7 +24,7 @@ const selectedFormat = ref(null)
 const momentFormats = [{ id: null, name: '全部' }, { id: 'short', name: '短帖' }, { id: 'article', name: '长文' }]
 const input = ref('')
 const query = ref('')
-const sort = ref('relevance')
+const sort = ref('latest')
 const page = ref(1)
 const rows = ref([])
 const total = ref(0)
@@ -39,6 +39,11 @@ watch(input, value => {
   clearTimeout(timer)
   timer = setTimeout(() => { query.value = value.trim(); page.value = 1 }, 250)
 })
+watch(query, (value, previous) => {
+  if (value && !previous) sort.value = 'relevance'
+  else if (!value && sort.value === 'relevance') sort.value = 'latest'
+  page.value = 1
+}, { flush: 'sync' })
 watch(sort, () => { page.value = 1 }, { flush: 'sync' })
 watch([query, selectedType, selectedFormat, sort, page], load)
 
@@ -125,7 +130,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 
     <div class="list-toolbar">
       <label class="search-box"><span>搜索</span><input v-model="input" type="search" :placeholder="collection ? '搜索当前合集的标题、标签或正文' : '标题、标签或正文'" aria-label="搜索标题、标签或正文" /><span class="search-arrow" aria-hidden="true">↗</span></label>
-      <label class="sort-box"><span>排序</span><select v-model="sort"><option value="relevance">{{ query ? '匹配程度' : '最新发布' }}</option><option value="latest">发布时间</option></select></label>
+      <label class="sort-box"><span>排序</span><select v-model="sort"><option v-if="query" value="relevance">匹配程度</option><option value="latest">最新发布</option><option value="updated">最新修改</option></select></label>
     </div>
 
     <div class="list-meta"><span>{{ query ? `“${query}” 的搜索结果` : collection ? '合集内容' : selectedFormat === 'short' ? '短帖' : selectedFormat === 'article' ? '长文' : '全部内容' }}</span><span>{{ pending && loaded ? '正在翻页…' : `共 ${total} 条` }}</span></div>
