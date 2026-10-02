@@ -3,6 +3,7 @@ import { cardDb } from './db.js';
 import { imagesFor, publicAncestors } from './resource-structure.js';
 import { publicRoot } from './upload-cleanup.js';
 import { createGalleryArchiveRoutes } from './gallery-archive.js';
+import { homePlaylist, homeWelcome } from './home-music.js';
 
 const router = express.Router();
 router.use(createGalleryArchiveRoutes({ db: cardDb, publicRoot, imagesFor, publicAncestors }));
@@ -17,7 +18,7 @@ const entry = ({ gallery_cover, ...row }) => ({ ...row, cover_image: row.cover_i
 router.get('/profile', (_req, res) => {
     const profile = cardDb.prepare('SELECT avatar, name, description FROM profile WHERE id = 1').get();
     const cards = cardDb.prepare('SELECT id, title, content FROM home_cards ORDER BY display_order, id').all();
-    res.json({ success: true, data: { profile, cards } });
+    res.json({ success: true, data: { profile, cards, playlist: homePlaylist(cardDb), welcome: homeWelcome(cardDb) } });
 });
 
 router.get('/resource-types', (_req, res) => {

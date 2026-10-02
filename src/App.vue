@@ -1,11 +1,14 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import Header from './components/header.vue'
 import Footer from './components/footer.vue'
 import SubscriptionToast from './components/SubscriptionToast.vue'
+import GlobalRecord from './components/GlobalRecord.vue'
+import { music } from './lib/music'
 
 const route = useRoute()
+const welcoming = computed(() => route.path === '/' && (!music.entered || music.entering))
 const turn = ref('page-next')
 const position = path => {
   if (path.startsWith('/moments')) return 1
@@ -17,20 +20,21 @@ const position = path => {
   return 0
 }
 watch(() => route.path, (next, previous) => {
-  turn.value = position(next) < position(previous || '/') ? 'page-prev' : 'page-next'
+  turn.value = next === '/' || previous === '/' ? 'home-route' : position(next) < position(previous || '/') ? 'page-prev' : 'page-next'
 })
 </script>
 
 <template>
-  <Header />
-  <main class="site-main">
+  <Header :inert="welcoming" />
+  <main class="site-main" :inert="welcoming">
     <router-view v-slot="{ Component, route: currentRoute }">
       <Transition :name="turn" mode="out-in">
         <component :is="Component" :key="currentRoute.fullPath" />
       </Transition>
     </router-view>
   </main>
-  <Footer />
+  <Footer :inert="welcoming" />
+  <GlobalRecord />
   <SubscriptionToast />
 </template>
 

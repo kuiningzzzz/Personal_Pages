@@ -66,6 +66,12 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         const profile = { avatar: '/picture/test.png', name: '测试站点', description: '新的描述' };
         assert.equal((await request('/api/admin/profile', write('PUT', { profile, cards: [{ title: '测试卡片', content: '**加粗**' }] }))).status, 200);
         assert.equal((await request('/api/content/profile')).body.data.cards[0].content, '**加粗**');
+        const welcome = ['欢迎来到测试站点', '放一张喜欢的唱片', '记录值得留下的日常'];
+        assert.equal((await request('/api/admin/profile', write('PUT', { profile, cards: [], welcome }))).status, 200);
+        assert.deepEqual((await request('/api/admin/profile')).body.data.welcome, welcome);
+        assert.deepEqual((await request('/api/content/profile')).body.data.welcome, welcome);
+        assert.equal((await request('/api/admin/profile', write('PUT', { profile: { ...profile, name: '不应保存' }, cards: [], welcome: ['无效'] }))).status, 400);
+        assert.equal((await request('/api/content/profile')).body.data.profile.name, profile.name);
         const frontendPort = await freePort();
         const frontend = `http://127.0.0.1:${frontendPort}`;
         const projectRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -88,6 +94,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         });
         assert.equal(proxiedSave.status, 200, JSON.stringify(await proxiedSave.json()));
         assert.equal((await request('/api/content/profile')).body.data.profile.description, '来自本地代理');
+        assert.deepEqual((await request('/api/content/profile')).body.data.welcome, welcome, '旧请求未传欢迎文字时保留已保存内容');
         const crossSite = await request('/api/admin/settings', { ...write('PUT', {}), headers: { 'content-type': 'application/json', origin: 'https://example.invalid' } });
         assert.equal(crossSite.status, 403);
         assert.equal((await request('/api/admin/settings', write('PUT', { momentsDescription: '新动态介绍', resourceDescription: '资源介绍', activitiesMessage: '稍后开放', icpNumber: '' }))).status, 200);
@@ -280,6 +287,20 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(deletedGallery.status, 200);
         assert.equal(deletedGallery.body.deletedFiles, 1);
         assert.ok(!existsSync(filePath(galleryUrl)));
+
+        // Saved songs join the same upload-reference protection as Markdown.
+        const songUrl = await uploadText('song.mp3');
+        const home = (await request('/api/admin/profile')).body.data;
+        const homeWithMusic = { ...home, playlist: [{ title: '测试歌曲', artist: '测试作者', url: songUrl }] };
+        assert.equal((await request('/api/admin/profile', write('PUT', homeWithMusic))).status, 200);
+        assert.ok(existsSync(filePath(songUrl)));
+        assert.equal((await request('/api/content/profile')).body.data.playlist[0].url, songUrl);
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...homeWithMusic, playlist: [{ title: '无效', url: 'https://example.com/song.mp3' }] }))).status, 400);
+        assert.equal((await request('/api/admin/profile', write('PUT', { profile: home.profile, cards: home.cards }))).status, 200);
+        assert.equal((await request('/api/content/profile')).body.data.playlist.length, 1, '不传歌单的旧保存请求保留歌曲');
+        assert.ok(existsSync(filePath(songUrl)));
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...home, playlist: [] }))).status, 200);
+        assert.ok(!existsSync(filePath(songUrl)), '歌单移除后不再引用的 MP3 按规则清理');
 
         // Public search pages stay complete and distinct. Short-post mail links
         // locate their real page rather than pushing a sixteenth item into it.

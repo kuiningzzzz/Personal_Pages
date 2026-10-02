@@ -13,6 +13,10 @@
   --sky: #d8e5e8;
   --mint: #e5e7df;
   --cocoa: #876446;
+  --welcome-bg: #876446;
+  --welcome-record-stack: #503925;
+  --welcome-ink: #fffbf4;
+  --welcome-accent: #f3ddb8;
   --denim: #7799a7;
   --line: #252420;
   --paper: #fffbf4;
@@ -94,6 +98,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+html.home-welcome-active { overflow: hidden; }
 body { min-width: 320px; margin: 0; background: var(--page-bg); }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -166,6 +171,11 @@ a { color: inherit; }
 .page-next-leave-to { opacity: 0; transform: translateX(-38px) rotateY(9deg); }
 .page-prev-enter-from { opacity: 0; transform: translateX(-38px) rotateY(9deg); }
 .page-prev-leave-to { opacity: 0; transform: translateX(38px) rotateY(-9deg); }
+.home-route-enter-active { transition: opacity .25s ease; }
+.home-route-leave-active { transition: opacity .35s ease; }
+.home-route-enter-from, .home-route-leave-to { opacity: 0; }
+.home-route-leave-active .home-card { animation: none; transition: transform .35s ease, opacity .35s ease; }
+.home-route-leave-to .home-card { opacity: 0; transform: translateY(-55px) rotateX(22deg) translateZ(-70px); }
 
 html.theme-colors-instant *, html.theme-colors-instant *::before, html.theme-colors-instant *::after { transition: none !important; }
 html.theme-transition::view-transition-group(root) { z-index: 1; animation: none; }

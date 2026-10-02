@@ -11,6 +11,7 @@ import { migrateSubscriptions } from './subscriptions/schema.js';
 import { migrateComments } from './comments/schema.js';
 import { migrateResourceCategories } from './resource-categories.js';
 import { migrateResourceModifications } from './resource-modifications.js';
+import { migrateHomeMusic } from './home-music.js';
 
 // 获取当前文件的目录
 const __filename = fileURLToPath(import.meta.url);
@@ -168,6 +169,7 @@ function initializeDatabase() {
         migrateSubscriptions(cardDb);
         migrateResourceCategories(cardDb);
         migrateResourceModifications(cardDb);
+        migrateHomeMusic(cardDb);
         migrateComments(cardDb);
 
         // 检查评论数据库是否有数据
