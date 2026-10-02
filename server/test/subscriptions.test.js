@@ -6,6 +6,7 @@ import Database from '../sqlite.js';
 import { migrateUsers } from '../auth/schema.js';
 import { subscriptionMessage } from '../auth/mail.js';
 import { migrateSubscriptions } from '../subscriptions/schema.js';
+import { migrateResourceCategories } from '../resource-categories.js';
 import { setSubscription, setSubscriptions, subscriptionState } from '../subscriptions/graph.js';
 import { createSubscriptionRoutes } from '../subscriptions/routes.js';
 import { createSubscriptionService, NOTIFICATION_COOLDOWN, siteOrigin, notificationPath } from '../subscriptions/service.js';
@@ -26,6 +27,7 @@ function fixture(t, options = {}) {
     db.exec("INSERT INTO entries (title) VALUES ('已有资源')");
     migrateSubscriptions(db);
     migrateSubscriptions(db);
+    migrateResourceCategories(db);
     let now = Date.now();
     const messages = [];
     const mailer = { enabled: true, sendNotification: async message => { if (options.send) await options.send(message); messages.push(message); } };
@@ -37,7 +39,7 @@ function fixture(t, options = {}) {
     return { db, insert, service, messages, createService, mailer, advance: ms => { now += ms; } };
 }
 
-test('分类递归订阅与取消覆盖异类子合集，新子合集自动继承且可单独取消', t => {
+test('根大类递归订阅与取消覆盖整个合集树，新子合集继承且可单独取消', t => {
     const f = fixture(t);
     const root = f.insert({ shape: 'collection', type: 1 });
     const child = f.insert({ shape: 'collection', parent: root, type: 2 });
@@ -55,6 +57,21 @@ test('分类递归订阅与取消覆盖异类子合集，新子合集自动继�
     for (const id of [root, child, grandchild, newer]) assert.equal(state.collections[id], false);
     const newest = f.insert({ shape: 'collection', parent: newer });
     assert.equal(subscriptionState(f.db, 1).collections[newest], false);
+});
+
+test('子合集移到另一根大类后，新内容只提醒新大类的订阅者', async t => {
+    const f = fixture(t);
+    const first = f.insert({ shape: 'collection', type: 1 }), second = f.insert({ shape: 'collection', type: 2 });
+    const nested = f.insert({ shape: 'collection', parent: first });
+    setSubscription(f.db, 1, 'resource-type', 1, true);
+    setSubscription(f.db, 2, 'resource-type', 2, true);
+    f.db.prepare('UPDATE entries SET parent_id=? WHERE id=?').run(second, nested);
+    const article = f.insert({ parent: nested, type: 1 });
+    assert.equal(f.db.prepare('SELECT resource_type_id FROM entries WHERE id=?').get(article).resource_type_id, 2);
+    await f.service.process();
+    assert.equal(f.messages.length, 1);
+    assert.equal(f.messages[0].email, 'two@example.com');
+    assert.equal(f.messages[0].url, `https://example.com/entry/${article}`);
 });
 
 test('全库订阅、分类取消、重新全订阅与全部取消，以及动态三种独立选择', t => {

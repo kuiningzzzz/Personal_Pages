@@ -64,8 +64,14 @@ export function saveResourceExtras(id, data) {
     data.images.forEach((image, index) => insert.run(id, image.url, image.caption, image.width, image.height, index));
     if (data.memberIds !== null) {
         const now = new Date().toISOString();
-        cardDb.prepare('UPDATE entries SET parent_id = NULL, updated_at = ? WHERE parent_id = ?').run(now, id);
-        const move = cardDb.prepare('UPDATE entries SET parent_id = ?, updated_at = ? WHERE id = ?');
-        for (const memberId of data.memberIds) move.run(id, now, memberId);
+        const retained = new Set(data.memberIds);
+        const detach = cardDb.prepare('UPDATE entries SET parent_id = NULL, updated_at = ? WHERE id = ?');
+        for (const row of cardDb.prepare('SELECT id FROM entries WHERE parent_id = ?').all(id)) {
+            if (!retained.has(row.id)) detach.run(now, row.id);
+        }
+        // Kept members remain in their collection throughout the transaction,
+        // so saving a draft collection cannot temporarily publish its members.
+        const move = cardDb.prepare('UPDATE entries SET parent_id = ?, updated_at = ? WHERE id = ? AND parent_id IS NOT ?');
+        for (const memberId of data.memberIds) move.run(id, now, memberId, id);
     }
 }

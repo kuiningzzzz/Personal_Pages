@@ -127,7 +127,9 @@ function validateEntry(input, id = null) {
     if (format === 'short' && [...String(input.body ?? '').trim()].length > 500) return { error: '短帖正文不能超过 500 字' };
     const coverImage = clean(input.cover_image, 2048);
     if (coverImage && !/^(https?:\/\/|\/[^/])/i.test(coverImage)) return { error: '封面图片地址无效' };
-    const resourceTypeId = kind === 'resource' ? Number(input.resource_type_id) || null : null;
+    const resourceTypeId = kind !== 'resource' ? null : structure.parentId !== null
+        ? cardDb.prepare('SELECT resource_type_id FROM entries WHERE id=?').get(structure.parentId).resource_type_id
+        : Number(input.resource_type_id) || null;
     if (kind === 'resource' && resourceTypeId && !cardDb.prepare('SELECT id FROM resource_types WHERE id = ?').get(resourceTypeId)) return { error: '请选择有效的资源类型' };
     const date = input.published_at ? new Date(input.published_at) : new Date();
     if (Number.isNaN(date.getTime())) return { error: '发布时间格式错误' };

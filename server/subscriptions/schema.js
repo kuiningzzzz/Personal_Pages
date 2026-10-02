@@ -65,11 +65,12 @@ export function migrateSubscriptions(db) {
                 SELECT id FROM subtree
             );
         END;
-        CREATE TRIGGER IF NOT EXISTS subscription_category_delete BEFORE DELETE ON resource_types BEGIN
+        DROP TRIGGER IF EXISTS subscription_category_delete;
+        CREATE TRIGGER subscription_category_delete BEFORE DELETE ON resource_types BEGIN
             DELETE FROM subscriptions WHERE scope = 'resource-type' AND target_id = OLD.id;
             DELETE FROM subscriptions WHERE scope = 'collection' AND target_id IN (
                 WITH RECURSIVE subtree(id) AS (
-                    SELECT id FROM entries WHERE resource_type_id = OLD.id
+                    SELECT id FROM entries WHERE parent_id IS NULL AND kind='resource' AND resource_type_id = OLD.id
                     UNION SELECT e.id FROM entries e JOIN subtree s ON e.parent_id = s.id
                 ) SELECT id FROM subtree
             );

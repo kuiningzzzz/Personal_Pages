@@ -44,7 +44,7 @@ async function load() {
   pending.value = true
   error.value = ''
   const params = new URLSearchParams({ kind: props.kind, q: query.value, sort: sort.value, page: String(page.value), limit: '10' })
-  if (props.kind === 'resource' && selectedType.value) params.set('type', String(selectedType.value))
+  if (props.kind === 'resource' && !props.collectionId && selectedType.value) params.set('type', String(selectedType.value))
   if (props.kind === 'moment' && selectedFormat.value) params.set('format', selectedFormat.value)
   if (props.collectionId) params.set('parent', String(props.collectionId))
   try {
@@ -84,7 +84,7 @@ onMounted(async () => {
     } catch { /* normal list remains available */ }
   }
   try { const result = await (await fetch('/api/content/settings')).json(); settings.value = result.data || {} } catch { /* list still loads */ }
-  if (props.kind === 'resource') {
+  if (props.kind === 'resource' && !props.collectionId) {
     try { const result = await (await fetch('/api/content/resource-types')).json(); types.value = result.data || [] } catch { /* list still loads */ }
   }
   if (props.collectionId) {
@@ -114,12 +114,12 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
       <div v-if="collection?.actions.length" class="entry-actions"><a v-for="action in collection.actions" :key="action.label + action.url" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
     </div>
 
-    <nav v-if="kind === 'resource'" class="type-nav" aria-label="资源分类">
+    <nav v-if="kind === 'resource' && !collectionId" class="type-nav" aria-label="资源库根大类">
       <button type="button" :class="{ active: !selectedType }" @click="selectType(null)">全部</button>
       <button v-for="type in types" :key="type.id" type="button" :class="{ active: selectedType === type.id }" @click="selectType(type.id)">{{ type.name }}</button>
     </nav>
 
-    <nav v-else class="type-nav" aria-label="动态形式">
+    <nav v-else-if="kind === 'moment'" class="type-nav" aria-label="动态形式">
       <button v-for="format in momentFormats" :key="format.id || 'all'" type="button" :class="{ active: selectedFormat === format.id }" :aria-pressed="selectedFormat === format.id" @click="selectFormat(format.id)">{{ format.name }}</button>
     </nav>
 
@@ -143,7 +143,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
               <span v-else class="entry-art" aria-hidden="true"><strong>{{ (row.title || row.resource_type_name || '随记').slice(0, 2) }}</strong></span>
             </component>
             <div class="entry-content">
-              <div class="entry-top"><span>{{ kind === 'resource' ? resourceLabel(row) : row.format === 'short' ? '短帖' : '长文' }}</span><span v-if="row.resource_type_name">{{ row.resource_type_name }}</span><small v-if="row.resource_kind === 'collection'">{{ row.child_count }} 项内容</small><small v-else-if="row.resource_kind === 'gallery'">{{ row.image_count }} 张图片</small><time :datetime="row.published_at">{{ date(row.published_at) }}</time></div>
+              <div class="entry-top"><span>{{ kind === 'resource' ? resourceLabel(row) : row.format === 'short' ? '短帖' : '长文' }}</span><span v-if="!collectionId && row.resource_type_name">{{ row.resource_type_name }}</span><small v-if="row.resource_kind === 'collection'">{{ row.child_count }} 项内容</small><small v-else-if="row.resource_kind === 'gallery'">{{ row.image_count }} 张图片</small><time :datetime="row.published_at">{{ date(row.published_at) }}</time></div>
               <h2 v-if="isShort(row) && row.title" class="entry-title">{{ row.title }}</h2>
               <router-link v-else-if="row.title" class="entry-title" :to="entryPath(row)">{{ row.title }}<span aria-hidden="true">↗</span></router-link>
               <ShortPostBody v-if="isShort(row)" :source="row.body" />

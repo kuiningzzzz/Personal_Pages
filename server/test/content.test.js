@@ -194,13 +194,14 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.ok(!existsSync(filePath(imageUrl)));
 
         // Nested collections hide their members from all root listings and searches.
-        const collection = { kind: 'resource', resource_kind: 'collection', title: '游戏收藏', body: '整理游戏资源', status: 'published', parent_id: null };
+        const collection = { kind: 'resource', resource_kind: 'collection', title: '游戏收藏', body: '整理游戏资源', status: 'published', parent_id: null, resource_type_id: types[1].id };
         const outer = await request('/api/admin/entries', write('POST', collection));
         assert.equal(outer.status, 201);
         const outerId = outer.body.id;
         const nested = await request('/api/admin/entries', write('POST', { ...collection, title: '截图收藏', parent_id: outerId }));
         assert.equal(nested.status, 201);
         const nestedId = nested.body.id;
+        assert.equal((await request(`/api/content/entries/${nestedId}`)).body.data.resource_type_id, types[1].id);
         const childDocument = await request('/api/admin/entries', write('POST', { ...resource, title: '安装说明', parent_id: outerId }));
         assert.equal(childDocument.status, 201);
         const galleryFile = new FormData();
@@ -218,11 +219,16 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/content/entries?kind=resource&q=' + encodeURIComponent(gallery.title))).body.total, 0);
         const outerList = (await request(`/api/content/entries?kind=resource&parent=${outerId}`)).body.data;
         assert.deepEqual(new Set(outerList.map(row => row.id)), new Set([nestedId, childDocument.body.id]));
+        assert.ok(outerList.every(row => row.resource_type_id === types[1].id));
+        const ignoredType = (await request(`/api/content/entries?kind=resource&parent=${outerId}&type=${types[0].id}`)).body.data;
+        assert.deepEqual(new Set(ignoredType.map(row => row.id)), new Set(outerList.map(row => row.id)), '合集内部忽略大类筛选');
+        assert.equal((await request(`/api/content/entries?kind=resource&parent=${outerId}&q=${encodeURIComponent('安装说明')}&type=${types[0].id}`)).body.total, 1);
         const nestedList = (await request(`/api/content/entries?kind=resource&parent=${nestedId}`)).body.data;
         assert.equal(nestedList[0].id, galleryId);
         assert.equal(nestedList[0].image_count, 2);
         assert.equal(nestedList[0].cover_image, galleryUrl);
         const galleryDetail = (await request(`/api/content/entries/${galleryId}`)).body.data;
+        assert.equal(galleryDetail.resource_type_id, types[1].id);
         assert.deepEqual(galleryDetail.ancestors.map(row => row.id), [outerId, nestedId]);
         assert.deepEqual(galleryDetail.images.map(image => image.caption), ['游戏画面', '外部图片']);
         assert.equal((await request('/api/admin/entries?kind=resource')).body.data.find(row => row.id === galleryId).images.length, 2);

@@ -48,10 +48,8 @@ export function subscribedToEntry(entry, graph, records, eventId) {
         const specific = records.get(subscriptionKey('collection', node.id));
         if (specific) return eligible(specific, eventId);
     }
-    for (const node of path) {
-        const specific = records.get(subscriptionKey('resource-type', node.resource_type_id));
-        if (specific) return eligible(specific, eventId);
-    }
+    const rootCategory = records.get(subscriptionKey('resource-type', path.at(-1)?.resource_type_id));
+    if (rootCategory) return eligible(rootCategory, eventId);
     return eligible(records.get(subscriptionKey('resource-all')), eventId);
 }
 
@@ -86,16 +84,14 @@ function writeSubscription(db, graph, cursor, userId, scope, targetId, enabled) 
     if (scope === 'resource-all') {
         db.prepare("DELETE FROM subscriptions WHERE user_id = ? AND scope IN ('resource-all', 'resource-type', 'collection')").run(userId);
         write(scope);
-        if (enabled) {
-            db.prepare('SELECT id FROM resource_types').all().forEach(row => write('resource-type', row.id));
-            graph.rows.filter(row => row.resource_kind === 'collection').forEach(row => write('collection', row.id));
-        }
     } else if (scope === 'resource-type' || scope === 'collection') {
+        const roots = scope === 'collection' ? [targetId] : graph.rows.filter(row => row.parent_id === null && row.resource_type_id === targetId).map(row => row.id);
+        // Recursive inheritance supplies the default to every descendant.
+        // Reset branch overrides when the user subscribes/cancels the whole
+        // category or collection, including drafts and nested collections.
+        const remove = db.prepare("DELETE FROM subscriptions WHERE user_id=? AND scope='collection' AND target_id=?");
+        graph.branch(roots).filter(row => row.resource_kind === 'collection').forEach(row => remove.run(userId, row.id));
         write(scope, targetId);
-        const roots = scope === 'collection' ? [targetId] : graph.rows.filter(row => row.resource_type_id === targetId).map(row => row.id);
-        // DFS deliberately includes collections whose own category differs
-        // from an ancestor, and includes draft descendants for future release.
-        graph.branch(roots).filter(row => row.resource_kind === 'collection').forEach(row => write('collection', row.id));
     } else if (scope === 'moment-all') {
         db.prepare("DELETE FROM subscriptions WHERE user_id = ? AND scope IN ('moment-all', 'moment-short', 'moment-article')").run(userId);
         write(scope);

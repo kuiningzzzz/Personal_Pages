@@ -97,7 +97,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         </Teleport>
         <div ref="readingPane" class="reading-content">
       <article class="article">
-        <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_type_name">{{ entry.resource_type_name }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time></div>
+        <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time></div>
         <h1 v-if="entry.title">{{ entry.title }}</h1>
         <img v-if="entry.cover_image && entry.resource_kind !== 'gallery'" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
         <p v-if="entry.summary" class="lead">{{ entry.summary }}</p>

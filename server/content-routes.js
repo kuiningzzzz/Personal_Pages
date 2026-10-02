@@ -41,10 +41,11 @@ router.get('/entries', (req, res) => {
         const parent = cardDb.prepare("SELECT * FROM entries WHERE id = ? AND kind = 'resource' AND resource_kind = 'collection' AND status = 'published'").get(parentId);
         if (!parent || publicAncestors(parent) === null) return res.status(404).json({ success: false, message: '合集不存在' });
     }
+    const rootType = kind === 'resource' && parentId === null ? type : null;
     let rows = cardDb.prepare(`${entrySelect}
         WHERE e.kind = ? AND e.status = 'published' AND (? IS NULL OR e.resource_type_id = ?)
         AND (e.kind != 'resource' OR e.parent_id IS ?) AND (? IS NULL OR e.format = ?)`)
-        .all(kind, kind === 'resource' ? type : null, kind === 'resource' ? type : null, parentId, format, format)
+        .all(kind, rootType, rootType, parentId, format, format)
         .map(entry);
     if (terms.length) {
         rows = rows.map(row => {
