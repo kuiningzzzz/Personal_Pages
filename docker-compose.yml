@@ -15,6 +15,7 @@ services:
     volumes:
       - ./public/emoji:/usr/share/nginx/html/emoji  # 只挂载 emoji 目录，实时同步表情包
       - ./public/picture:/usr/share/nginx/html/picture  # 挂载 picture 目录
+      - ./public/source:/usr/share/nginx/html/source  # 挂载下载资源目录
       - ./public/friend_avatar:/usr/share/nginx/html/friend_avatar  # 挂载头像目录
       - ./certs:/etc/nginx/ssl:ro  # 挂载 SSL 证书目录（只读）
     depends_on:
@@ -35,14 +36,19 @@ services:
       dockerfile: Dockerfile
       args:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
-        ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.aliyun.com/alpine}
     container_name: personal-pages-backend
     restart: unless-stopped
     ports:
-      - "3002:3002"  # 映射端口到主机
+      - "127.0.0.1:3002:3002"  # 仅本机可直连，公网通过 Nginx /api
     environment:
       - NODE_ENV=production
       - SERVER_PORT=3002
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - SESSION_SECRET=${SESSION_SECRET:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - QQ_SMTP_USER=${QQ_SMTP_USER:-}
+      - QQ_SMTP_AUTH_CODE=${QQ_SMTP_AUTH_CODE:-}
+      - PUBLIC_SITE_URL=${PUBLIC_SITE_URL:-}
     volumes:
       - ./server/data:/app/data  # 挂载数据库到项目目录，方便查看和备份
       - ./public:/app/public  # 挂载宿主机的 public 目录

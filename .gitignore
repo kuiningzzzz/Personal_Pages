@@ -39,6 +39,8 @@ certs/*.ca-bundle
 *.tsbuildinfo
 
 .eslintcache
+.tmp-harness-inspect/
+server/data/
 
 # Cypress
 /cypress/videos/
@@ -50,3 +52,5 @@ __screenshots__/
 # 忽略 public 目录下的内容
 public/*
 !public/favicon.ico
+!public/favicon.png
+!public/music-sw.js

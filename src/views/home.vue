@@ -1,227 +1,110 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import Card2to8 from '../components/card_2to8.vue'
-import WordBlock from '../components/wordblock.vue'
-import CommentArea from '../components/comment_area.vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import MarkdownContent from '../components/MarkdownContent.vue'
+import PlayerControls from '../components/PlayerControls.vue'
+import PlayerIcon from '../components/PlayerIcon.vue'
+import { music, loadStation, enterHome } from '../lib/music'
+import { prepareReveal, revealDuration } from '../lib/theme-animation'
+import { entryPath, resourceLabel } from '../lib/resources'
 
-const homeContent = ref(null)
-const loading = ref(true)
-const error = ref('')
-
-const loadHomeContent = async () => {
-    loading.value = true
-    error.value = ''
-    try {
-        const response = await fetch('/api/home-content')
-        const data = await response.json()
-        if (data.success) {
-            homeContent.value = data.data
-        } else {
-            error.value = data.message || '信息获取失败，请刷新重试'
-        }
-    } catch (error) {
-        console.error('加载首页内容失败:', error)
-        homeContent.value = null
-        error.value = '信息获取失败，请刷新重试'
-    } finally {
-        loading.value = false
-    }
+const error = ref(''), feedError = ref('')
+const route = useRoute()
+const media = window.matchMedia('(max-width: 720px)')
+const mobile = ref(media.matches)
+const screenChanged = event => { mobile.value = event.matches }
+const moments = ref([]), resources = ref([])
+const section = ref(0), viewport = ref(null), homeScroll = ref(null), mobileIntro = ref(false)
+const revealStyle = ref({}), revealing = ref(false)
+const welcomeVisible = computed(() => !music.entered || music.entering)
+const titles = ['关于我', '最新动态', '最新资源']
+const items = computed(() => section.value === 0 ? music.cards : section.value === 1 ? moments.value : resources.value)
+let revealTimer, revealFrame
+watch(welcomeVisible, active => document.documentElement.classList.toggle('home-welcome-active', active), { immediate: true })
+async function reveal() {
+  music.entering = true
+  const record = document.querySelector('.global-record')
+  if (record) {
+    const geometry = prepareReveal(record)
+    revealStyle.value = { '--theme-disc-size': `${geometry.radius * 2}px`, '--theme-disc-left': `${geometry.x - geometry.radius}px`, '--theme-disc-top': `${geometry.y - geometry.radius}px` }
+  }
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  mobileIntro.value = media.matches
+  await nextTick()
+  revealFrame = requestAnimationFrame(() => { revealing.value = true })
+  if (mobileIntro.value) homeScroll.value?.scrollTo({ top: homeScroll.value.clientHeight, behavior: reduced ? 'auto' : 'smooth' })
+  revealTimer = setTimeout(async () => {
+    music.entering = false; revealing.value = false; mobileIntro.value = false; await nextTick()
+    if (homeScroll.value) homeScroll.value.scrollTop = 0
+  }, reduced ? 0 : revealDuration + 40)
 }
-
-onMounted(() => {
-    loadHomeContent()
+function changeSection(direction) {
+  section.value = (section.value + direction + titles.length) % titles.length
+  if (viewport.value) viewport.value.scrollTop = 0
+}
+const link = row => row.kind === 'moment' && row.format === 'short' ? { path: '/moments', query: { post: row.id } } : entryPath(row)
+const snippet = row => String(row.summary || row.body || '').slice(0, 160)
+const date = value => new Date(value).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+onMounted(async () => {
+  media.addEventListener('change', screenChanged)
+  window.addEventListener('home-player-open', reveal)
+  try {
+    await loadStation(); await nextTick()
+    const anchor = document.querySelector('.welcome-layout [data-player-home]')
+    if (anchor && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) prepareReveal(anchor)
+  } catch (cause) { error.value = cause.message || '首页加载失败' }
+  try {
+    const results = await Promise.all(['moment', 'resource'].map(kind => fetch('/api/content/entries?kind=' + kind + '&sort=latest&limit=4').then(r => r.json())))
+    if (results.some(result => !result.success)) throw new Error('最新内容加载失败')
+    moments.value = results[0].data; resources.value = results[1].data
+  } catch (cause) { feedError.value = cause.message || '最新内容加载失败' }
 })
+onUnmounted(() => { window.removeEventListener('home-player-open', reveal); media.removeEventListener('change', screenChanged); clearTimeout(revealTimer); cancelAnimationFrame(revealFrame); music.entering = false; document.documentElement.classList.remove('home-welcome-active') })
 </script>
 
 <template>
-    <div class="home-container">
-        <div v-if="loading" class="state-card">加载中...</div>
-        <div v-else-if="error" class="state-card error">{{ error }}</div>
-        <template v-else-if="homeContent">
-        <div class="profile-card">
-            <div class="avatar">
-                <img :src="homeContent.profile.avatar" alt="头像" />
-            </div>
-            <div class="info">
-                <h2 class="name">{{ homeContent.profile.name }}</h2>
-                <div class="about">
-                    <p v-for="line in homeContent.profile.bio" :key="line">{{ line }}</p>
-                </div>
-            </div>
+  <div ref="homeScroll" class="home-page" :class="{ 'home-entered': music.entered, 'home-revealing': music.entering }">
+  <Teleport to="body">
+    <div v-if="welcomeVisible" class="welcome-screen" :class="{ 'welcome-leaving': music.entered }" :style="revealStyle">
+      <div class="welcome-background" aria-hidden="true"><div v-if="revealing" class="welcome-reveal-disc"></div></div>
+      <section v-if="music.profile" class="welcome-layout" aria-label="欢迎来到我的网站">
+        <div class="welcome-record record-anchor" :data-player-home="!music.entered ? '' : undefined"></div>
+        <div class="welcome-copy"><p v-for="(line, index) in music.welcome" :key="index" :style="{ '--welcome-delay': (180 + index * 240) + 'ms' }">{{ line }}</p>
+          <button type="button" class="welcome-enter" :disabled="music.entered" @click="enterHome">进入网站<span aria-hidden="true">↗</span></button>
         </div>
-        
-        <Card2to8 v-for="section in homeContent.sections" :key="section.title" :title="section.title">
-            <p v-for="(row, index) in section.rows" :key="`${section.title}-${index}`">
-                <template v-if="row.type === 'link'">
-                    {{ row.label }}：<a :href="row.href">{{ row.value }}</a>
-                </template>
-                <template v-else-if="row.type === 'tags'">
-                    {{ row.label }}：
-                    <WordBlock v-for="item in row.items" :key="item">{{ item }}</WordBlock>
-                </template>
-                <template v-else>
-                    {{ row.label }}：{{ row.value }}
-                </template>
-            </p>
-        </Card2to8>
-        </template>
-
-        <CommentArea pageId="home" />
-
+      </section>
+      <p v-else class="welcome-status" role="status">{{ error || '加载中…' }}</p>
     </div>
+  </Teleport>
+    <div v-if="error" class="page-shell surface state">{{ error }}</div>
+    <div v-else-if="!music.profile" class="page-shell surface state">加载中…</div>
+    <template v-else>
+      <section v-if="!music.entered || mobileIntro" class="record-welcome" aria-hidden="true"></section>
+      <div v-if="music.entered" class="page-shell home-workspace">
+        <Teleport to="body" :disabled="!mobile"><aside class="turntable" :inert="music.entering" :class="{ 'turntable-leaving': route.path !== '/', 'reveal-pending': music.entering }"><div data-player-home class="record-anchor"></div><PlayerControls /></aside></Teleport>
+        <section class="content-stage" :inert="music.entering" aria-label="首页内容">
+          <header class="station-intro"><h1>{{ music.profile.name }}</h1><p>{{ music.profile.description }}</p></header>
+          <button type="button" class="section-skip skip-up" :aria-label="'切换到' + titles[(section + 2) % 3]" @click="changeSection(-1)"><PlayerIcon name="up" /><span>{{ titles[(section + 2) % 3] }}</span></button>
+          <div class="section-title"><h2>{{ titles[section] }}</h2><span aria-hidden="true">{{ String(section + 1).padStart(2, '0') }} / 03</span></div>
+          <div ref="viewport" class="home-content-viewport" aria-live="polite">
+            <Transition name="home-track" mode="out-in">
+              <div :key="section" class="home-cards">
+                <div v-if="section !== 0 && feedError" class="home-card state">{{ feedError }}</div>
+                <div v-else-if="!items.length" class="home-card state">{{ section === 0 ? '还没有介绍卡片' : '这里还没有内容' }}</div>
+                <template v-else>
+                  <article v-for="(item, index) in items" :key="item.id" class="home-card" :style="{ '--card-delay': Math.min(index, 9) * 85 + 'ms' }">
+                    <header><span class="card-number" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span><h3 v-if="section === 0">{{ item.title }}</h3><router-link v-else :to="link(item)">{{ item.title || '无标题短帖' }}<span aria-hidden="true">↗</span></router-link></header>
+                    <MarkdownContent v-if="section === 0" :source="item.content" />
+                    <template v-else><p v-if="snippet(item)" class="card-excerpt">{{ snippet(item) }}</p><footer><span>{{ section === 2 ? resourceLabel(item) : item.format === 'short' ? '短帖' : '长文' }}</span><span v-for="tag in item.tags.slice(0, 2)" :key="tag">#{{ tag }}</span><time :datetime="item.published_at">{{ date(item.published_at) }}</time></footer></template>
+                  </article>
+                </template>
+              </div>
+            </Transition>
+          </div>
+          <button type="button" class="section-skip skip-down" :aria-label="'切换到' + titles[(section + 1) % 3]" @click="changeSection(1)"><span>{{ titles[(section + 1) % 3] }}</span><PlayerIcon name="down" /></button>
+        </section>
+      </div>
+    </template>
+  </div>
 </template>
-
-<style scoped>
-.home-container {
-    display: flex;
-    justify-content: center;
-    padding: 20px 0;
-    flex-direction: column;
-    gap: 15px;
-    align-items: center;
-    width: 100%;
-}
-
-.profile-card {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(16px);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
-    padding: 32px;
-    width: 90%;
-    max-width: 1200px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-}
-
-.avatar img {
-    width: 150px;
-    height: 150px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-.info {
-    text-align: center;
-}
-
-.name {
-    color: #ffffff;
-    font-size: 32px;
-    font-weight: 500;
-    margin: 0 0 20px 0;
-    letter-spacing: 0.5px;
-}
-
-.about {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.about p {
-    color: #b8c5d6;
-    font-size: 16px;
-    margin: 0;
-    line-height: 1.8;
-    font-weight: 300;
-}
-
-p {
-    color: #b8c5d6;
-    font-size: 15px;
-    margin: 0;
-    line-height: 1.8;
-    font-weight: 300;
-}
-
-a {
-    color: #74aaff;
-}
-
-.state-card {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(16px);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
-    color: #b8c5d6;
-    font-size: 16px;
-    padding: 40px;
-    text-align: center;
-    width: 90%;
-    max-width: 1200px;
-}
-
-.state-card.error {
-    color: #ff9b9b;
-}
-
-/* 平板和手机响应式 */
-@media (max-width: 768px) {
-    .home-container {
-        padding: 15px 0;
-        gap: 12px;
-    }
-
-    .profile-card {
-        padding: 24px;
-        gap: 15px;
-        width: 95%;
-    }
-
-    .avatar img {
-        width: 120px;
-        height: 120px;
-    }
-
-    .name {
-        font-size: 24px;
-        margin: 0 0 15px 0;
-    }
-
-    .about p {
-        font-size: 14px;
-    }
-
-    p {
-        font-size: 14px;
-    }
-}
-
-@media (max-width: 480px) {
-    .home-container {
-        padding: 10px 0;
-        gap: 10px;
-    }
-
-    .profile-card {
-        padding: 16px;
-        gap: 12px;
-        width: 100%;
-        border-radius: 8px;
-        margin: 0 5px;
-    }
-
-    .avatar img {
-        width: 100px;
-        height: 100px;
-    }
-
-    .name {
-        font-size: 20px;
-        margin: 0 0 12px 0;
-    }
-
-    .about p,
-    p {
-        font-size: 13px;
-        line-height: 1.6;
-    }
-}
-</style>
+<style scoped src="../styles/home.css"></style>
