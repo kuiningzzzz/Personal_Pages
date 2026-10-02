@@ -26,6 +26,15 @@ test('播放由用户手势启动，同一 Audio 跨页面保留；单曲不预�
     assert.equal(audios.length, 1); assert.equal(audios[0].src, '/source/song-1.mp3');
     assert.equal(audios[0].loop, true); assert.equal(player.music.playing, true);
     const audio = audios[0];
+    assert.equal(audio.volume, 1);
+    player.setVolume(.2); assert.equal(player.volumeIcon.value, 'volume-low'); assert.equal(audio.volume, .2);
+    player.setVolume(.5); assert.equal(player.volumeIcon.value, 'volume-medium');
+    player.setVolume(.9); assert.equal(player.volumeIcon.value, 'volume-high');
+    player.toggleMute(); assert.equal(player.volumeIcon.value, 'volume-muted'); assert.equal(audio.muted, true);
+    assert.equal(audio.paused, false, '静音不暂停播放');
+    player.toggleMute(); assert.equal(audio.volume, .9); assert.equal(audio.muted, false);
+    player.setVolume(2); assert.equal(audio.volume, 1);
+    player.setVolume(NaN); assert.equal(audio.volume, 1);
     audio.currentTime = 90; audio.dispatchEvent(new Event('durationchange')); audio.dispatchEvent(new Event('timeupdate'));
     assert.equal(messages.filter(m => m.type === 'MUSIC_PREFETCH').length, 0, '单曲循环仅加载当前歌曲');
     audio.currentTime = 50; audio.dispatchEvent(new Event('timeupdate'));
@@ -52,4 +61,42 @@ test('播放由用户手势启动，同一 Audio 跨页面保留；单曲不预�
     player.applyStation({ ...data, playlist: [] });
     assert.equal(audio.paused, true); assert.equal(player.music.playing, false);
     player.togglePlayback(); assert.equal(audio.paused, true, '空歌单无法播放');
+});
+
+test('静音访问在播放前设为零；Gain 音量、进度与单一输出路径跨切歌保留', async t => {
+    const originals = new Map();
+    const replace = (key, value) => { originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
+    const contexts = [], audios = [], starts = [];
+    class FakeContext {
+        constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; this.resumes = 0; contexts.push(this); }
+        createGain() { const parameter = { value: 1, setTargetAtTime(value) { this.value = value; } }; return this.gain = { gain: parameter, connect() {} }; }
+        createMediaElementSource() { this.sources = (this.sources || 0) + 1; return { connect() {} }; }
+        resume() { this.state = 'running'; this.resumes++; return Promise.resolve(); }
+    }
+    class FakeAudio extends EventTarget {
+        constructor() { super(); this.paused = true; this.currentTime = 0; this.duration = 120; audios.push(this); }
+        play() { starts.push({ muted: this.muted, gain: contexts[0].gain.gain.value }); this.paused = false; this.dispatchEvent(new Event('playing')); return Promise.resolve(); }
+        pause() { this.paused = true; this.dispatchEvent(new Event('pause')); }
+    }
+    const window = new EventTarget(); window.AudioContext = FakeContext;
+    replace('window', window); replace('Audio', FakeAudio); replace('navigator', {});
+    t.after(() => { for (const [key, descriptor] of originals) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; });
+    const player = await import('../../src/lib/music.js?volume-test');
+    player.applyStation({ profile: { name: '站主' }, playlist: [{ title: '第一首', url: '/source/one.mp3' }, { title: '第二首', url: '/source/two.mp3' }] });
+    assert.equal(contexts.length, 0);
+    player.enterHome({ silent: true });
+    assert.deepEqual(starts[0], { muted: true, gain: 0 }, '首次播放不能先出声再静音');
+    const audio = audios[0], context = contexts[0];
+    assert.equal(player.music.volume, 0); assert.equal(player.music.playing, true); assert.equal(context.resumes, 1);
+    audio.currentTime = 35;
+    player.setVolume(.4);
+    assert.equal(audio.muted, false); assert.equal(audio.volume, 1, '增益控制不与原生音量重复衰减');
+    assert.equal(context.gain.gain.value, .4); assert.equal(audio.currentTime, 35);
+    player.music.surface = 'dock'; player.nextTrack();
+    assert.equal(contexts.length, 1); assert.equal(context.sources, 1); assert.equal(audios.length, 1);
+    assert.equal(audio.src, '/source/two.mp3'); assert.equal(context.gain.gain.value, .4);
+    player.toggleMute(); assert.equal(audio.muted, true); assert.equal(audio.paused, false);
+    player.toggleMute(); assert.equal(context.gain.gain.value, .4);
+    player.togglePlayback(); context.state = 'suspended'; player.togglePlayback();
+    assert.equal(context.resumes, 2, '用户再次播放时恢复被浏览器挂起的输出');
 });

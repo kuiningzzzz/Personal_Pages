@@ -4,10 +4,51 @@ import { queueIndex, PLAY_MODES } from './music-queue.js'
 export const music = reactive({
   profile: null, cards: [], tracks: [], welcome: [], ready: false, entered: false, entering: false,
   playing: false, buffering: false, currentIndex: 0, time: 0, duration: 0,
-  mode: 'single', surface: 'hidden', error: '',
+  mode: 'single', surface: 'hidden', error: '', volume: 1,
 })
 export const currentTrack = computed(() => music.tracks[music.currentIndex] || null)
+export const volumeIcon = computed(() => music.volume === 0 ? 'volume-muted' : music.volume <= 1 / 3 ? 'volume-low' : music.volume <= 2 / 3 ? 'volume-medium' : 'volume-high')
 let audio, loading, source = '', prepared = null, history = [], workerReady
+let audioContext, volumeGain, lastVolume = 1
+
+export function setVolume(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return
+  music.volume = Math.max(0, Math.min(1, numeric))
+  if (music.volume > 0) lastVolume = music.volume
+  if (!audio) return
+  audio.muted = music.volume === 0
+  if (volumeGain) {
+    volumeGain.gain.setTargetAtTime(music.volume, audioContext.currentTime, .015)
+  } else audio.volume = music.volume
+}
+export function toggleMute() { setVolume(music.volume === 0 ? lastVolume : 0) }
+
+function prepareVolume(player) {
+  if (!audioContext) {
+    const Context = window.AudioContext || window.webkitAudioContext
+    if (Context) {
+      let context, node
+      try {
+        context = new Context()
+        const gain = context.createGain()
+        gain.gain.value = music.volume
+        node = context.createMediaElementSource(player)
+        node.connect(gain); gain.connect(context.destination)
+        audioContext = context; volumeGain = gain
+      } catch {
+        // If the element was already routed, preserve a connected output.
+        if (node) { node.disconnect(); node.connect(context.destination); audioContext = context }
+        else context?.close().catch(() => {})
+      }
+    }
+  }
+  player.muted = music.volume === 0
+  player.volume = volumeGain ? 1 : music.volume
+  // Build and resume the gain path in the initiating user gesture. This also
+  // controls volume on mobile browsers that ignore the element's volume.
+  if (audioContext && audioContext.state !== 'running') audioContext.resume().catch(() => {})
+}
 
 function registerMusicCache() {
   if (workerReady) return workerReady
@@ -67,6 +108,7 @@ function media() {
 
 function play() {
   const player = media()
+  prepareVolume(player)
   music.error = ''; player.loop = music.mode === 'single'
   const track = currentTrack.value
   if (!track) return
@@ -86,8 +128,9 @@ function play() {
   }
 }
 
-export function enterHome() {
+export function enterHome({ silent = false } = {}) {
   if (music.entered) return
+  if (silent) setVolume(0)
   music.entered = true
   window.dispatchEvent(new Event('home-player-open'))
   if (music.tracks.length) { music.currentIndex = 0; play() }
