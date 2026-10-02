@@ -36,6 +36,7 @@ services:
       dockerfile: Dockerfile
       args:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-mirrors.tuna.tsinghua.edu.cn}
     container_name: personal-pages-backend
     restart: unless-stopped
     ports:
