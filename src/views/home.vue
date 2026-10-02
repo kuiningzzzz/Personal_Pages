@@ -74,7 +74,7 @@ onUnmounted(() => { window.removeEventListener('home-player-open', reveal); medi
       <section v-if="music.profile" class="welcome-layout" aria-label="欢迎来到我的网站">
         <div class="welcome-record record-anchor" :data-player-home="!music.entered ? '' : undefined"></div>
         <div class="welcome-copy"><p v-for="(line, index) in music.welcome" :key="index" :style="{ '--welcome-delay': (180 + index * 240) + 'ms' }">{{ line }}</p>
-          <div class="welcome-actions"><button type="button" class="welcome-enter" :disabled="music.entered" @click="enterHome()">进入网站<span aria-hidden="true">↗</span></button><button type="button" class="welcome-enter welcome-silent" :disabled="music.entered" @click="enterHome({ silent: true })"><PlayerIcon name="volume-muted" />静音访问</button></div>
+          <div class="welcome-actions"><button type="button" class="welcome-enter" :disabled="music.entered" @click="enterHome()"><span>进入网站</span><PlayerIcon name="play" /></button><button type="button" class="welcome-enter" :disabled="music.entered" @click="enterHome({ silent: true })"><span>静音访问</span><PlayerIcon name="volume-muted" /></button></div>
         </div>
       </section>
       <p v-else class="welcome-status" role="status">{{ error || '加载中…' }}</p>

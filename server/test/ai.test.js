@@ -142,28 +142,28 @@ async function harnessScenario(selectTool, { job = task() } = {}) {
     } finally { mock.closeAllConnections(); await new Promise(resolve => mock.close(resolve)); }
 }
 
-test('真实 Harness 普通文本不会结束循环：16 次未提交产出错误文件', async () => {
+test('真实 Harness 普通文本不会结束循环：64 次未提交产出错误文件', async () => {
     const result = await harnessScenario(() => null);
     assert.equal(result.task.status,'failed',result.task.error + result.diagnostics);
-    assert.equal(result.calls,16);
-    assert.equal(result.task.iterations,16);
+    assert.equal(result.calls,64);
+    assert.equal(result.task.iterations,64);
     assert.match(readFileSync(join(folder,'ai',result.task.id,'error.md'),'utf8'),/迭代次数用尽/);
 });
 
 test('真实 Harness 可扩展预算、修正失败提交，成功后不再请求模型', async () => {
-    const result = await harnessScenario(count => count === 16 ? { name:'extend_budget' } : count === 17 ? { name:'submit_document' } : count === 18 ? { name:'write_document',args:{ title:'学习报告',body:'## 详细讲解\n测试说明\n\n## 内容总结\n总结' } } : count === 19 ? { name:'submit_document' } : null);
+    const result = await harnessScenario(count => count === 64 ? { name:'extend_budget' } : count === 65 ? { name:'submit_document' } : count === 66 ? { name:'write_document',args:{ title:'学习报告',body:'## 详细讲解\n测试说明\n\n## 内容总结\n总结' } } : count === 67 ? { name:'submit_document' } : null);
     assert.equal(result.task.status,'published',result.task.error + result.diagnostics);
-    assert.equal(result.task.budget,24);
-    assert.equal(result.task.iterations,19);
-    assert.equal(result.calls,19);
+    assert.equal(result.task.budget,128);
+    assert.equal(result.task.iterations,67);
+    assert.equal(result.calls,67);
 });
 
-test('真实 Harness 总上限为 48，最后一次仍未提交就结束', async () => {
-    const result = await harnessScenario(count => [16,24,32,40].includes(count) ? { name:'extend_budget' } : null);
+test('真实 Harness 总上限为 320，最后一次仍未提交就结束', async () => {
+    const result = await harnessScenario(count => [64,128,192,256].includes(count) ? { name:'extend_budget' } : null);
     assert.equal(result.task.status,'failed',result.task.error + result.diagnostics);
-    assert.equal(result.calls,48);
-    assert.equal(result.task.iterations,48);
-    assert.equal(result.task.budget,48);
+    assert.equal(result.calls,320);
+    assert.equal(result.task.iterations,320);
+    assert.equal(result.task.budget,320);
 });
 
 test('同一任务连续重试使用不同持久会话，保留资料和草稿，最终能发布', async () => {
@@ -176,6 +176,7 @@ test('同一任务连续重试使用不同持久会话，保留资料和草稿�
         retryTask(job.id);
         assert.equal(getTask(job.id).status,'queued');
         assert.equal(getTask(job.id).iterations,0);
+        assert.equal(getTask(job.id).budget,64);
         assert.equal(JSON.parse(getTask(job.id).draft).body,body);
         assert.ok(existsSync(join(process.env.PUBLIC_DIR,pdf.slice(1))));
         // Claim the retry synchronously, so this test drives the real worker with
@@ -183,7 +184,7 @@ test('同一任务连续重试使用不同持久会话，保留资料和草稿�
         cardDb.prepare("UPDATE ai_tasks SET status='running' WHERE id=?").run(job.id);
         const result = await harnessScenario(count => attempt === 0 ? null : count === 1 ? {name:'read_document'} : {name:'submit_document'}, {job:getTask(job.id)});
         assert.equal(result.task.status,attempt === 0 ? 'failed' : 'published',result.task.error);
-        assert.equal(result.calls,attempt === 0 ? 16 : 2,result.task.error);
+        assert.equal(result.calls,attempt === 0 ? 64 : 2,result.task.error);
     }
     const sessions = taskView(getTask(job.id),true).events.filter(item => item.kind === 'session').map(item => item.data.sessionId);
     assert.equal(sessions.length,3);

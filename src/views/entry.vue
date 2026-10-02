@@ -7,6 +7,7 @@ import ResourceBreadcrumbs from '../components/ResourceBreadcrumbs.vue'
 import CommentsPanel from '../components/CommentsPanel.vue'
 import { lockPageScroll, trapFocus } from '../lib/layers'
 import { entryPath, resourceLabel } from '../lib/resources'
+import { followActiveOutline } from '../lib/reading-outline'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +35,7 @@ async function downloadGallery() {
 const headings = ref([])
 const activeSection = ref('')
 const sidebar = ref(null)
+const tocNav = ref(null)
 const readingPane = ref(null)
 const drawerTrigger = ref(null)
 const media = window.matchMedia('(max-width: 900px)')
@@ -41,18 +43,22 @@ const mobile = ref(media.matches)
 const drawerOpen = ref(false)
 const outline = computed(() => [...headings.value, ...(entry.value?.resource_kind === 'gallery' ? [{ id: `gallery-${entry.value.id}`, text: '图集', level: 1 }] : [])])
 const minimumLevel = computed(() => Math.min(...outline.value.map(item => item.level), 6))
-let releaseScroll, frame = 0, resizeObserver
+let releaseScroll, frame = 0, resizeObserver, followPending = false
 function trackSection() {
   frame = 0
+  const follow = followPending; followPending = false
   if (!outline.value.length) { activeSection.value = ''; return }
   let current = outline.value[0].id
   for (const item of outline.value) {
     const element = document.getElementById(item.id)
     if (element && element.getBoundingClientRect().top <= Math.max(120, window.innerHeight * .22)) current = item.id
   }
+  const changed = activeSection.value !== current
   activeSection.value = current
+  if (follow || changed) nextTick(() => followActiveOutline(tocNav.value))
 }
 function scheduleTracking() { if (!frame) frame = requestAnimationFrame(trackSection) }
+function readingScrolled() { followPending = true; scheduleTracking() }
 function closeDrawer(restoreFocus = false) { drawerOpen.value = false; if (restoreFocus) drawerTrigger.value?.focus() }
 async function jumpTo(id) {
   closeDrawer()
@@ -70,13 +76,13 @@ watch(drawerOpen, async open => {
   releaseScroll?.(); releaseScroll = null
   if (open && mobile.value) {
     releaseScroll = lockPageScroll()
-    await nextTick(); sidebar.value?.querySelector('button')?.focus()
+    await nextTick(); sidebar.value?.querySelector('button')?.focus(); followActiveOutline(tocNav.value)
   }
 })
 watch(outline, async () => { await nextTick(); scheduleTracking() })
 onMounted(async () => {
   media.addEventListener('change', screenChanged)
-  window.addEventListener('scroll', scheduleTracking, { passive: true })
+  window.addEventListener('scroll', readingScrolled, { passive: true })
   window.addEventListener('resize', scheduleTracking, { passive: true })
   try {
     const result = await (await fetch(`/api/content/entries/${route.params.id}`)).json()
@@ -94,7 +100,7 @@ onUnmounted(() => {
   downloadController?.abort()
   releaseScroll?.(); cancelAnimationFrame(frame); resizeObserver?.disconnect()
   media.removeEventListener('change', screenChanged)
-  window.removeEventListener('scroll', scheduleTracking)
+  window.removeEventListener('scroll', readingScrolled)
   window.removeEventListener('resize', scheduleTracking)
 })
 const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -111,7 +117,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <Teleport to="body" :disabled="!mobile">
           <aside :id="`reading-sidebar-${entry.id}`" ref="sidebar" class="reading-sidebar" :class="{ 'drawer-open': drawerOpen, 'mobile-sidebar': mobile }" :role="mobile ? 'dialog' : 'complementary'" :aria-modal="mobile && drawerOpen ? true : undefined" :aria-hidden="mobile && !drawerOpen ? true : undefined" aria-label="目录与评论" @keydown="drawerKeys">
             <div v-if="mobile" class="drawer-heading"><strong>目录与评论</strong><button type="button" aria-label="收起目录与评论" @click="closeDrawer(true)">×</button></div>
-            <section class="toc-panel"><h2>本页目录</h2><nav v-if="outline.length" aria-label="文章目录"><a v-for="item in outline" :key="item.id" :href="`#${item.id}`" :class="{ active: activeSection === item.id }" :style="{ '--depth': item.level - minimumLevel }" :aria-current="activeSection === item.id ? 'location' : undefined" @click.prevent="jumpTo(item.id)">{{ item.text }}</a></nav><p v-else>这页没有章节标题。</p></section>
+            <section class="toc-panel"><h2>本页目录</h2><nav v-if="outline.length" ref="tocNav" aria-label="文章目录"><a v-for="item in outline" :key="item.id" :href="`#${item.id}`" :class="{ active: activeSection === item.id }" :style="{ '--depth': item.level - minimumLevel }" :aria-current="activeSection === item.id ? 'location' : undefined" @click.prevent="jumpTo(item.id)">{{ item.text }}</a></nav><p v-else>这页没有章节标题。</p></section>
             <CommentsPanel :entry-id="entry.id" />
           </aside>
         </Teleport>
@@ -141,7 +147,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 .toc-panel { flex: none; padding: 16px; border-radius: 6px; background: var(--card-sky); box-shadow: 4px 5px 0 var(--card-sky-stack); }
 .toc-panel h2 { margin: 0 0 12px; color: var(--ink); font-size: 16px; font-weight: 800; }
 .toc-panel nav { max-height: 28vh; overflow-y: auto; padding-right: 3px; scrollbar-width: thin; }
-.toc-panel a { display: block; padding: 6px 0 6px calc(var(--depth) * 9px); color: var(--muted); font-size: max(11px, calc(13px - var(--depth) * .5px)); line-height: 1.65; overflow-wrap: anywhere; text-decoration: none; transition: color .2s ease, font-size .2s ease; }
+.toc-panel a { display: block; padding: 6px 0 6px calc(var(--depth) * 9px); color: var(--muted); font-size: max(11px, calc(13px - var(--depth) * .5px)); line-height: 1.65; overflow-wrap: anywhere; text-decoration: none; transition: color .2s ease; }
 .toc-panel a.active { color: var(--link); font-size: 16px; font-weight: 800; }
 .toc-panel p { color: var(--muted); font-size: 12px; line-height: 1.7; }
 .gallery-section { scroll-margin-top: 105px; margin-top: 38px; }

@@ -1,5 +1,6 @@
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { BUDGET_INCREMENT, MAX_BUDGET } from './budget.js';
 
 export const name = 'personal-pages-learning';
 export const inject = ['tools', 'agents', 'systemPrompt', 'attachments'];
@@ -26,7 +27,7 @@ export function apply(ctx) {
         ['write_document', '保存或替换学习报告草稿；不发布。请提供详细讲解和内容总结。', { title: string('报告标题'), body: string('完整 Markdown 正文'), summary: string('简短摘要', false), tags: { type: 'array', items: { type: 'string' } },
             actions: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { label: string('按钮文字'), url: string('按钮链接') } } } }],
         ['read_document', '读取已保存的报告草稿，供检查和修改。', {}],
-        ['extend_budget', '增加 8 次主模型迭代，总预算最多 48 次。', {}],
+        ['extend_budget', `增加 ${BUDGET_INCREMENT} 次主模型迭代，总预算最多 ${MAX_BUDGET} 次。`, {}],
         ['submit_document', '提交已保存的学习报告，公开发布到固定目的地；成功后立即结束任务。', {}]
     ];
     for (const [toolName, description, parameters] of specs) {
