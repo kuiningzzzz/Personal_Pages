@@ -14,7 +14,7 @@ const media = window.matchMedia('(max-width: 720px)')
 const mobile = ref(media.matches)
 const screenChanged = event => { mobile.value = event.matches }
 const moments = ref([]), resources = ref([])
-const section = ref(0), viewport = ref(null), homeScroll = ref(null), mobileIntro = ref(false)
+const section = ref(0), heading = ref(null), homeScroll = ref(null), mobileIntro = ref(false)
 const revealStyle = ref({}), revealing = ref(false)
 const welcomeVisible = computed(() => !music.entered || music.entering)
 const titles = ['关于我', '最新动态', '最新资源']
@@ -32,15 +32,19 @@ async function reveal() {
   mobileIntro.value = media.matches
   await nextTick()
   revealFrame = requestAnimationFrame(() => { revealing.value = true })
-  if (mobileIntro.value) homeScroll.value?.scrollTo({ top: homeScroll.value.clientHeight, behavior: reduced ? 'auto' : 'smooth' })
+  if (mobileIntro.value) {
+    const workspace = homeScroll.value?.querySelector('.home-workspace')
+    if (workspace) window.scrollTo({ top: workspace.getBoundingClientRect().top + window.scrollY - 64, behavior: reduced ? 'instant' : 'smooth' })
+  }
   revealTimer = setTimeout(async () => {
     music.entering = false; revealing.value = false; mobileIntro.value = false; await nextTick()
-    if (homeScroll.value) homeScroll.value.scrollTop = 0
+    if (media.matches) window.scrollTo({ top: 0, behavior: 'instant' })
   }, reduced ? 0 : revealDuration + 40)
 }
 function changeSection(direction) {
   section.value = (section.value + direction + titles.length) % titles.length
-  if (viewport.value) viewport.value.scrollTop = 0
+  const coveredHeight = media.matches ? 64 + (window.innerHeight - 64) / 3 + 17 : 98
+  if (heading.value?.getBoundingClientRect().top < coveredHeight) heading.value.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
 }
 const link = row => row.kind === 'moment' && row.format === 'short' ? { path: '/moments', query: { post: row.id } } : entryPath(row)
 const snippet = row => String(row.summary || row.body || '').slice(0, 160)
@@ -70,7 +74,7 @@ onUnmounted(() => { window.removeEventListener('home-player-open', reveal); medi
       <section v-if="music.profile" class="welcome-layout" aria-label="欢迎来到我的网站">
         <div class="welcome-record record-anchor" :data-player-home="!music.entered ? '' : undefined"></div>
         <div class="welcome-copy"><p v-for="(line, index) in music.welcome" :key="index" :style="{ '--welcome-delay': (180 + index * 240) + 'ms' }">{{ line }}</p>
-          <button type="button" class="welcome-enter" :disabled="music.entered" @click="enterHome">进入网站<span aria-hidden="true">↗</span></button>
+          <div class="welcome-actions"><button type="button" class="welcome-enter" :disabled="music.entered" @click="enterHome()">进入网站<span aria-hidden="true">↗</span></button><button type="button" class="welcome-enter welcome-silent" :disabled="music.entered" @click="enterHome({ silent: true })"><PlayerIcon name="volume-muted" />静音访问</button></div>
         </div>
       </section>
       <p v-else class="welcome-status" role="status">{{ error || '加载中…' }}</p>
@@ -83,10 +87,10 @@ onUnmounted(() => { window.removeEventListener('home-player-open', reveal); medi
       <div v-if="music.entered" class="page-shell home-workspace">
         <Teleport to="body" :disabled="!mobile"><aside class="turntable" :inert="music.entering" :class="{ 'turntable-leaving': route.path !== '/', 'reveal-pending': music.entering }"><div data-player-home class="record-anchor"></div><PlayerControls /></aside></Teleport>
         <section class="content-stage" :inert="music.entering" aria-label="首页内容">
-          <header class="station-intro"><h1>{{ music.profile.name }}</h1><p>{{ music.profile.description }}</p></header>
+          <header ref="heading" class="station-intro"><h1>{{ music.profile.name }}</h1><p>{{ music.profile.description }}</p></header>
           <button type="button" class="section-skip skip-up" :aria-label="'切换到' + titles[(section + 2) % 3]" @click="changeSection(-1)"><PlayerIcon name="up" /><span>{{ titles[(section + 2) % 3] }}</span></button>
           <div class="section-title"><h2>{{ titles[section] }}</h2><span aria-hidden="true">{{ String(section + 1).padStart(2, '0') }} / 03</span></div>
-          <div ref="viewport" class="home-content-viewport" aria-live="polite">
+          <div class="home-content-viewport" aria-live="polite">
             <Transition name="home-track" mode="out-in">
               <div :key="section" class="home-cards">
                 <div v-if="section !== 0 && feedError" class="home-card state">{{ feedError }}</div>

@@ -8,6 +8,7 @@ import Admin from '../views/admin.vue'
 import Auth from '../views/auth.vue'
 import Account from '../views/account.vue'
 import { loadVisitor } from '../lib/auth'
+import { syncMusicRoute } from '../lib/music'
 
 const routes = [
   { path: '/', component: Home },
@@ -29,8 +30,14 @@ const routes = [
   { path: '/:pathMatch(.*)*', redirect: '/' }
 ]
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes,
   scrollBehavior(_to, _from, savedPosition) { return savedPosition || { top: 0 } }
 })
+
+router.afterEach((to, _from, failure) => {
+  if (!failure) syncMusicRoute(to.path)
+})
+
+export default router

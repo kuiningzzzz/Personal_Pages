@@ -8,7 +8,7 @@ const route = useRoute()
 const visible = ref(false)
 const position = ref({ x: 0, y: 0, scale: 1 })
 const style = computed(() => ({ transform: `translate3d(${position.value.x}px, ${position.value.y}px, 0) scale(${position.value.scale})` }))
-const label = computed(() => !music.entered ? '播放唱片，展开首页' : !music.tracks.length ? '尚未配置歌单' : music.playing ? '暂停音乐' : '继续播放音乐')
+const label = computed(() => !music.entered ? '播放唱片，展开首页' : !music.tracks.length ? '尚未配置歌单' : music.playing ? '暂停音乐' : music.time > 0 ? '继续播放音乐' : '播放音乐')
 let resizeObserver, observer, frame = 0, anchor
 function locate() {
   frame = 0
@@ -44,7 +44,7 @@ onUnmounted(() => {
 </script>
 <template>
   <div v-show="visible" class="global-record" :class="{ docked: music.surface === 'dock', 'record-intro': !music.entered || music.entering }" :style="style">
-    <div class="vinyl" :class="{ spinning: music.playing }"><div class="vinyl-grooves"></div><img v-if="music.profile?.avatar" :src="music.profile.avatar" :alt="`${music.profile.name}的头像唱片`" /><span class="vinyl-center" aria-hidden="true"></span></div>
+    <div class="vinyl" :class="{ spinning: music.playing }"><div class="vinyl-grooves"></div><img v-if="music.profile?.avatar" :src="music.profile.avatar" :alt="`${music.profile.name}的头像唱片`" /></div>
     <button type="button" class="record-toggle" :aria-label="label" :title="label" :aria-pressed="music.playing" :disabled="music.entering || (music.entered && !music.tracks.length)" @click="togglePlayback"><span class="record-action" :class="{ hidden: music.playing && music.entered }"><PlayerIcon :name="music.playing ? 'pause' : 'play'" /></span></button>
   </div>
 </template>
@@ -55,7 +55,6 @@ onUnmounted(() => {
 .record-intro .vinyl { box-shadow: 0 12px 0 #101115, 12px 18px 0 var(--welcome-record-stack); }
 .vinyl-grooves { position: absolute; inset: 8%; border-radius: 50%; box-shadow: 0 0 0 1px #ffffff15, 0 0 0 5px #141518, 0 0 0 6px #ffffff12, 0 0 0 12px #141518, 0 0 0 13px #ffffff12, 0 0 0 19px #141518, 0 0 0 20px #ffffff12; }
 .vinyl img { position: relative; display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--sun); box-shadow: 0 0 0 6px #0c0d0f; }
-.vinyl-center { position: absolute; top: 50%; left: 50%; width: 9px; height: 9px; border-radius: 50%; background: #141518; box-shadow: 0 0 0 3px #fffbf490; transform: translate(-50%, -50%); }
 .record-toggle { position: absolute; inset: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #fffdf8; }
 .record-toggle:disabled { cursor: default; }
 .record-action { display: flex; align-items: center; justify-content: center; position: absolute; inset: 32%; padding: 20px; border-radius: 50%; color: #fffdf8; background: #14151870; transition: opacity .25s ease, transform .25s ease; }
