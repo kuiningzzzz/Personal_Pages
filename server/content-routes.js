@@ -1,8 +1,11 @@
 import express from 'express';
 import { cardDb } from './db.js';
 import { imagesFor, publicAncestors } from './resource-structure.js';
+import { publicRoot } from './upload-cleanup.js';
+import { createGalleryArchiveRoutes } from './gallery-archive.js';
 
 const router = express.Router();
+router.use(createGalleryArchiveRoutes({ db: cardDb, publicRoot, imagesFor, publicAncestors }));
 const parse = (value, fallback = []) => { try { return JSON.parse(value); } catch { return fallback; } };
 const entrySelect = `SELECT e.*, rt.name AS resource_type_name,
     (SELECT COUNT(*) FROM entries child WHERE child.parent_id = e.id AND child.status = 'published') AS child_count,

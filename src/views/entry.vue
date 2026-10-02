@@ -12,6 +12,25 @@ const route = useRoute()
 const router = useRouter()
 const entry = ref(null)
 const error = ref('')
+const downloading = ref(false)
+const downloadError = ref('')
+let downloadController
+async function downloadGallery() {
+  if (downloading.value || !entry.value?.images.length) return
+  downloading.value = true; downloadError.value = ''
+  downloadController = new AbortController()
+  try {
+    const response = await fetch(`/api/content/entries/${entry.value.id}/gallery-archive`, { method: 'POST', signal: downloadController.signal })
+    const result = await response.json()
+    if (!result.success) throw new Error(result.message || '图包打包失败')
+    // Let the browser stream the ZIP to disk instead of buffering it in a Blob.
+    const link = document.createElement('a')
+    link.href = result.downloadUrl; link.download = `${entry.value.title || '图集'}.zip`
+    document.body.append(link); link.click(); link.remove()
+  } catch (cause) {
+    if (cause.name !== 'AbortError') downloadError.value = cause.message || '图包下载失败，请重试'
+  } finally { downloading.value = false }
+}
 const headings = ref([])
 const activeSection = ref('')
 const sidebar = ref(null)
@@ -72,6 +91,7 @@ onMounted(async () => {
   } catch (cause) { error.value = cause.message || '内容加载失败' }
 })
 onUnmounted(() => {
+  downloadController?.abort()
   releaseScroll?.(); cancelAnimationFrame(frame); resizeObserver?.disconnect()
   media.removeEventListener('change', screenChanged)
   window.removeEventListener('scroll', scheduleTracking)
@@ -105,7 +125,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <MarkdownContent :source="entry.body" :heading-prefix="`entry-${entry.id}-section-`" @outline="headings = $event" />
         <div v-if="entry.actions.length" class="actions"><a v-for="action in entry.actions" :key="action.label + action.url" class="ghost-button" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
       </article>
-      <section v-if="entry.resource_kind === 'gallery'" :id="`gallery-${entry.id}`" class="gallery-section"><h2>图集</h2><GalleryViewer :images="entry.images" /></section>
+      <section v-if="entry.resource_kind === 'gallery'" :id="`gallery-${entry.id}`" class="gallery-section"><div class="gallery-heading"><h2>图集</h2><button type="button" class="ghost-button gallery-download" :disabled="downloading || !entry.images.length" :aria-busy="downloading" @click="downloadGallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4" stroke-linecap="round" stroke-linejoin="round" /></svg>{{ downloading ? '正在打包…' : '下载整个图包' }}</button></div><p v-if="downloadError" class="gallery-download-error" role="alert">{{ downloadError }}</p><GalleryViewer :images="entry.images" /></section>
         </div>
       </div>
       <Teleport v-if="mobile" to="body"><button ref="drawerTrigger" type="button" class="reading-drawer-trigger" :aria-expanded="drawerOpen" :aria-controls="`reading-sidebar-${entry.id}`" @click="drawerOpen = true">目录 / 评论</button><Transition name="drawer-backdrop"><div v-if="drawerOpen" class="reading-drawer-backdrop" aria-hidden="true" @click="closeDrawer(true)"></div></Transition></Teleport>
@@ -125,7 +145,12 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 .toc-panel a.active { color: var(--link); font-size: 16px; font-weight: 800; }
 .toc-panel p { color: var(--muted); font-size: 12px; line-height: 1.7; }
 .gallery-section { scroll-margin-top: 105px; margin-top: 38px; }
-.gallery-section > h2 { color: var(--ink); font-family: var(--heading-font); font-size: 24px; }
+.gallery-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; }
+.gallery-heading h2 { margin: 0; color: var(--ink); font-family: var(--heading-font); font-size: 24px; }
+.gallery-download { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; font-size: 12px; }
+.gallery-download svg { width: 16px; height: 16px; }
+.gallery-download:disabled { opacity: .55; cursor: not-allowed; }
+.gallery-download-error { margin: 14px 0 0; color: var(--danger); font-size: 13px; line-height: 1.7; }
 .gallery-page .article { padding: clamp(26px, 4vw, 42px); }
 .gallery-page .article h1 { margin-top: 10px; }
 .gallery-page .article .tags { margin-bottom: 18px; }

@@ -50,6 +50,7 @@ app.get('/', (req, res) => {
             settings: 'GET /api/content/settings',
             entries: 'GET /api/content/entries',
             entry: 'GET /api/content/entries/:id',
+            galleryArchive: 'POST /api/content/entries/:id/gallery-archive, GET /api/content/entries/:id/gallery-archive/:token',
             resourceTypes: 'GET /api/content/resource-types',
             subscriptions: 'GET, POST /api/subscriptions',
             comments: 'GET, POST /api/comments/:entryId',
