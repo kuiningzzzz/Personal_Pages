@@ -100,3 +100,36 @@ test('静音访问在播放前设为零；Gain 音量、进度与单一输出路
     player.togglePlayback(); context.state = 'suspended'; player.togglePlayback();
     assert.equal(context.resumes, 2, '用户再次播放时恢复被浏览器挂起的输出');
 });
+
+test('直接访问或刷新非首页先显示播放器，返回首页不触发欢迎动画；首次播放仍需点击', async t => {
+    const originals = new Map();
+    const replace = (key, value) => { originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
+    const audios = [], window = new EventTarget();
+    let welcomes = 0;
+    window.addEventListener('home-player-open', () => { welcomes++; });
+    class FakeAudio extends EventTarget {
+        constructor() { super(); this.paused = true; audios.push(this); }
+        play() { this.paused = false; this.dispatchEvent(new Event('playing')); return Promise.resolve(); }
+        pause() { this.paused = true; this.dispatchEvent(new Event('pause')); }
+    }
+    replace('window', window); replace('Audio', FakeAudio); replace('navigator', {});
+    t.after(() => { for (const [key, descriptor] of originals) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; });
+    for (const [index, path] of ['/moments', '/resource/collection/9', '/entry/10', '/admin'].entries()) {
+        // A fresh module models a reload, which has no previous in-memory state.
+        const player = await import('../../src/lib/music.js?direct-route-' + index);
+        const before = audios.length;
+        player.syncMusicRoute('/'); assert.equal(player.music.entered, false, '首次直达首页保留欢迎界面');
+        player.syncMusicRoute(path);
+        player.applyStation({ profile: { name: '站主' }, playlist: [{ title: '第一首', url: '/source/one.mp3' }] });
+        assert.equal(player.music.entered, true, path + ' 可以直接停靠唱片');
+        assert.equal(player.music.entering, false); assert.equal(player.music.playing, false);
+        assert.equal(audios.length, before, '地址初始化不创建音频或请求音乐');
+        player.syncMusicRoute('/'); assert.equal(player.music.entered, true, '返回首页不重设欢迎状态');
+        player.enterHome(); assert.equal(audios.length, before, '跳过欢迎后不能被首页入口重新初始化');
+        player.togglePlayback();
+        assert.equal(audios.length, before + 1); assert.equal(audios.at(-1).src, '/source/one.mp3');
+        assert.equal(player.music.playing, true);
+        player.togglePlayback(); assert.equal(audios.at(-1).paused, true);
+    }
+    assert.equal(welcomes, 0, '直接访问、刷新和回首页均不触发入站动画');
+});

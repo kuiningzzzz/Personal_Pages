@@ -135,6 +135,11 @@ export function enterHome({ silent = false } = {}) {
   window.dispatchEvent(new Event('home-player-open'))
   if (music.tracks.length) { music.currentIndex = 0; play() }
 }
+export function syncMusicRoute(path) {
+  // Entering through another page skips the welcome screen, without starting
+  // audio. This state is initialized again from the resolved URL on refresh.
+  if (path && path !== '/') music.entered = true
+}
 export function togglePlayback() {
   if (!music.entered) { enterHome(); return }
   if (!music.tracks.length) return

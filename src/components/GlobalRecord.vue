@@ -8,7 +8,7 @@ const route = useRoute()
 const visible = ref(false)
 const position = ref({ x: 0, y: 0, scale: 1 })
 const style = computed(() => ({ transform: `translate3d(${position.value.x}px, ${position.value.y}px, 0) scale(${position.value.scale})` }))
-const label = computed(() => !music.entered ? '播放唱片，展开首页' : !music.tracks.length ? '尚未配置歌单' : music.playing ? '暂停音乐' : '继续播放音乐')
+const label = computed(() => !music.entered ? '播放唱片，展开首页' : !music.tracks.length ? '尚未配置歌单' : music.playing ? '暂停音乐' : music.time > 0 ? '继续播放音乐' : '播放音乐')
 let resizeObserver, observer, frame = 0, anchor
 function locate() {
   frame = 0
