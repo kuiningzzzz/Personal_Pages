@@ -175,6 +175,7 @@ h1 { margin: 28px 0 18px; font-family: var(--heading-font); font-size: clamp(34p
 .article :deep(.markdown h1), .article :deep(.markdown h2), .article :deep(.markdown h3), .article :deep(.markdown h4), .article :deep(.markdown h5), .article :deep(.markdown h6) { scroll-margin-top: 110px; }
 .article > h1, .article > .lead, .article > .tags, .article > .markdown { max-width: 800px; margin-inline: auto; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 48px; padding-top: 24px; }
+.actions > a { display: inline-block; max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.65; }
 @media (max-width: 640px) { .detail-page { padding-top: 32px; } .article { padding: 36px 25px 38px; } }
 .reading-drawer-trigger { position: fixed; z-index: 125; left: 0; top: 38%; padding: 12px 10px; border: 0; border-radius: 0 5px 5px 0; color: var(--ink); background: var(--accent-soft); box-shadow: 4px 5px 0 var(--sun); font-size: 12px; font-weight: 800; writing-mode: vertical-rl; }
 .reading-drawer-backdrop { position: fixed; inset: 0; z-index: 140; background: var(--dialog-backdrop); }

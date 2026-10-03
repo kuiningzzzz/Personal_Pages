@@ -176,7 +176,7 @@ export async function dispatch(id, method, args = {}, signal) {
             if (!String(args.title || '').trim() || !String(args.body || '').trim()) throw new Error('报告标题和正文不能为空');
             const draft = { title: args.title.trim().slice(0, 200), body: args.body, summary: String(args.summary || '').slice(0, 1000),
                 tags: [...new Set((args.tags || []).map(item => String(item).trim().slice(0, 40)).filter(Boolean))].slice(0, 20),
-                actions: (args.actions || []).map(action => ({ label: String(action.label || '').slice(0, 30), url: String(action.url || '') })).slice(0, 6) };
+                actions: (args.actions || []).map(action => ({ label: String(action.label || ''), url: String(action.url || '') })).slice(0, 6) };
             if (draft.actions.some(action => !action.label || !/^(https?:\/\/|\/[^/])/i.test(action.url))) throw new Error('按钮需要文字及有效 URL');
             cardDb.prepare('UPDATE ai_tasks SET draft=?,updated_at=? WHERE id=?').run(JSON.stringify(draft), now(), id);
             return { saved: true, title: draft.title, characters: draft.body.length };

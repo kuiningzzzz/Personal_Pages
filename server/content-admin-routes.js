@@ -55,7 +55,7 @@ router.use('/feedback', createFeedbackAdminRoutes({ db: cardDb }));
 router.use('/ai', aiRoutes);
 const normalizeTags = value => [...new Set((Array.isArray(value) ? value : []).map(item => clean(item, 40)).filter(Boolean))].slice(0, 20);
 const normalizeActions = value => (Array.isArray(value) ? value : []).map(action => ({
-    label: clean(action.label, 30), url: clean(action.url, 2048)
+    label: String(action.label ?? '').trim(), url: clean(action.url, 2048)
 })).filter(action => action.label && /^(https?:\/\/|\/[^/])/i.test(action.url)).slice(0, 6);
 
 router.get('/profile', (_req, res) => res.json({ success: true, data: {

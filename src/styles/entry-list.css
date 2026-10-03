@@ -59,7 +59,7 @@ a.entry-title:hover { text-decoration: underline; text-decoration-color: var(--a
 .tags { display: flex; flex-wrap: wrap; gap: 5px 9px; }
 .tags span { color: var(--cocoa); font-size: 11px; }
 .entry-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
-.entry-actions a { display: inline-flex; padding: 5px 8px; border-radius: 3px; color: var(--ink); background: var(--accent-soft); box-shadow: 3px 3px 0 var(--sun); font-size: 11px; font-weight: 700; text-decoration: none; transition: transform .2s ease; }
+.entry-actions a { display: inline-block; max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.65; padding: 5px 8px; border-radius: 3px; color: var(--ink); background: var(--accent-soft); box-shadow: 3px 3px 0 var(--sun); font-size: 11px; font-weight: 700; text-decoration: none; transition: transform .2s ease; }
 .entry-actions a:hover { transform: translateY(-2px); background: var(--accent-soft); }
 .note-turn-enter-active, .note-turn-leave-active { transition: transform .4s cubic-bezier(.22,.72,.18,1), opacity .4s ease; backface-visibility: hidden; transform-origin: center top; }
 .note-turn-enter-from { opacity: 0; transform: rotateX(-8deg) translateY(22px); }

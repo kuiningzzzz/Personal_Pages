@@ -150,13 +150,16 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request(`/api/content/entries/${short.body.id}`)).body.data.body, unicodeBody, '拒绝的编辑不能截断或覆盖原正文');
         assert.equal((await request('/api/admin/entries', write('POST', { ...moment, body: '文'.repeat(501) }))).status, 201, '文章不受短帖字数限制');
         const types = (await request('/api/content/resource-types')).body.data;
+        const actionLabel = '下载课程资料与完整的补充阅读文件：这是一个超过三十字的按钮名称 📚';
         const resource = { kind: 'resource', title: '示例工具', cover_image: '/picture/tool.png', body: '一个开源项目', tags: ['工具'], resource_type_id: types[0].id,
-            actions: [{ label: 'Website', url: 'https://example.com' }], status: 'published' };
+            actions: [{ label: actionLabel, url: 'https://example.com' }], status: 'published' };
         const resourceId = (await request('/api/admin/entries', write('POST', resource))).body.id;
         const list = (await request(`/api/content/entries?kind=resource&type=${types[0].id}`)).body;
         assert.equal(list.total, 1);
         assert.equal(list.data[0].cover_image, '/picture/tool.png');
-        assert.equal(list.data[0].actions[0].label, 'Website');
+        assert.equal(list.data[0].actions[0].label, actionLabel);
+        assert.equal((await request(`/api/admin/entries/${resourceId}`, write('PUT', resource))).status, 200);
+        assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.actions[0].label, actionLabel);
         assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.body, '一个开源项目');
         assert.equal((await request(`/api/content/entries?kind=resource&type=${types[1].id}`)).body.total, 0);
         const swapped = [{ ...types[0], name: types[1].name }, { ...types[1], name: types[0].name }, ...types.slice(2)];

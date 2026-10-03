@@ -158,9 +158,10 @@ const writeReport = (title, body) => ({ name: 'write', args: { file_path: '$REPO
 
 test('原生文件工具及指引保留，旧输出配置不生效，可分段编辑长报告并提交元数据', async () => {
     const body = '深入讲解。'.repeat(22000);
+    const actionLabel = '下载本次学习使用的课程课件及相关参考材料：这是超过三十字的完整按钮名称 📚';
     const result = await harnessScenario(count => count === 1 ? writeReport('原生长报告', '## 详细讲解\n' + body + '\n## 内容总结\n待补充') : count === 2 ? {
         name: 'edit', args: { file_path: '$REPORT', old_string: '待补充', new_string: '已完成总结' }
-    } : { name: 'submit_document', args: { summary: '原生编辑结果', tags: ['课程'] } }, {
+    } : { name: 'submit_document', args: { summary: '原生编辑结果', tags: ['课程'], actions: [{ label: actionLabel, url: 'https://example.com/course.pdf' }] } }, {
         inspectRequest(request, count) {
             if (count !== 1) return;
             const names = request.tools.map(tool => tool.name);
@@ -172,12 +173,14 @@ test('原生文件工具及指引保留，旧输出配置不生效，可分段�
         }
     });
     assert.equal(result.task.status, 'published', result.task.error + result.diagnostics);
-    const report = cardDb.prepare('SELECT title,body,summary,tags FROM entries WHERE id=?').get(result.task.result_entry_id);
+    const report = cardDb.prepare('SELECT title,body,summary,tags,actions FROM entries WHERE id=?').get(result.task.result_entry_id);
     assert.equal(report.title, '原生长报告');
     assert.ok(report.body.length > 100000);
     assert.ok(report.body.includes('已完成总结'));
     assert.equal(report.summary, '原生编辑结果');
     assert.deepEqual(JSON.parse(report.tags), ['课程']);
+    assert.equal(JSON.parse(report.actions)[0].label, actionLabel);
+    assert.equal(JSON.parse(result.task.draft).actions[0].label, actionLabel);
 });
 
 test('同一合集跨任务共享原生文件，搜索和读取可复用笔记，不同合集隔离', async () => {
