@@ -114,6 +114,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         const moment = { kind: 'moment', title: 'Vue 开发日志', summary: '日常记录', body: '今天写了搜索功能', tags: ['技术', 'Vue'], status: 'published', published_at: '2025-01-01T00:00:00Z' };
         const momentId = (await request('/api/admin/entries', write('POST', moment))).body.id;
         assert.ok(momentId);
+        assert.equal((await request(`/api/content/entries/${momentId}`)).body.data.article_navigation, null);
         assert.equal((await request('/api/content/entries?kind=moment&q=vue')).body.total, 1);
         assert.equal((await request('/api/content/entries?kind=moment&q=%E6%90%9C%E7%B4%A2')).body.total, 1);
         await request('/api/admin/entries', write('POST', { ...moment, title: '第二条记录', body: '这里也提到 Vue', tags: [], published_at: '2026-01-01T00:00:00Z' }));
@@ -162,6 +163,12 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.actions[0].label, actionLabel);
         assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.body, '一个开源项目');
         assert.equal((await request(`/api/content/entries?kind=resource&type=${types[1].id}`)).body.total, 0);
+        const peer = await request('/api/admin/entries', write('POST', { ...resource, title: '另一大类的根文章', resource_type_id: types[1].id }));
+        assert.equal(peer.status, 201);
+        const navigation = (await request(`/api/content/entries/${resourceId}`)).body.data.article_navigation;
+        assert.deepEqual(navigation, { previous: { id: peer.body.id, title: '另一大类的根文章' }, next: { id: peer.body.id, title: '另一大类的根文章' } });
+        assert.equal((await request(`/api/admin/entries/${peer.body.id}`, { method: 'DELETE' })).status, 200);
+        assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.article_navigation, null);
         const swapped = [{ ...types[0], name: types[1].name }, { ...types[1], name: types[0].name }, ...types.slice(2)];
         assert.equal((await request('/api/admin/resource-types', write('PUT', { types: swapped }))).status, 200);
 
@@ -235,6 +242,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.ok(!rootResources.some(row => [nestedId, galleryId, childDocument.body.id].includes(row.id)));
         assert.equal((await request('/api/content/entries?kind=resource&q=' + encodeURIComponent(gallery.title))).body.total, 0);
         const outerList = (await request(`/api/content/entries?kind=resource&parent=${outerId}`)).body.data;
+        assert.equal((await request(`/api/content/entries/${childDocument.body.id}`)).body.data.article_navigation, null, '同级只有一篇文档，子合集不参与阅读队列');
         assert.deepEqual(new Set(outerList.map(row => row.id)), new Set([nestedId, childDocument.body.id]));
         assert.ok(outerList.every(row => row.resource_type_id === types[1].id));
         const ignoredType = (await request(`/api/content/entries?kind=resource&parent=${outerId}&type=${types[0].id}`)).body.data;
@@ -245,6 +253,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(nestedList[0].image_count, 2);
         assert.equal(nestedList[0].cover_image, galleryUrl);
         const galleryDetail = (await request(`/api/content/entries/${galleryId}`)).body.data;
+        assert.equal(galleryDetail.article_navigation, null);
         assert.equal(galleryDetail.resource_type_id, types[1].id);
         assert.deepEqual(galleryDetail.ancestors.map(row => row.id), [outerId, nestedId]);
         assert.deepEqual(galleryDetail.images.map(image => image.caption), ['游戏画面', '外部图片']);

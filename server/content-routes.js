@@ -4,6 +4,7 @@ import { imagesFor, publicAncestors } from './resource-structure.js';
 import { publicRoot } from './upload-cleanup.js';
 import { createGalleryArchiveRoutes } from './gallery-archive.js';
 import { homePlaylist, homeWelcome } from './home-music.js';
+import { articleNavigation } from './article-navigation.js';
 
 const router = express.Router();
 router.use(createGalleryArchiveRoutes({ db: cardDb, publicRoot, imagesFor, publicAncestors }));
@@ -84,7 +85,7 @@ router.get('/entries/:id', (req, res) => {
     if (!row) return res.status(404).json({ success: false, message: '内容不存在' });
     const ancestors = publicAncestors(row);
     if (ancestors === null) return res.status(404).json({ success: false, message: '内容不存在' });
-    res.json({ success: true, data: { ...entry(row), ancestors, images: row.resource_kind === 'gallery' ? imagesFor(row.id) : [] } });
+    res.json({ success: true, data: { ...entry(row), ancestors, images: row.resource_kind === 'gallery' ? imagesFor(row.id) : [], article_navigation: articleNavigation(cardDb, row) } });
 });
 
 export default router;

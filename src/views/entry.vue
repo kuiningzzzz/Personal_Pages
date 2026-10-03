@@ -130,6 +130,14 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <div v-if="entry.tags.length" class="tags"><span v-for="tag in entry.tags" :key="tag">#{{ tag }}</span></div>
         <MarkdownContent :source="entry.body" :heading-prefix="`entry-${entry.id}-section-`" @outline="headings = $event" />
         <div v-if="entry.actions.length" class="actions"><a v-for="action in entry.actions" :key="action.label + action.url" class="ghost-button" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
+        <nav v-if="entry.article_navigation" class="article-navigation" aria-label="同级文章导航">
+          <router-link :to="`/entry/${entry.article_navigation.previous.id}`" class="article-neighbor previous" rel="prev">
+            <span>← 上一篇</span><strong>{{ entry.article_navigation.previous.title }}</strong>
+          </router-link>
+          <router-link :to="`/entry/${entry.article_navigation.next.id}`" class="article-neighbor next" rel="next">
+            <span>下一篇 →</span><strong>{{ entry.article_navigation.next.title }}</strong>
+          </router-link>
+        </nav>
       </article>
       <section v-if="entry.resource_kind === 'gallery'" :id="`gallery-${entry.id}`" class="gallery-section"><div class="gallery-heading"><h2>图集</h2><button type="button" class="ghost-button gallery-download" :disabled="downloading || !entry.images.length" :aria-busy="downloading" @click="downloadGallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4" stroke-linecap="round" stroke-linejoin="round" /></svg>{{ downloading ? '正在打包…' : '下载整个图包' }}</button></div><p v-if="downloadError" class="gallery-download-error" role="alert">{{ downloadError }}</p><GalleryViewer :images="entry.images" /></section>
         </div>
@@ -176,6 +184,15 @@ h1 { margin: 28px 0 18px; font-family: var(--heading-font); font-size: clamp(34p
 .article > h1, .article > .lead, .article > .tags, .article > .markdown { max-width: 800px; margin-inline: auto; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 48px; padding-top: 24px; }
 .actions > a { display: inline-block; max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.65; }
+.article-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 42px; }
+.article-neighbor { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 18px; border-radius: 5px; color: var(--ink); background: var(--paper-deep); box-shadow: 4px 5px 0 var(--accent-soft); text-decoration: none; transition: transform .24s ease, box-shadow .24s ease; }
+.article-neighbor:hover { transform: translateY(-3px); box-shadow: 5px 8px 0 var(--accent-soft); }
+.article-neighbor:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+.article-neighbor span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.article-neighbor strong { font-size: 15px; line-height: 1.65; overflow-wrap: anywhere; }
+.article-neighbor.next { text-align: right; }
+@media (max-width: 640px) { .article-navigation { gap: 12px; }.article-neighbor { padding: 13px 10px; }.article-neighbor strong { font-size: 13px; } }
+@media (prefers-reduced-motion: reduce) { .article-neighbor { transition: none; } }
 @media (max-width: 640px) { .detail-page { padding-top: 32px; } .article { padding: 36px 25px 38px; } }
 .reading-drawer-trigger { position: fixed; z-index: 125; left: 0; top: 38%; padding: 12px 10px; border: 0; border-radius: 0 5px 5px 0; color: var(--ink); background: var(--accent-soft); box-shadow: 4px 5px 0 var(--sun); font-size: 12px; font-weight: 800; writing-mode: vertical-rl; }
 .reading-drawer-backdrop { position: fixed; inset: 0; z-index: 140; background: var(--dialog-backdrop); }
