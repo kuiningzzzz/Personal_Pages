@@ -15,6 +15,11 @@
 .admin-nav button:hover { background: var(--sky); transform: translateY(-3px) rotateX(6deg); }
 .admin-nav button.active { color: var(--ink); background: var(--accent-soft); box-shadow: 4px 4px 0 var(--sun); }
 .admin-section { max-width: 930px; }
+.admin-group { max-width: 1080px; }
+.admin-subnav { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 26px; padding-bottom: 4px; }
+.admin-subnav button { border: 0; border-radius: 4px; padding: 9px 14px; color: var(--ink); background: var(--paper); box-shadow: 3px 3px 0 var(--paper-deep); font-size: 13px; font-weight: 700; }
+.admin-subnav button:hover { background: var(--sky); }
+.admin-subnav button.active { background: var(--accent-soft); box-shadow: 3px 3px 0 var(--sun); }
 .section-head { margin: 0 0 20px; }
 .section-head h2 { margin: 0 0 4px; font-size: 27px; font-weight: 900; }
 .editor-box { margin-bottom: 18px; padding: 25px; }

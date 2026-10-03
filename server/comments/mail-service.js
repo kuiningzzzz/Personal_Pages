@@ -20,7 +20,7 @@ export function createDiscussionMailService({ db, mailer, origin, clock = Date.n
                 stateKey = createHash('sha256').update(`reports:${mailer.ownerEmail}`).digest('hex');
                 fields = { kind: 'report', title: report.entry_title, name: report.author_name, body: report.body,
                     details: `${JSON.parse(report.reasons).join('、')}${report.description ? '\n' + report.description : ''}`,
-                    url: origin + report.entry_path, manageUrl: origin + '/admin?tab=reports' };
+                    url: origin + report.entry_path, manageUrl: origin + '/admin?tab=feedback&section=reports' };
             } else {
                 const comment = db.prepare('SELECT c.*,u.username FROM entry_comments c JOIN users u ON u.id=c.user_id WHERE c.id=?').get(item.comment_id);
                 const user = db.prepare('SELECT * FROM users WHERE id=?').get(item.user_id);

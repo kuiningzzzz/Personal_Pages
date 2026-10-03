@@ -302,7 +302,7 @@ test('站长举报邮件共用持久化 30 分钟冷却，边界后可再次提�
     const f = await fixture(t);
     const root = await f.post();
     await f.report(root.id, 2); await f.service.process(); assert.equal(f.messages.length, 1); assert.equal(f.messages[0].email, '12345@qq.com');
-    assert.equal(f.messages[0].manageUrl, 'https://example.com/admin?tab=reports');
+    assert.equal(f.messages[0].manageUrl, 'https://example.com/admin?tab=feedback&section=reports');
     await f.report(root.id, 3); await f.createService().process(); assert.equal(f.messages.length, 1);
     f.advance(REPORT_MAIL_COOLDOWN - 1);
     await f.report(root.id, 1); await f.service.process(); assert.equal(f.messages.length, 1);
