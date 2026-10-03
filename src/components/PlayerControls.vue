@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { music, currentTrack, togglePlayback, previousTrack, nextTrack, cyclePlayMode, selectTrack, seekMusic, volumeIcon, setVolume, toggleMute } from '../lib/music'
+import { music, currentTrack, togglePlayback, previousTrack, nextTrack, cyclePlayMode, selectTrack, seekMusic, volumeIcon, setVolume, toggleMute, MAX_VOLUME } from '../lib/music'
 import { musicTime } from '../lib/music-queue'
 import PlayerIcon from './PlayerIcon.vue'
 import FeedbackEntry from './FeedbackEntry.vue'
@@ -27,7 +27,7 @@ onUnmounted(() => { window.removeEventListener('pointerdown', close); window.rem
       <button type="button" :disabled="!music.tracks.length" :aria-label="`${modeNames[music.mode]}，点击切换循环模式`" :title="modeNames[music.mode]" @click="cyclePlayMode"><PlayerIcon :name="music.mode" /></button>
       <button type="button" :aria-expanded="playlistOpen" aria-controls="home-playlist" aria-label="选择歌单" @click="openPlaylist"><PlayerIcon name="playlist" /></button>
     </div>
-    <Transition name="playlist-pop"><div v-if="volumeOpen" id="player-volume" class="volume-popover"><header><strong>音量</strong><span>{{ volumePercent }}%</span></header><div class="volume-adjust"><button type="button" :aria-label="music.volume === 0 ? '恢复音量' : '静音'" :title="music.volume === 0 ? '恢复音量' : '静音'" @click="toggleMute"><PlayerIcon :name="volumeIcon" /></button><input type="range" min="0" max="100" step="1" :value="volumePercent" aria-label="音量" :aria-valuetext="volumePercent + '%'" @input="setVolume(Number($event.target.value) / 100)" /></div></div></Transition>
+    <Transition name="playlist-pop"><div v-if="volumeOpen" id="player-volume" class="volume-popover"><header><strong>音量</strong><span>{{ volumePercent }}%</span></header><div class="volume-adjust"><button type="button" :aria-label="music.volume === 0 ? '恢复音量' : '静音'" :title="music.volume === 0 ? '恢复音量' : '静音'" @click="toggleMute"><PlayerIcon :name="volumeIcon" /></button><input type="range" min="0" :max="MAX_VOLUME * 100" step="1" :value="volumePercent" aria-label="音量" :aria-valuetext="volumePercent + '%'" @input="setVolume(Number($event.target.value) / 100)" /></div></div></Transition>
     <p v-if="music.error" class="player-error" role="alert">{{ music.error }}</p>
     <Transition name="playlist-pop"><div v-if="playlistOpen" id="home-playlist" class="playlist-popover"><header><strong>歌单</strong><span>{{ music.tracks.length }} 首</span></header><p v-if="!music.tracks.length">暂时没有歌曲</p><div v-else class="playlist-rows"><button v-for="(track, index) in music.tracks" :key="track.id || track.url" type="button" :class="{ selected: index === music.currentIndex }" :aria-pressed="index === music.currentIndex" @click="selectTrack(index); playlistOpen = false"><span>{{ String(index + 1).padStart(2, '0') }}</span><div><strong>{{ track.title }}</strong><small v-if="track.artist">{{ track.artist }}</small></div><PlayerIcon v-if="index === music.currentIndex" :name="music.playing ? 'pause' : 'play'" /></button></div></div></Transition>
   </section>

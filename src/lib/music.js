@@ -1,20 +1,23 @@
 import { reactive, computed } from 'vue'
 import { queueIndex, PLAY_MODES } from './music-queue.js'
 
+const DEFAULT_VOLUME = .5
+export const MAX_VOLUME = .8
+
 export const music = reactive({
   profile: null, cards: [], tracks: [], welcome: [], ready: false, entered: false, entering: false,
   playing: false, buffering: false, currentIndex: 0, time: 0, duration: 0,
-  mode: 'single', surface: 'hidden', error: '', volume: 1,
+  mode: 'single', surface: 'hidden', error: '', volume: DEFAULT_VOLUME,
 })
 export const currentTrack = computed(() => music.tracks[music.currentIndex] || null)
-export const volumeIcon = computed(() => music.volume === 0 ? 'volume-muted' : music.volume <= 1 / 3 ? 'volume-low' : music.volume <= 2 / 3 ? 'volume-medium' : 'volume-high')
+export const volumeIcon = computed(() => music.volume === 0 ? 'volume-muted' : music.volume <= MAX_VOLUME / 3 ? 'volume-low' : music.volume <= MAX_VOLUME * 2 / 3 ? 'volume-medium' : 'volume-high')
 let audio, loading, source = '', prepared = null, history = [], workerReady
-let audioContext, volumeGain, lastVolume = 1
+let audioContext, volumeGain, lastVolume = DEFAULT_VOLUME
 
 export function setVolume(value) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return
-  music.volume = Math.max(0, Math.min(1, numeric))
+  music.volume = Math.max(0, Math.min(MAX_VOLUME, numeric))
   if (music.volume > 0) lastVolume = music.volume
   if (!audio) return
   audio.muted = music.volume === 0
