@@ -11,6 +11,7 @@ import aiRoutes from './ai/routes.js';
 import { createModerationRoutes } from './comments/admin-routes.js';
 import { createFeedbackAdminRoutes } from './feedback/routes.js';
 import { createUserAdminRoutes } from './auth/admin-routes.js';
+import { createAnnouncementAdminRoutes } from './announcements.js';
 import { homePlaylist, validatePlaylist, savePlaylist, homeWelcome, validateWelcome, saveWelcome } from './home-music.js';
 
 const router = express.Router();
@@ -54,6 +55,7 @@ const clean = (value, max = 10000) => String(value ?? '').trim().slice(0, max);
 router.use('/moderation', createModerationRoutes({ db: cardDb }));
 router.use('/feedback', createFeedbackAdminRoutes({ db: cardDb }));
 router.use('/users', createUserAdminRoutes({ db: cardDb }));
+router.use('/announcements', createAnnouncementAdminRoutes({ db: cardDb, cleanup: auditAndCleanupUploads }));
 router.use('/ai', aiRoutes);
 const normalizeTags = value => [...new Set((Array.isArray(value) ? value : []).map(item => clean(item, 40)).filter(Boolean))].slice(0, 20);
 const normalizeActions = value => (Array.isArray(value) ? value : []).map(action => ({

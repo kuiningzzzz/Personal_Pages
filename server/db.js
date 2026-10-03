@@ -13,6 +13,7 @@ import { migrateResourceCategories } from './resource-categories.js';
 import { migrateResourceModifications } from './resource-modifications.js';
 import { migrateHomeMusic } from './home-music.js';
 import { migrateFeedback } from './feedback/schema.js';
+import { migrateAnnouncements } from './announcements.js';
 
 // 获取当前文件的目录
 const __filename = fileURLToPath(import.meta.url);
@@ -173,6 +174,7 @@ function initializeDatabase() {
         migrateHomeMusic(cardDb);
         migrateComments(cardDb);
         migrateFeedback(cardDb);
+        migrateAnnouncements(cardDb);
 
         // 检查评论数据库是否有数据
         const commentCount = commentDb.prepare('SELECT COUNT(*) as count FROM comments').get();

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import PlayerControls from '../components/PlayerControls.vue'
+import HomeAnnouncements from '../components/HomeAnnouncements.vue'
 import PlayerIcon from '../components/PlayerIcon.vue'
 import { music, loadStation, enterHome } from '../lib/music'
 import { prepareReveal, revealDuration } from '../lib/theme-animation'
@@ -106,6 +107,7 @@ onUnmounted(() => { window.removeEventListener('home-player-open', reveal); medi
             </Transition>
           </div>
           <button type="button" class="section-skip skip-down" :aria-label="'切换到' + titles[(section + 1) % 3]" @click="changeSection(1)"><span>{{ titles[(section + 1) % 3] }}</span><PlayerIcon name="down" /></button>
+          <HomeAnnouncements />
         </section>
       </div>
     </template>

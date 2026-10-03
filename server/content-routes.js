@@ -5,8 +5,10 @@ import { publicRoot } from './upload-cleanup.js';
 import { createGalleryArchiveRoutes } from './gallery-archive.js';
 import { homePlaylist, homeWelcome } from './home-music.js';
 import { articleNavigation } from './article-navigation.js';
+import { createAnnouncementPublicRoutes } from './announcements.js';
 
 const router = express.Router();
+router.use('/announcements', createAnnouncementPublicRoutes({ db: cardDb }));
 router.use(createGalleryArchiveRoutes({ db: cardDb, publicRoot, imagesFor, publicAncestors }));
 const parse = (value, fallback = []) => { try { return JSON.parse(value); } catch { return fallback; } };
 const entrySelect = `SELECT e.*, rt.name AS resource_type_name,

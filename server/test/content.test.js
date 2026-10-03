@@ -44,6 +44,8 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/moderation/blacklist')).status, 401);
         assert.equal((await request('/api/admin/feedback')).status, 401);
         assert.equal((await request('/api/admin/users')).status, 401);
+        assert.equal((await request('/api/admin/announcements')).status, 401);
+        assert.equal((await request('/api/admin/announcements/tags', write('POST', { name: '更新日志' }))).status, 401);
         assert.equal((await request('/api/admin/users/1/owner', write('POST', { enabled: true }))).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'wrong' }))).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'test-secret-123' }))).status, 200);
@@ -52,6 +54,9 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/feedback')).status, 200);
         assert.equal((await request('/api/admin/users')).status, 200);
         assert.equal((await request('/api/admin/users')).body.total, 0);
+        assert.equal((await request('/api/admin/announcements')).body.total, 0);
+        assert.equal((await request('/api/content/announcements')).body.total, 0);
+        assert.equal((await request('/api/admin/announcements', { ...write('POST', { title: '无效来源' }), headers: { 'content-type': 'application/json', origin: 'https://evil.invalid' } })).status, 403);
         assert.equal((await request('/api/admin/users/1/owner', { ...write('POST', { enabled: true }), headers: { 'content-type': 'application/json', origin: 'https://evil.invalid' } })).status, 403);
         assert.equal((await request('/api/admin/moderation/blacklist', write('POST', { email: 'ban-test@example.com' }))).status, 200);
         assert.equal((await request('/api/admin/moderation/blacklist', write('DELETE', { email: 'ban-test@example.com' }))).status, 200);
@@ -210,6 +215,21 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(removed.status, 200);
         assert.equal(removed.body.deletedFiles, 1);
         assert.ok(!existsSync(filePath(sharedUrl)));
+
+        const announcementUrl = await uploadText('announcement.txt');
+        const announcementInput = { title: '带附件的公告', body: `[说明](${announcementUrl}) [空链接]()`, status: 'draft', pinned: false, tag_ids: [] };
+        const announcement = await request('/api/admin/announcements', write('POST', announcementInput));
+        assert.equal(announcement.status, 200);
+        assert.ok(announcement.body.warnings.some(item => item.includes('公告「带附件的公告」') && item.includes('地址为空')));
+        assert.ok(existsSync(filePath(announcementUrl)));
+        assert.equal((await request('/api/content/announcements')).body.total, 0);
+        await request('/api/admin/settings', write('PUT', { momentsDescription: '验证公告附件不会被其他保存操作清理' }));
+        assert.ok(existsSync(filePath(announcementUrl)), '草稿公告附件也须被全站引用保护');
+        assert.equal((await request(`/api/admin/announcements/${announcement.body.data.id}`, write('PUT', { ...announcementInput, status: 'published' }))).status, 200);
+        assert.equal((await request('/api/content/announcements')).body.data[0].title, announcementInput.title);
+        const deletedAnnouncement = await request(`/api/admin/announcements/${announcement.body.data.id}`, { method: 'DELETE' });
+        assert.equal(deletedAnnouncement.status, 200);
+        assert.ok(!existsSync(filePath(announcementUrl)), '移除公告后清理无其他引用的附件');
 
         const image = new FormData();
         image.append('file', new Blob(['image'], { type: 'image/png' }), 'cover.png');
