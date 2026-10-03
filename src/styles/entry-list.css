@@ -1,4 +1,5 @@
 .listing-page { padding-top: 62px; padding-bottom: 90px; }
+.entry-top .moment-pin-label { padding: 3px 7px; border-radius: 3px; background: var(--accent-soft); color: var(--ink); box-shadow: 2px 2px 0 var(--sun); font-size: 10px; font-weight: 800; }
 .list-intro { position: relative; margin-bottom: 32px; padding-bottom: 23px; }
 .list-intro .eyebrow { margin-bottom: 8px; }
 .heading-mark { color: var(--accent); }

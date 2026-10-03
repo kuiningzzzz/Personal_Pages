@@ -45,6 +45,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/feedback')).status, 401);
         assert.equal((await request('/api/admin/users')).status, 401);
         assert.equal((await request('/api/admin/announcements')).status, 401);
+        assert.equal((await request('/api/admin/entries/1/pin', write('POST', { enabled: true }))).status, 401);
         assert.equal((await request('/api/admin/announcements/tags', write('POST', { name: '更新日志' }))).status, 401);
         assert.equal((await request('/api/admin/users/1/owner', write('POST', { enabled: true }))).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'wrong' }))).status, 401);
@@ -57,6 +58,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/announcements')).body.total, 0);
         assert.equal((await request('/api/content/announcements')).body.total, 0);
         assert.equal((await request('/api/admin/announcements', { ...write('POST', { title: '无效来源' }), headers: { 'content-type': 'application/json', origin: 'https://evil.invalid' } })).status, 403);
+        assert.equal((await request('/api/admin/entries/1/pin', { ...write('POST', { enabled: true }), headers: { 'content-type': 'application/json', origin: 'https://evil.invalid' } })).status, 403);
         assert.equal((await request('/api/admin/users/1/owner', { ...write('POST', { enabled: true }), headers: { 'content-type': 'application/json', origin: 'https://evil.invalid' } })).status, 403);
         assert.equal((await request('/api/admin/moderation/blacklist', write('POST', { email: 'ban-test@example.com' }))).status, 200);
         assert.equal((await request('/api/admin/moderation/blacklist', write('DELETE', { email: 'ban-test@example.com' }))).status, 200);
@@ -392,6 +394,47 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
             assert.deepEqual(new Set(pages.flatMap(p => p.body.data.map(r => r.id))), new Set(ids));
             assert.ok(pages.every(p => p.body.total === 16));
         }
+        // Long and short posts share a single pin budget, across create/edit
+        // and the list's quick action. Pagination counts pinned rows once.
+        const pinIds = [];
+        const pinInput = i => ({ ...moment, format: i % 2 ? 'article' : 'short', title: `置顶验收 ${i}`, body: '置顶验收内容', tags: ['置顶验收'], pinned: true, published_at: new Date(Date.UTC(2010, 0, i + 1)).toISOString() });
+        for (let i = 0; i < 5; i++) {
+            const result = await request('/api/admin/entries', write('POST', pinInput(i)));
+            assert.equal(result.status, 201); pinIds.push(result.body.id);
+        }
+        const pinnedList = (await request('/api/content/entries?kind=moment&sort=latest')).body;
+        assert.deepEqual(pinnedList.data.slice(0, 5).map(row => row.id), [...pinIds].reverse());
+        assert.ok(pinnedList.data.slice(0, 5).every(row => row.pinned === true));
+        assert.equal(pinnedList.data.length, 15);
+        const allPages = await Promise.all(Array.from({ length: Math.ceil(pinnedList.total / 15) }, (_, i) => request(`/api/content/entries?kind=moment&page=${i + 1}&sort=latest`)));
+        const allIds = allPages.flatMap(result => result.body.data.map(row => row.id));
+        assert.equal(new Set(allIds).size, pinnedList.total);
+        assert.equal(allIds.length, pinnedList.total);
+        assert.equal((await request('/api/content/entries?kind=moment&format=short')).body.data[0].id, pinIds[4]);
+        assert.equal((await request('/api/content/entries?kind=moment&format=article')).body.data[0].id, pinIds[3]);
+        assert.equal((await request(`/api/content/entries?kind=moment&format=short&locate=${pinIds[0]}`)).body.page, 1);
+        assert.ok((await request('/api/content/entries?kind=moment&sort=latest&pins=0&limit=4')).body.data.every(row => !row.pinned), '首页依然显示真正最新内容');
+        assert.ok((await request(momentQuery)).body.data.every(row => !row.pinned), '搜索不带入未匹配的置顶动态');
+        assert.equal((await request('/api/admin/entries', write('POST', pinInput(5)))).status, 409);
+        const candidateInput = { ...pinInput(5), pinned: false };
+        const candidate = (await request('/api/admin/entries', write('POST', candidateInput))).body.id;
+        assert.equal((await request(`/api/admin/entries/${candidate}/pin`, write('POST', { enabled: true }))).status, 409);
+        assert.equal((await request(`/api/admin/entries/${candidate}`, write('PUT', { ...candidateInput, pinned: true, body: '不应保存' }))).status, 409);
+        assert.equal((await request(`/api/content/entries/${candidate}`)).body.data.body, candidateInput.body);
+        assert.equal((await request(`/api/admin/entries/${resourceId}/pin`, write('POST', { enabled: true }))).status, 400);
+        const beforePin = (await request(`/api/content/entries/${pinIds[0]}`)).body.data;
+        assert.equal((await request(`/api/admin/entries/${pinIds[0]}/pin`, write('POST', { enabled: false }))).status, 200);
+        assert.equal((await request(`/api/content/entries/${pinIds[0]}`)).body.data.updated_at, beforePin.updated_at);
+        assert.equal((await request(`/api/admin/entries/${candidate}/pin`, write('POST', { enabled: true }))).status, 200);
+        const { pinned: ignoredPin, ...preserveInput } = candidateInput;
+        assert.equal((await request(`/api/admin/entries/${candidate}`, write('PUT', preserveInput))).status, 200);
+        assert.equal((await request(`/api/content/entries/${candidate}`)).body.data.pinned, true, '编辑时省略置顶设置会保留原状态');
+        assert.equal((await request(`/api/admin/entries/${candidate}`, write('PUT', { ...candidateInput, pinned: true, status: 'draft' }))).status, 200);
+        assert.equal((await request(`/api/admin/entries/${candidate}/pin`, write('POST', { enabled: true }))).status, 400);
+        assert.equal((await request(`/api/admin/entries/${pinIds[0]}/pin`, write('POST', { enabled: true }))).status, 200);
+        assert.equal((await request(`/api/admin/entries/${pinIds[0]}`, { method: 'DELETE' })).status, 200);
+        assert.equal((await request(`/api/admin/entries/${candidate}`, write('PUT', { ...candidateInput, pinned: true }))).status, 200);
+        assert.equal((await request('/api/content/entries?kind=moment')).body.data.filter(row => row.pinned).length, 5);
     } finally {
         if (viteChild && viteChild.exitCode === null) {
             viteChild.kill();

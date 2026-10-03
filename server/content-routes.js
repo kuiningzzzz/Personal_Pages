@@ -6,6 +6,7 @@ import { createGalleryArchiveRoutes } from './gallery-archive.js';
 import { homePlaylist, homeWelcome } from './home-music.js';
 import { articleNavigation } from './article-navigation.js';
 import { createAnnouncementPublicRoutes } from './announcements.js';
+import { publicEntryComparator } from './moment-pins.js';
 
 const router = express.Router();
 router.use('/announcements', createAnnouncementPublicRoutes({ db: cardDb }));
@@ -16,7 +17,7 @@ const entrySelect = `SELECT e.*, rt.name AS resource_type_name,
     (SELECT COUNT(*) FROM gallery_images g WHERE g.entry_id = e.id) AS image_count,
     (SELECT url FROM gallery_images g WHERE g.entry_id = e.id ORDER BY display_order, id LIMIT 1) AS gallery_cover
     FROM entries e LEFT JOIN resource_types rt ON rt.id = e.resource_type_id`;
-const entry = ({ gallery_cover, ...row }) => ({ ...row, cover_image: row.cover_image || (row.resource_kind === 'gallery' ? gallery_cover || '' : ''), tags: parse(row.tags), actions: parse(row.actions) });
+const entry = ({ gallery_cover, ...row }) => ({ ...row, pinned: Boolean(row.pinned), cover_image: row.cover_image || (row.resource_kind === 'gallery' ? gallery_cover || '' : ''), tags: parse(row.tags), actions: parse(row.actions) });
 
 router.get('/profile', (_req, res) => {
     const profile = cardDb.prepare('SELECT avatar, name, description FROM profile WHERE id = 1').get();
@@ -65,11 +66,7 @@ router.get('/entries', (req, res) => {
                 ? matches.reduce((sum, match) => sum + (match.title ? 5 : 0) + (match.tags ? 3 : 0) + (match.body ? 1 : 0), 0) : 0 };
         }).filter(row => row.score > 0);
     }
-    rows.sort((a, b) => {
-        if (terms.length && sort === 'relevance' && a.score !== b.score) return b.score - a.score;
-        const field = sort === 'updated' ? 'updated_at' : 'published_at';
-        return Date.parse(b[field]) - Date.parse(a[field]) || b.id - a.id;
-    });
+    rows.sort(publicEntryComparator({ sort, search: terms.length > 0, pinnedFirst: kind === 'moment' && req.query.pins !== '0' }));
     const total = rows.length;
     // Mail links to short posts open the page containing that post, without
     // inserting an extra item or displacing another item from the first page.

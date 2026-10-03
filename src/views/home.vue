@@ -59,7 +59,7 @@ onMounted(async () => {
     if (anchor && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) prepareReveal(anchor)
   } catch (cause) { error.value = cause.message || '首页加载失败' }
   try {
-    const results = await Promise.all(['moment', 'resource'].map(kind => fetch('/api/content/entries?kind=' + kind + '&sort=latest&limit=4').then(r => r.json())))
+    const results = await Promise.all(['moment', 'resource'].map(kind => fetch('/api/content/entries?kind=' + kind + '&sort=latest&limit=4&pins=0').then(r => r.json())))
     if (results.some(result => !result.success)) throw new Error('最新内容加载失败')
     moments.value = results[0].data; resources.value = results[1].data
   } catch (cause) { feedError.value = cause.message || '最新内容加载失败' }

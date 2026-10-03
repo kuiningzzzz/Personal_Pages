@@ -44,6 +44,10 @@ input[type='file'] { background: var(--paper-deep); }
 .entry-admin-row:nth-child(3n + 3) { background: var(--mint); }
 .entry-admin-row:hover { transform: translateY(-3px); box-shadow: 11px 12px 0 var(--accent-soft); }
 .entry-admin-row small { display: block; margin-top: 7px; color: var(--muted); }
+.moment-pin-label { display: inline-block; margin-right: 8px; padding: 3px 7px; border-radius: 3px; color: var(--ink); background: var(--accent-soft); box-shadow: 2px 2px 0 var(--sun); font-size: 10px; font-weight: 800; vertical-align: middle; }
+.moment-pin-setting { flex-direction: row; align-items: center; gap: 10px; font-size: 12px; line-height: 1.7; }
+.moment-pin-setting input { flex: none; width: 17px; height: 17px; padding: 0; margin: 0; box-shadow: none; accent-color: var(--cocoa); }
+.entry-admin-row button:disabled { opacity: .5; cursor: not-allowed; }
 .entry-admin-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
 .entry-admin-row > div:last-child { flex-shrink: 0; flex-wrap: wrap; }
 .list-heading { scroll-margin-top: 110px; }

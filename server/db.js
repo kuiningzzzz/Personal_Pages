@@ -14,6 +14,7 @@ import { migrateResourceModifications } from './resource-modifications.js';
 import { migrateHomeMusic } from './home-music.js';
 import { migrateFeedback } from './feedback/schema.js';
 import { migrateAnnouncements } from './announcements.js';
+import { migrateMomentPins } from './moment-pins.js';
 
 // 获取当前文件的目录
 const __filename = fileURLToPath(import.meta.url);
@@ -166,6 +167,7 @@ function initializeDatabase() {
             [['工具', 'tools'], ['开源项目', 'open-source'], ['学习资源', 'learning'], ['游戏资源', 'games'], ['图片资源', 'images']].forEach(([name, slug], index) => insertType.run(name, slug, index));
         }
         migrateContentV2(cardDb);
+        migrateMomentPins(cardDb);
         migrateAi(cardDb);
         migrateUsers(cardDb);
         migrateSubscriptions(cardDb);

@@ -12,6 +12,7 @@ import { createModerationRoutes } from './comments/admin-routes.js';
 import { createFeedbackAdminRoutes } from './feedback/routes.js';
 import { createUserAdminRoutes } from './auth/admin-routes.js';
 import { createAnnouncementAdminRoutes } from './announcements.js';
+import { validateMomentPin, setMomentPin } from './moment-pins.js';
 import { homePlaylist, validatePlaylist, savePlaylist, homeWelcome, validateWelcome, saveWelcome } from './home-music.js';
 
 const router = express.Router();
@@ -130,7 +131,7 @@ router.put('/resource-types', (req, res) => {
 router.get('/entries', (req, res) => {
     const kind = req.query.kind === 'resource' ? 'resource' : 'moment';
     const rows = cardDb.prepare('SELECT * FROM entries WHERE kind = ? ORDER BY published_at DESC, id DESC').all(kind)
-        .map(row => ({ ...row, tags: JSON.parse(row.tags), actions: JSON.parse(row.actions), images: imagesFor(row.id) }));
+        .map(row => ({ ...row, pinned: Boolean(row.pinned), tags: JSON.parse(row.tags), actions: JSON.parse(row.actions), images: imagesFor(row.id) }));
     res.json({ success: true, data: rows });
 });
 
@@ -138,6 +139,8 @@ function validateEntry(input, id = null) {
     const structure = validateStructure(input, id);
     if (structure.error) return structure;
     const kind = input.kind === 'resource' ? 'resource' : 'moment';
+    const pin = validateMomentPin(cardDb, { ...input, kind }, id);
+    if (pin.error) return pin;
     const format = kind === 'moment' && input.format === 'short' ? 'short' : 'article';
     const title = clean(input.title, 200);
     if (!title && format !== 'short') return { error: '标题不能为空' };
@@ -164,15 +167,15 @@ function validateEntry(input, id = null) {
     }
     return { kind, format, title, summary: clean(input.summary, 1000), coverImage, body: clean(input.body, 100000),
         tags: JSON.stringify(normalizeTags(input.tags)), resourceTypeId, actions: JSON.stringify(kind === 'resource' ? normalizeActions(input.actions) : []),
-        status: input.status === 'draft' ? 'draft' : 'published', publishedAt: date.toISOString(), ...structure, images };
+        status: input.status === 'draft' ? 'draft' : 'published', pinned: pin.pinned, publishedAt: date.toISOString(), ...structure, images };
 }
 router.post('/entries', (req, res) => {
     const data = validateEntry(req.body);
-    if (data.error) return res.status(400).json({ success: false, message: data.error });
+    if (data.error) return res.status(data.status || 400).json({ success: false, message: data.error });
     const now = new Date().toISOString();
     const id = cardDb.transaction(() => {
-        const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at,resource_kind,parent_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now, data.resourceKind, data.parentId);
+        const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at,resource_kind,parent_id,pinned)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now, data.resourceKind, data.parentId, data.pinned);
         const id = Number(result.lastInsertRowid);
         saveResourceExtras(id, data);
         return id;
@@ -183,14 +186,25 @@ router.put('/entries/:id', (req, res) => {
     const id = Number(req.params.id);
     if (!cardDb.prepare('SELECT id FROM entries WHERE id = ?').get(id)) return res.status(404).json({ success: false, message: '内容不存在' });
     const data = validateEntry(req.body, id);
-    if (data.error) return res.status(400).json({ success: false, message: data.error });
+    if (data.error) return res.status(data.status || 400).json({ success: false, message: data.error });
     const result = cardDb.transaction(() => {
-        const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=?,resource_kind=?,parent_id=? WHERE id=?`)
-            .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), data.resourceKind, data.parentId, id);
+        const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=?,resource_kind=?,parent_id=?,pinned=? WHERE id=?`)
+            .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), data.resourceKind, data.parentId, data.pinned, id);
         saveResourceExtras(id, data);
         return result;
     })();
     res.status(result.changes ? 200 : 404).json({ success: !!result.changes, message: result.changes ? '已保存' : '内容不存在', ...(result.changes ? auditAndCleanupUploads() : {}) });
+});
+router.post('/entries/:id/pin', (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1 || typeof req.body?.enabled !== 'boolean') return res.status(400).json({ success: false, message: '置顶设置无效' });
+    try {
+        const pinned = setMomentPin(cardDb, id, req.body.enabled);
+        res.json({ success: true, pinned });
+    } catch (error) {
+        if (!error.status) throw error;
+        res.status(error.status).json({ success: false, message: error.message });
+    }
 });
 router.delete('/entries/:id', (req, res) => {
     const result = cardDb.prepare('DELETE FROM entries WHERE id = ?').run(req.params.id);

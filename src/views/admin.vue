@@ -31,7 +31,7 @@ const settings = ref({ momentsDescription: '', resourceDescription: '', activiti
 const entries = ref([])
 const kind = ref('moment')
 const editingId = ref(null)
-const blank = () => ({ kind: kind.value, format: 'article', resource_kind: 'document', parent_id: null, member_ids: [], images: [], title: '', summary: '', cover_image: '', body: '', tags: [], resource_type_id: null, actions: [], status: 'published', published_at: new Date().toISOString() })
+const blank = () => ({ kind: kind.value, format: 'article', resource_kind: 'document', parent_id: null, member_ids: [], images: [], title: '', summary: '', cover_image: '', body: '', tags: [], resource_type_id: null, actions: [], status: 'published', pinned: false, published_at: new Date().toISOString() })
 const form = ref(blank())
 const isShort = computed(() => kind.value === 'moment' && form.value.format === 'short')
 const bodyLength = computed(() => [...String(form.value.body || '').trim()].length)
@@ -112,12 +112,20 @@ function editEntry(row) {
   editingId.value = entry.id
   kind.value = entry.kind
   form.value = entry
+  form.value.pinned = Boolean(entry.pinned)
   form.value.images ||= []
   form.value.member_ids = entries.value.filter(item => item.parent_id === entry.id).map(item => item.id)
   memberQuery.value = ''
   tab.value = 'editor'
 }
 async function saveEntry() { if (shortTooLong.value) { report('短帖正文不能超过 500 字', true); return } busy.value = true; try { const path = editingId.value ? `/entries/${editingId.value}` : '/entries'; const j = await api(path, json(editingId.value ? 'PUT' : 'POST', form.value)); await loadEntries(); tab.value = kind.value; reportSave('内容已保存', j) } catch (e) { report(e.message, true) } finally { busy.value = false } }
+async function toggleMomentPin(row) {
+  if (busy.value) return
+  busy.value = true
+  try { await api(`/entries/${row.id}/pin`, json('POST', { enabled: !row.pinned })); await loadEntries(); report(row.pinned ? '已取消置顶' : '已置顶') }
+  catch (e) { report(e.message, true) }
+  finally { busy.value = false }
+}
 async function deleteEntry(row) { if (!confirm(`确定删除“${row.title || '短帖'}”吗？${row.resource_kind === 'collection' ? '\n其中的成员会回到资源库首页。' : ''}`)) return; try { const j = await api(`/entries/${row.id}`, { method: 'DELETE' }); await loadEntries(); reportSave('已删除', j) } catch (e) { report(e.message, true) } }
 async function switchKind(next) { kind.value = next; tab.value = next; try { await loadEntries() } catch (e) { report(e.message, true) } }
 async function uploadFile(event, target) { const file = event.target.files?.[0]; if (!file) return; const data = new FormData(); data.append('file', file); busy.value = true; try { const j = await api('/upload', { method: 'POST', body: data }); if (target === 'avatar') profile.value.avatar = j.url; else if (target === 'cover') form.value.cover_image = j.url; else if (target === 'body') form.value.body += `\n\n${file.type.startsWith('image/') ? `![${j.name}](${j.url})` : `[${j.name}](${j.url})`}\n`; else if (target === 'action') form.value.actions.push({ label: 'Download', url: j.url }); report('上传成功') } catch (e) { report(e.message, true) } finally { busy.value = false; event.target.value = '' } }
@@ -175,7 +183,7 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
         <div v-else class="entry-admin-list">
           <template v-for="row in listing.rows" :key="row.rowKey">
             <div v-if="row.fold" class="collection-fold" :style="{ marginLeft: `${Math.min(row.depth, 5) * 18}px` }"><button type="button" :aria-label="`${row.expanded ? '收起' : '展开'}合集 ${row.title} 的成员`" :aria-expanded="row.expanded" @click="toggleCollection(row.id)">{{ row.expanded ? '收起' : `展开其余 ${row.hidden} 项` }} <span aria-hidden="true">{{ row.expanded ? '↑' : '↓' }}</span></button></div>
-            <div v-else class="surface entry-admin-row" :style="{ marginLeft: `${Math.min(row.depth, 5) * 18}px` }"><div><strong>{{ row.title || '短帖' }}</strong><small>{{ row.kind === 'resource' ? `${resourceLabel(row)} · ` : row.format === 'short' ? '短帖 · ' : '长文 · ' }}{{ row.status === 'draft' ? '草稿' : '已发布' }} · {{ listSort === 'created' ? '创建' : '修改' }}：{{ listDate(row) }}</small><small v-if="row.parent_id">所属：{{ resourceLocation(row) }}</small></div><div><button v-if="row.resource_kind === 'collection'" @click="newEntry('resource', 'document', row.id)">+ 子资源</button><button @click="editEntry(row)">编辑</button><button class="danger" @click="deleteEntry(row)">删除</button></div></div>
+            <div v-else class="surface entry-admin-row" :style="{ marginLeft: `${Math.min(row.depth, 5) * 18}px` }"><div><span v-if="row.kind === 'moment' && row.pinned" class="moment-pin-label">置顶</span><strong>{{ row.title || '短帖' }}</strong><small>{{ row.kind === 'resource' ? `${resourceLabel(row)} · ` : row.format === 'short' ? '短帖 · ' : '长文 · ' }}{{ row.status === 'draft' ? '草稿' : '已发布' }} · {{ listSort === 'created' ? '创建' : '修改' }}：{{ listDate(row) }}</small><small v-if="row.parent_id">所属：{{ resourceLocation(row) }}</small></div><div><button v-if="row.resource_kind === 'collection'" @click="newEntry('resource', 'document', row.id)">+ 子资源</button><button v-if="row.kind === 'moment' && row.status === 'published'" :disabled="busy" @click="toggleMomentPin(row)">{{ row.pinned ? '取消置顶' : '置顶' }}</button><button :disabled="busy" @click="editEntry(row)">编辑</button><button class="danger" :disabled="busy" @click="deleteEntry(row)">删除</button></div></div>
           </template>
         </div>
         <PaginationNav :page="listing.page" :total-pages="listing.totalPages" @change="changePage" />
@@ -183,7 +191,8 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
       <section v-else-if="tab === 'editor'" class="admin-section">
         <div class="section-head"><div><h2>{{ editingId ? '编辑' : '新建' }}{{ kind === 'moment' ? '动态' : resourceLabel(form) }}</h2><p>正文使用 Markdown，内容会用于搜索。</p></div><div class="head-actions"><button class="ghost-button" @click="tab = kind">返回列表</button><button class="primary-button" :disabled="busy || shortTooLong" @click="saveEntry">保存内容</button></div></div>
         <div class="surface editor-box">
-          <div class="form-grid"><label>标题{{ form.format === 'short' ? '（可选）' : '' }}<input v-model="form.title" placeholder="给内容起个标题" /></label><label>发布状态<select v-model="form.status"><option value="published">已发布</option><option value="draft">草稿</option></select></label></div>
+          <div class="form-grid"><label>标题{{ form.format === 'short' ? '（可选）' : '' }}<input v-model="form.title" placeholder="给内容起个标题" /></label><label>发布状态<select v-model="form.status" @change="form.status === 'draft' && (form.pinned = false)"><option value="published">已发布</option><option value="draft">草稿</option></select></label></div>
+          <label v-if="kind === 'moment'" class="moment-pin-setting"><input v-model="form.pinned" type="checkbox" :disabled="busy || form.status === 'draft'" /><span>置顶动态（短帖与长文合计最多 5 条，仅限已发布内容）</span></label>
           <div class="form-grid"><label>发布时间<input v-model="dateInput" type="datetime-local" /></label><label v-if="kind === 'moment'">动态形式<select v-model="form.format"><option value="article">长文</option><option value="short">短帖</option></select></label><label v-else-if="!form.parent_id">根大类<select v-model.number="form.resource_type_id"><option :value="null">未分类</option><option v-for="type in types" :key="type.id" :value="type.id">{{ type.name }}</option></select></label><label v-else>根大类 · 继承父合集<input :value="inheritedCategory" readonly /></label></div>
           <div v-if="kind === 'resource'" class="form-grid"><label>资源形态<select v-model="form.resource_kind"><option value="document">文档</option><option value="collection">合集</option><option value="gallery">图集</option></select></label><label>所属合集<select v-model="form.parent_id"><option :value="null">无 · 展示在资源库首页</option><option v-for="collection in parentCollections" :key="collection.id" :value="collection.id">{{ resourceLocation(collection) }} / {{ collection.title }}{{ collection.status === 'draft' ? '（草稿）' : '' }}</option></select></label></div>
           <p v-if="kind === 'resource' && form.parent_id" class="editor-hint">此内容只在所属合集中出现，大类随父合集自动继承；如果上级合集是草稿，此内容也暂不对外展示。</p>
