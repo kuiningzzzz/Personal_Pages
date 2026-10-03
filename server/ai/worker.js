@@ -6,6 +6,7 @@ import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client';
 import { expandAssistantStream } from '@deepseek-ai/dsh-llm';
 import { LEARNING_PROMPT, MODEL } from './prompt.js';
 import { describeSessionEvent, safeDiagnostic } from './diagnostics.js';
+import { reportFile } from './workspace.js';
 
 let harness, server;
 let sequence = 0;
@@ -53,27 +54,30 @@ async function run({ task, workspace, directory, files, conversation }) {
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     await mkdir(workspace, { recursive: true });
-    const patchPath = join(workspace, 'learning.patch.json');
+    await mkdir(conversation.home, { recursive: true });
+    const patchPath = join(conversation.home, 'learning.patch.json');
+    const outputFile = reportFile(task.id);
+    await mkdir(join(workspace, 'reports'), { recursive: true });
+    if (task.draft.body) await writeFile(join(workspace, outputFile), task.draft.body);
     const patches = [
-        ...['session-log-deepseek','session-telemetry-otel','plugin-package-inventory-deepseek','tool-bash','tool-pwsh','tool-fs','tool-fs-search','tool-skill','agent-instructions','skill-filesystem','tool-subagent','tool-subagent-fork','tool-workflow','tool-ralph','tool-goal','goal-round-driver'].map(id => ({ id, disabled: true })),
-        { id: 'system-prompt', config: { personaPrefix: '', personaSuffix: '', includeHarnessIdentity: false, includeRuntimeContext: false } },
+        ...['session-log-deepseek','session-telemetry-otel','plugin-package-inventory-deepseek','tool-bash','tool-pwsh','tool-skill','agent-instructions','skill-filesystem','tool-subagent','tool-subagent-fork','tool-workflow','tool-ralph','tool-goal','goal-round-driver'].map(id => ({ id, disabled: true })),
         { id: 'agent-loop', config: { maxParallelToolCalls: 1, agents: [] } },
         { id: 'tools', config: { mode: 'native' } },
         { id: 'sdk-jsonrpc-server', disabled: true },
         { id: 'llm-deepseek', config: { apiKeyEnv: 'DEEPSEEK_API_KEY', streamIdleTimeoutMs: 120000 } },
-        { id: 'compaction-basic', config: { thresholdRatio: 0.65, summarizationProvider: 'deepseek-official', summarizationModel: MODEL, maxTokens: 4096 } },
-        { id: 'web-search-deepseek', config: { apiKeyEnv: 'DEEPSEEK_API_KEY', model: MODEL, maxUses: 3, maxTokens: 4096 } },
+        { id: 'compaction-basic', config: { thresholdRatio: 0.65, summarizationProvider: 'deepseek-official', summarizationModel: MODEL } },
+        { id: 'web-search-deepseek', config: { apiKeyEnv: 'DEEPSEEK_API_KEY', model: MODEL } },
         { insert: [{ id: 'learning', name: new URL('./harness-plugin.js', import.meta.url).href },
             { id: 'learning-sdk', name: new URL('./learning-sdk.js', import.meta.url).href }] }
     ];
     await writeFile(patchPath, JSON.stringify(patches));
     const system = LEARNING_PROMPT + (task.settings.reportInstructions ? '\n\n管理员附加的报告要求：\n' + task.settings.reportInstructions : '');
-    harness = new DeepSeekHarness({ profile: 'sdk', model: MODEL, provider: 'deepseek-official', maxTokens: task.settings.maxOutputTokens,
+    harness = new DeepSeekHarness({ profile: 'sdk', model: MODEL, provider: 'deepseek-official',
         patches: [patchPath], dshHome: conversation.home, processCwd: workspace, cwd: workspace, initializeTimeoutMs: 60000,
-        env: { ...process.env, DSH_TELEMETRY_DISABLED: '1', LEARNING_BRIDGE: `http://127.0.0.1:${server.address().port}/`, LEARNING_TOKEN: token, LEARNING_SYSTEM_PROMPT: system, LEARNING_SESSION_ID: conversation.sessionId, LEARNING_MAX_OUTPUT_TOKENS: String(task.settings.maxOutputTokens) } });
-    const prompt = `开始本合集的新学习任务（或重试）：${task.title}\n任务 ID：${task.id}\n前面的对话仅是本合集的历史上下文。当前工具和提交操作只作用于这个新任务，预算已重新计数；不要将过去已发布的报告重复提交。\n学习要求：${task.prompt || '学习提供的资料并生成详细学习报告。'}\n资料链接：${JSON.stringify(task.links)}\n本地资料：${JSON.stringify(files)}\n目标合集完整目录（含草稿，目录和文件以本次工具查询为准）：${JSON.stringify(directory)}\n${task.draft.body ? '本任务已有未完成草稿，可用 read_document 读取并继续改进。' : '本任务还没有草稿，完成学习后需要 write_document 保存新的报告。'}`;
+        env: { ...process.env, DSH_TELEMETRY_DISABLED: '1', LEARNING_BRIDGE: `http://127.0.0.1:${server.address().port}/`, LEARNING_TOKEN: token, LEARNING_SYSTEM_PROMPT: system, LEARNING_SESSION_ID: conversation.sessionId, LEARNING_PREVIOUS_SESSION_ID: conversation.previousSessionId || '', LEARNING_WORKSPACE: workspace, LEARNING_REPORT_FILE: outputFile } });
+    const prompt = `开始本合集的新学习任务（或重试）：${task.title}\n任务 ID：${task.id}\n前面的对话仅是本合集的历史上下文。当前工具和提交操作只作用于这个新任务，预算已重新计数；不要将过去已发布的报告重复提交。\n共享工作区：${workspace}\n本次报告文件：${outputFile}。用原生 write/read/edit 工具编写并检查文件，完成后调用 submit_document({file_path: "${outputFile}"}) 发布。\n学习要求：${task.prompt || '学习提供的资料并生成详细学习报告。'}\n资料链接：${JSON.stringify(task.links)}\n本地资料：${JSON.stringify(files)}\n目标合集完整目录（含草稿，目录和文件以本次工具查询为准）：${JSON.stringify(directory)}\n${task.draft.body ? '本任务已有未完成草稿，已恢复到本次报告文件，可用 read 读取并继续改进。' : '本任务还没有草稿，请为本次任务编写新文件。'}`;
     const sessionId = conversation.sessionId;
-    send({ type: 'event', kind: 'session', message: '打开合集持久会话：接续已有对话；首次使用时创建', data: { sessionId, collectionId: task.collection_id } });
+    send({ type: 'event', kind: 'session', message: '打开合集持久会话与共享工作区：接续已有对话和文件', data: { sessionId, collectionId: task.collection_id, workspace, reportFile: outputFile } });
     const result = await harness.run(prompt, { sessionId, onNotification(notification) {
         const event = notification.params?.event;
         if (notification.method !== 'session.event' || !event) return;

@@ -54,12 +54,15 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(aiConfig.model, 'deepseek-flash');
         assert.equal(aiConfig.keyConfigured, false);
         assert.ok(!Object.hasOwn(aiConfig, 'apiKey'));
-        assert.equal((await request('/api/admin/ai/config', write('PUT', { ...aiConfig, maxOutputTokens: 1 }))).status, 400);
+        assert.ok(!Object.hasOwn(aiConfig, 'maxOutputTokens'));
+        assert.equal((await request('/api/admin/ai/config', write('PUT', { ...aiConfig, taskTimeoutMinutes: 1 }))).status, 400);
+        assert.equal((await request('/api/admin/ai/config', write('PUT', { ...aiConfig, maxOutputTokens: 1 }))).status, 200);
         assert.equal((await request('/api/admin/ai/config', write('PUT', { ...aiConfig, model: 'other-model', apiKey: 'test-secret', reportInstructions: '中文讲解' }))).status, 200);
         const updatedAiConfig = (await request('/api/admin/ai/config')).body.data;
         assert.equal(updatedAiConfig.model, 'deepseek-flash');
         assert.equal(updatedAiConfig.reportInstructions, '中文讲解');
         assert.ok(!Object.hasOwn(updatedAiConfig, 'apiKey'));
+        assert.ok(!Object.hasOwn(updatedAiConfig, 'maxOutputTokens'));
         assert.equal((await request('/api/admin/ai/tasks/missing')).status, 404);
         assert.equal((await request('/api/admin/ai/tasks/missing/events')).status, 404);
         const disabledAiUpload = new FormData();

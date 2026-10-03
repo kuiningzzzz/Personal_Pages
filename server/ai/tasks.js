@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { fork } from 'node:child_process';
-import { mkdirSync, writeFileSync, existsSync, cpSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, cpSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
@@ -11,6 +11,7 @@ import { collectionTree, directory, localReferences, allowedUrls, readSource, im
 import { MODEL, HARNESS_VERSION, budgetReminder } from './prompt.js';
 import { INITIAL_BUDGET, BUDGET_INCREMENT, MAX_BUDGET } from './budget.js';
 import { safeDiagnostic } from './diagnostics.js';
+import { collectionWorkspace, reportFile, readWorkspaceReport } from './workspace.js';
 
 const dataRoot = process.env.DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 export const taskRoot = join(dataRoot, 'ai');
@@ -36,24 +37,42 @@ export function taskEvents(id, { before = 0, after = 0, limit = 300 } = {}) {
 }
 export function collectionSession(collectionId) {
     const home = join(taskRoot, 'collections', String(collectionId), 'harness');
-    const current = cardDb.prepare('SELECT session_id FROM ai_collection_sessions WHERE collection_id=?').get(collectionId);
-    if (current) return { sessionId: current.session_id, home };
+    const workspace = collectionWorkspace(taskRoot, collectionId);
+    if (!existsSync(workspace)) {
+        mkdirSync(workspace, { recursive: true });
+        // Preserve earlier scratch files under task-specific names. Runtime
+        // configuration and harness storage remain outside the model workspace.
+        for (const row of cardDb.prepare('SELECT id FROM ai_tasks WHERE collection_id=? ORDER BY created_at').all(collectionId)) {
+            const legacy = join(taskRoot, row.id);
+            if (!existsSync(legacy)) continue;
+            for (const file of readdirSync(legacy)) {
+                if (['harness', 'learning.patch.json', 'error.md'].includes(file)) continue;
+                cpSync(join(legacy, file), join(workspace, 'legacy', row.id, file), { recursive: true });
+            }
+        }
+    }
+    const sessionId = `learning-collection-${collectionId}-workspace`;
+    const current = cardDb.prepare('SELECT * FROM ai_collection_sessions WHERE collection_id=?').get(collectionId);
+    if (current) {
+        if (current.session_id !== sessionId) cardDb.prepare('UPDATE ai_collection_sessions SET session_id=?,previous_session_id=? WHERE collection_id=?').run(sessionId, current.session_id, collectionId);
+        return { sessionId, home, workspace, previousSessionId: current.session_id === sessionId ? current.previous_session_id : current.session_id };
+    }
     // Adopt the last available legacy conversation once, including its durable
     // image attachments. Shared storage survives deleting individual task logs.
     const candidates = cardDb.prepare(`SELECT e.task_id,e.data FROM ai_task_events e JOIN ai_tasks t ON t.id=e.task_id
         WHERE t.collection_id=? AND e.kind='session' ORDER BY e.id DESC`).all(collectionId);
-    let sessionId = `learning-collection-${collectionId}`;
+    let previousSessionId = null;
     for (const row of candidates) {
         const legacy = join(taskRoot, row.task_id, 'harness');
         const id = JSON.parse(row.data).sessionId;
         if (!id || !existsSync(join(legacy, 'sessions'))) continue;
         mkdirSync(home, { recursive: true });
         cpSync(legacy, home, { recursive: true });
-        sessionId = id;
+        previousSessionId = id === sessionId ? null : id;
         break;
     }
-    cardDb.prepare('INSERT INTO ai_collection_sessions(collection_id,session_id) VALUES (?,?)').run(collectionId, sessionId);
-    return { sessionId, home };
+    cardDb.prepare('INSERT INTO ai_collection_sessions(collection_id,session_id,previous_session_id) VALUES (?,?,?)').run(collectionId, sessionId, previousSessionId);
+    return { sessionId, home, workspace, previousSessionId };
 }
 export function taskView(task, detailed = false) {
     if (!task) return null;
@@ -155,7 +174,6 @@ export async function dispatch(id, method, args = {}, signal) {
         case 'import_asset': return importAsset(task, args, signal);
         case 'write_document': {
             if (!String(args.title || '').trim() || !String(args.body || '').trim()) throw new Error('报告标题和正文不能为空');
-            if (args.body.length > 100000) throw new Error('正文最多 100000 字，请精简后保存');
             const draft = { title: args.title.trim().slice(0, 200), body: args.body, summary: String(args.summary || '').slice(0, 1000),
                 tags: [...new Set((args.tags || []).map(item => String(item).trim().slice(0, 40)).filter(Boolean))].slice(0, 20),
                 actions: (args.actions || []).map(action => ({ label: String(action.label || '').slice(0, 30), url: String(action.url || '') })).slice(0, 6) };
@@ -164,6 +182,10 @@ export async function dispatch(id, method, args = {}, signal) {
             return { saved: true, title: draft.title, characters: draft.body.length };
         }
         case 'read_document': return JSON.parse(task.draft);
+        case 'sync_document': {
+            const body = await readWorkspaceReport(collectionWorkspace(taskRoot, task.collection_id), args.file_path || reportFile(task.id));
+            return dispatch(id, 'write_document', { ...JSON.parse(task.draft), title: task.title, body });
+        }
         case 'extend_budget': {
             if (task.budget >= MAX_BUDGET) throw new Error(`已达到 ${MAX_BUDGET} 次总上限，请提交报告`);
             const budget = Math.min(MAX_BUDGET, task.budget + BUDGET_INCREMENT);
@@ -172,8 +194,14 @@ export async function dispatch(id, method, args = {}, signal) {
             return { budget, remaining: budget - task.iterations };
         }
         case 'submit_document': {
-            const draft = JSON.parse(task.draft);
-            if (!draft.body || !draft.title) throw new Error('请先用 write_document 保存完整报告');
+            let draft = JSON.parse(task.draft);
+            if (args.file_path) {
+                const body = await readWorkspaceReport(collectionWorkspace(taskRoot, task.collection_id), args.file_path);
+                const title = String(args.title || body.match(/^#\s+(.+)$/m)?.[1] || task.title).trim();
+                await dispatch(id, 'write_document', { ...draft, ...args, title, body });
+                draft = JSON.parse(getTask(id).draft);
+            }
+            if (!draft.body || !draft.title) throw new Error('请用原生 write/edit 工具保存 Markdown，再调用 submit_document 并传入 file_path');
             let emptyLink = false;
             marked.walkTokens(marked.lexer(draft.body), token => { if (['link','image'].includes(token.type) && !String(token.href || '').trim()) emptyLink = true; });
             if (emptyLink) throw new Error('报告包含地址为空的 Markdown 链接或图片，请修正后再提交');
@@ -260,7 +288,7 @@ async function pump() {
         active = null; setImmediate(pump);
     });
     child.send({ type: 'start', task: { ...task, settings: JSON.parse(task.settings), links: JSON.parse(task.links), draft: JSON.parse(task.draft) },
-        workspace: join(taskRoot, task.id), directory: directory(task.collection_id),
+        workspace: conversation.workspace, directory: directory(task.collection_id),
         conversation,
         files: cardDb.prepare("SELECT url,name,kind FROM ai_task_files WHERE task_id=? AND role='input'").all(task.id) });
 }

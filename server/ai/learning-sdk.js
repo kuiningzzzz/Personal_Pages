@@ -12,7 +12,7 @@ export class LearningSdkServer extends HarnessSdkJsonRpcServer {
     constructor(ctx, transport) { super(ctx, transport); this.learningContext = ctx; }
     async initialize(params) {
         const result = await super.initialize(params);
-        this.route = { provider: params.provider, model: params.model, maxTokens: params.maxTokens, reasoningEffort: params.reasoningEffort };
+        this.route = { provider: params.provider, model: params.model, reasoningEffort: params.reasoningEffort };
         this.cwdForLearning = params.cwd;
         return result;
     }
@@ -26,9 +26,16 @@ export class LearningSdkServer extends HarnessSdkJsonRpcServer {
             // Clear pending steering before publication starts the driver.
             // Completed messages and compression remain on the same session.
             const setup = (_agentCtx, agent) => { agent.inbox.clear(); };
+            let seed;
+            const previousId = process.env.LEARNING_PREVIOUS_SESSION_ID;
+            if (!stored && previousId && await ctx.sessionPersistence.stat(previousId)) {
+                const previous = await ctx.sessionPersistence.open(previousId, 'read');
+                try { seed = (await previous.read()).events; }
+                finally { await previous.close(); }
+            }
             const handle = stored
                 ? await ctx.agents.resume({ resumeSessionId: id, agentOptions: this.route, setup })
-                : await ctx.agents.create({ sessionId: id, meta: { cwd: this.cwdForLearning }, agentOptions: this.route });
+                : await ctx.agents.create({ sessionId: id, meta: { cwd: this.cwdForLearning }, seed, agentOptions: this.route, setup });
             return handle;
         })();
         const handle = await this.creation;

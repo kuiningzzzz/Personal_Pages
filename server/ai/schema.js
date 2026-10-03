@@ -25,6 +25,11 @@ export function migrateAi(db) {
     `);
     db.prepare("UPDATE ai_tasks SET budget=? WHERE status='queued' AND iterations=0 AND budget<?").run(INITIAL_BUDGET, INITIAL_BUDGET);
     db.prepare('INSERT OR IGNORE INTO site_configs (key, data) VALUES (?, ?)').run('ai_learning', JSON.stringify({
-        reportInstructions: '', maxOutputTokens: 16384, taskTimeoutMinutes: 30
+        reportInstructions: '', taskTimeoutMinutes: 30
     }));
+    if (!db.prepare('PRAGMA table_info(ai_collection_sessions)').all().some(row => row.name === 'previous_session_id'))
+        db.exec('ALTER TABLE ai_collection_sessions ADD COLUMN previous_session_id TEXT');
+    const config = JSON.parse(db.prepare("SELECT data FROM site_configs WHERE key='ai_learning'").get().data);
+    delete config.maxOutputTokens;
+    db.prepare("UPDATE site_configs SET data=? WHERE key='ai_learning'").run(JSON.stringify(config));
 }
