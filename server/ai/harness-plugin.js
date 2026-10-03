@@ -1,6 +1,7 @@
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { BUDGET_INCREMENT, MAX_BUDGET } from './budget.js';
+import { createIdleWatch } from './idle-watch.js';
 
 export const name = 'personal-pages-learning';
 export const inject = ['tools', 'agents', 'systemPrompt', 'attachments'];
@@ -9,6 +10,7 @@ const number = (description, required = false) => ({ type: 'integer', descriptio
 
 export function apply(ctx) {
     let finished = false;
+    const idleWatch = createIdleWatch();
     const bridge = async (method, args = {}, signal) => {
         const response = await fetch(process.env.LEARNING_BRIDGE, { method: 'POST', signal,
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LEARNING_TOKEN}` }, body: JSON.stringify({ method, args }) });
@@ -16,6 +18,39 @@ export function apply(ctx) {
         if (result.error) throw new Error(result.error);
         return result.value;
     };
+    let logTimer, logTail = Promise.resolve();
+    const logs = [], attempts = new Map();
+    function flushLogs() {
+        clearTimeout(logTimer); logTimer = null;
+        while (logs.length) {
+            const events = logs.splice(0, 100);
+            // Diagnostics must never interrupt the learning loop.
+            logTail = logTail.then(() => bridge('log_events', { events })).catch(() => {});
+        }
+        return logTail;
+    }
+    function log(kind, message, data = {}) {
+        const last = logs.at(-1);
+        if (last?.kind === kind && last.data.attemptId === data.attemptId && last.message.length + message.length < 16000) last.message += message;
+        else logs.push({ kind, message, data });
+        logTimer ??= setTimeout(flushLogs, 250);
+    }
+    ctx.on('agent/assistant-stream', ({ frame }) => {
+        if (frame.type === 'start') attempts.set(frame.attemptId, { attemptId: frame.attemptId, turn: frame.turn, step: frame.step });
+        else if (frame.type === 'chunk') {
+            const chunk = frame.chunk;
+            if (['text-delta', 'reasoning-delta'].includes(chunk.type) && chunk.text)
+                log(chunk.type === 'text-delta' ? 'assistant' : 'reasoning', chunk.text, attempts.get(frame.attemptId));
+            if (chunk.type === 'finish') log('model-finish', `模型请求结束：${typeof chunk.reason === 'string' ? chunk.reason : JSON.stringify(chunk.reason)}`, attempts.get(frame.attemptId));
+        } else if (frame.type === 'end') { attempts.delete(frame.attemptId); void flushLogs(); }
+    });
+    ctx.on('session/event', (_session, event) => idleWatch.observe(event));
+    ctx.on('agent/request', async (_request, next) => ({ ...await next(), maxTokens: Number(process.env.LEARNING_MAX_OUTPUT_TOKENS) }));
+    ctx.on('agent/request-error', async ({ failure }, next) => {
+        log('model-error', '模型请求失败，交由 Harness 判断是否重试', { failure });
+        await flushLogs();
+        return next();
+    });
     const specs = [
         ['list_collection', '列出目标合集、所有子合集和草稿的目录。', {}],
         ['search_collection', '在目标合集及全部子合集中搜索标题、标签与正文，包含草稿。', { query: string('搜索文字') }],
@@ -37,6 +72,7 @@ export function apply(ctx) {
                 return [{ type: 'text', text: JSON.stringify(value) }];
             } },
             async execute(args, exec) {
+                await flushLogs();
                 const result = await bridge(toolName, args, exec.signal);
                 if (['view_image', 'view_pdf_page'].includes(toolName)) {
                     const image = await ctx.attachments.saveImage({ data: Buffer.from(result.base64, 'base64'), mediaType: result.mimeType, name: result.name });
@@ -56,9 +92,13 @@ export function apply(ctx) {
     ctx.on('agent/pre-step', async ({ signal }, next) => {
         const decision = await next();
         if (finished || decision.kind !== 'enter') return decision;
+        const idleReminder = idleWatch.takeReminder();
+        if (idleReminder) log('idle-warning', '连续 3 次迭代空输出且没有工具调用，注入提交任务提醒');
+        await flushLogs();
         const state = await bridge('step', {}, signal);
         if (state.stop) { finished = true; return { kind: 'reject' }; }
-        if (state.reminder) return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: 'text', text: state.reminder }], source: { kind: name, form: 'instructions' } })] };
+        const reminders = [idleReminder, state.reminder].filter(Boolean);
+        if (reminders.length) return { ...decision, messages: [...decision.messages, ...reminders.map(text => createUserMessage({ content: [{ type: 'text', text }], source: { kind: name, form: 'instructions' } }))] };
         return decision;
     });
     ctx.on('agent/turn-stopping', ({ agent }) => {

@@ -18,6 +18,10 @@ export function migrateAi(db) {
             kind TEXT NOT NULL, message TEXT NOT NULL, data TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_ai_events_task ON ai_task_events(task_id, id);
+        CREATE TABLE IF NOT EXISTS ai_collection_sessions (
+            collection_id INTEGER PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
+            session_id TEXT NOT NULL
+        );
     `);
     db.prepare("UPDATE ai_tasks SET budget=? WHERE status='queued' AND iterations=0 AND budget<?").run(INITIAL_BUDGET, INITIAL_BUDGET);
     db.prepare('INSERT OR IGNORE INTO site_configs (key, data) VALUES (?, ?)').run('ai_learning', JSON.stringify({

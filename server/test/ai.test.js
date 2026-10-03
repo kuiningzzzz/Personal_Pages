@@ -1,6 +1,6 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
@@ -14,7 +14,7 @@ process.env.PUBLIC_DIR = join(folder, 'public');
 process.env.DEEPSEEK_API_KEY = '';
 mkdirSync(process.env.PUBLIC_DIR);
 const { cardDb, commentDb } = await import('../db.js');
-const { createTask, getTask, dispatch, failTask, taskView, retryTask, event } = await import('../ai/tasks.js');
+const { createTask, getTask, dispatch, failTask, taskView, taskEvents, collectionSession, retryTask, event } = await import('../ai/tasks.js');
 const { directory, storeAsset, readSource, pdfPage, downloadPublic } = await import('../ai/sources.js');
 const { auditAndCleanupUploads } = await import('../upload-cleanup.js');
 const { runPdf } = await import('../ai/pdf-process.js');
@@ -100,24 +100,30 @@ function sse(res, tool, requestNumber) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
     const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     send('message_start', { type: 'message_start', message: { id: `msg-${requestNumber}`, type: 'message', role: 'assistant', model: 'deepseek-flash', content: [], stop_reason: null, usage: { input_tokens: 10, output_tokens: 0 } } });
-    if (tool) {
+    if (tool?.name) {
         send('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: `call-${requestNumber}`, name: tool.name, input: {} } });
         send('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(tool.args || {}) } });
     } else {
+        if (tool?.thinking) {
+            send('content_block_start', { type: 'content_block_start', index: 1, content_block: { type: 'thinking', thinking: '' } });
+            send('content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'thinking_delta', thinking: tool.thinking } });
+            send('content_block_stop', { type: 'content_block_stop', index: 1 });
+        }
         send('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
-        send('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '完成' } });
+        send('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: tool?.empty ? '' : '完成' } });
     }
     send('content_block_stop', { type: 'content_block_stop', index: 0 });
-    send('message_delta', { type: 'message_delta', delta: { stop_reason: tool ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } });
+    send('message_delta', { type: 'message_delta', delta: { stop_reason: tool?.name ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } });
     send('message_stop', { type: 'message_stop' }); res.end();
 }
 
-async function harnessScenario(selectTool, { job = task() } = {}) {
+async function harnessScenario(selectTool, { job = task(), inspectRequest } = {}) {
     let calls = 0;
     const mock = createServer(async (req, res) => {
-        for await (const _chunk of req) { /* Drain request; never record credentials or full prompts. */ }
+        const chunks = []; for await (const chunk of req) chunks.push(chunk);
+        const request = JSON.parse(Buffer.concat(chunks).toString());
         if (!req.url.endsWith('/messages')) { res.writeHead(404); res.end(); return; }
-        calls++; sse(res, selectTool(calls), calls);
+        calls++; inspectRequest?.(request, calls); sse(res, selectTool(calls, request), calls);
     });
     await new Promise(resolve => mock.listen(0,'127.0.0.1',resolve));
     const child = fork(fileURLToPath(new URL('../ai/worker.js', import.meta.url)), [], { env: { ...process.env, DEEPSEEK_API_KEY: 'test-fake-key', DEEPSEEK_BASE_URL: `http://127.0.0.1:${mock.address().port}/anthropic/v1` }, stdio: ['ignore','ignore','pipe','ipc'] });
@@ -128,10 +134,10 @@ async function harnessScenario(selectTool, { job = task() } = {}) {
             try { const value = await dispatch(job.id,message.method,message.args); if (child.connected) child.send({ type:'reply',requestId:message.requestId,value }); }
             catch (error) { if (child.connected) child.send({ type:'reply',requestId:message.requestId,error:error.message }); }
         } else if (message.type === 'error') failTask(job.id,message.message);
-        else if (message.type === 'event' && message.kind === 'session') event(job.id,message.kind,message.message,message.data);
+        else if (message.type === 'event') event(job.id,message.kind,message.message,message.data);
     });
     const workspace = join(folder,'ai',job.id); mkdirSync(workspace,{recursive:true});
-    child.send({ type:'start',task:{...job,links:[],settings:{maxOutputTokens:4096},draft:JSON.parse(job.draft)},workspace,directory:directory(job.collection_id),files:cardDb.prepare("SELECT url,name,kind FROM ai_task_files WHERE task_id=? AND role='input'").all(job.id) });
+    child.send({ type:'start',task:{...job,links:[],settings:{maxOutputTokens:4096},draft:JSON.parse(job.draft)},workspace,conversation:collectionSession(job.collection_id),directory:directory(job.collection_id),files:cardDb.prepare("SELECT url,name,kind FROM ai_task_files WHERE task_id=? AND role='input'").all(job.id) });
     try {
         await new Promise((resolve, reject) => {
             const timer = setTimeout(() => { child.kill(); reject(new Error('Harness test timed out: '+diagnostics)); },60000);
@@ -166,7 +172,92 @@ test('真实 Harness 总上限为 320，最后一次仍未提交就结束', asyn
     assert.equal(result.task.budget,320);
 });
 
-test('同一任务连续重试使用不同持久会话，保留资料和草稿，最终能发布', async () => {
+test('真实 Harness 连续三次空输出后注入提交提醒，并显示思考、工具参数和结果', async () => {
+    let reminder = false;
+    const result = await harnessScenario((count, request) => {
+        if (count === 1) return { name: 'write_document', args: { title: '空转测试', body: '## 详细讲解\n资料说明\n## 内容总结\n总结' } };
+        if (count <= 4) return { empty: true };
+        reminder = JSON.stringify(request.messages).includes('连续 3 次迭代没有输出');
+        if (count === 5) return { thinking: '检查草稿已保存，准备提交。' };
+        return { name: 'submit_document' };
+    });
+    assert.equal(result.task.status, 'published', result.task.error + result.diagnostics);
+    assert.equal(result.calls, 6);
+    assert.ok(reminder);
+    const events = taskEvents(result.task.id, { limit: 1000 }).events;
+    assert.equal(events.filter(item => item.kind === 'idle-warning').length, 1);
+    assert.ok(events.some(item => item.kind === 'reasoning' && item.message.includes('准备提交')));
+    assert.ok(events.some(item => item.kind === 'tool-call' && item.data.arguments.includes('资料说明')));
+    assert.ok(events.some(item => item.kind === 'tool-result' && JSON.stringify(item.data).includes('saved')));
+});
+
+test('新任务跨进程接续同一合集的对话，不同合集互相隔离', async () => {
+    const root = entry('连续课程合集');
+    const first = await harnessScenario(count => count === 1 ? { name: 'write_document', args: { title: '第一课', body: '## 详细讲解\n上下文标记 A9Y1\n## 内容总结\n第一课' } } : { name: 'submit_document' }, { job: task(root) });
+    assert.equal(first.task.status, 'published', first.task.error);
+    const sharedHome = collectionSession(root).home;
+    // Simulate a legacy per-task home, then recover its real dsh conversation.
+    const legacyHome = join(folder, 'ai', first.task.id, 'harness');
+    cpSync(sharedHome, legacyHome, { recursive: true });
+    assert.ok(sharedHome.startsWith(join(folder, 'ai') + (process.platform === 'win32' ? '\\' : '/')));
+    rmSync(sharedHome, { recursive: true, force: true });
+    cardDb.prepare('DELETE FROM ai_collection_sessions WHERE collection_id=?').run(root);
+    assert.equal(collectionSession(root).sessionId, first.view.events.find(item => item.kind === 'session').data.sessionId);
+    // Removing an individual task must not remove the collection conversation.
+    cardDb.prepare('DELETE FROM ai_tasks WHERE id=?').run(first.task.id);
+    const firstWorkspace = join(folder, 'ai', first.task.id);
+    assert.ok(firstWorkspace.startsWith(join(folder, 'ai') + (process.platform === 'win32' ? '\\' : '/')));
+    rmSync(firstWorkspace, { recursive: true, force: true });
+    assert.ok(existsSync(sharedHome));
+    let sameHistory = false, independent = false;
+    const second = await harnessScenario(count => count === 1 ? { name: 'write_document', args: { title: '第二课', body: '## 详细讲解\n第二课\n## 内容总结\n总结' } } : { name: 'submit_document' }, {
+        job: task(root), inspectRequest(request, count) {
+            if (count === 1) sameHistory = request.messages.some(message => message.role === 'assistant' && JSON.stringify(message).includes('上下文标记 A9Y1'));
+        }
+    });
+    assert.equal(second.task.status, 'published', second.task.error);
+    assert.ok(sameHistory, '上一任务的模型消息必须出现在新任务首个请求内');
+    assert.equal(collectionSession(root).sessionId, first.view.events.find(item => item.kind === 'session').data.sessionId);
+    const third = await harnessScenario(count => count === 1 ? { name: 'write_document', args: { title: '独立课', body: '## 详细讲解\n独立课\n## 内容总结\n总结' } } : { name: 'submit_document' }, {
+        inspectRequest(request, count) { if (count === 1) independent = !JSON.stringify(request.messages).includes('上下文标记 A9Y1'); }
+    });
+    assert.equal(third.task.status, 'published', third.task.error);
+    assert.ok(independent);
+    // Each job still starts its own accounting despite resumed turn/step IDs.
+    assert.equal(second.task.iterations, 2);
+});
+
+test('长日志可以前后分页且不丢失内容，旧合集会话采用独立存储', async () => {
+    const job = task();
+    const legacyId = 'learning-legacy-test';
+    const legacyHome = join(folder, 'ai', job.id, 'harness');
+    mkdirSync(join(legacyHome, 'sessions'), { recursive: true });
+    writeFileSync(join(legacyHome, 'migration-marker'), 'legacy attachment');
+    event(job.id, 'session', '旧会话', { sessionId: legacyId });
+    const restored = collectionSession(job.collection_id);
+    assert.equal(restored.sessionId, legacyId);
+    assert.equal(readFileSync(join(restored.home, 'migration-marker'), 'utf8'), 'legacy attachment');
+    const longOutput = '正文'.repeat(18000);
+    event(job.id, 'assistant', longOutput);
+    for (let index = 0; index < 620; index++) event(job.id, 'phase', `阶段 ${index}`);
+    const tail = taskEvents(job.id);
+    assert.equal(tail.events.length, 300);
+    assert.ok(tail.hasMore);
+    const older = taskEvents(job.id, { before: tail.events[0].id });
+    assert.equal(older.events.at(-1).id + 1, tail.events[0].id);
+    let cursor = 0, all = [], more = true;
+    // after=0 means latest page, so the first ascending page uses the queue event.
+    const start = cardDb.prepare('SELECT min(id) AS id FROM ai_task_events WHERE task_id=?').get(job.id).id;
+    cursor = start;
+    all = taskEvents(job.id, { before: start + 1 }).events;
+    while (more) { const page = taskEvents(job.id, { after: cursor }); all.push(...page.events); cursor = all.at(-1).id; more = page.hasMore; }
+    assert.equal(new Set(all.map(item => item.id)).size, all.length);
+    assert.equal(all.filter(item => item.kind === 'assistant').map(item => item.message).join(''), longOutput);
+    failTask(job.id, '测试完成');
+    await new Promise(resolve => setImmediate(resolve));
+});
+
+test('同一任务连续重试恢复合集持久会话，保留资料和草稿，最终能发布', async () => {
     const job = task();
     const pdf = await storeAsset(job, samplePdf(), '.pdf', '重试课件.pdf', 'input');
     const body = '## 详细讲解\n保留这段学习草稿。\n\n## 内容总结\n总结。';
@@ -186,9 +277,9 @@ test('同一任务连续重试使用不同持久会话，保留资料和草稿�
         assert.equal(result.task.status,attempt === 0 ? 'failed' : 'published',result.task.error);
         assert.equal(result.calls,attempt === 0 ? 64 : 2,result.task.error);
     }
-    const sessions = taskView(getTask(job.id),true).events.filter(item => item.kind === 'session').map(item => item.data.sessionId);
+    const sessions = taskEvents(job.id, { limit: 5000 }).events.filter(item => item.kind === 'session').map(item => item.data.sessionId);
     assert.equal(sessions.length,3);
-    assert.equal(new Set(sessions).size,3);
+    assert.equal(new Set(sessions).size,1);
     const report = cardDb.prepare('SELECT body FROM entries WHERE id=?').get(getTask(job.id).result_entry_id);
     assert.ok(report.body.includes(pdf));
     assert.ok(report.body.includes(body));

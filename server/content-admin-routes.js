@@ -9,6 +9,7 @@ import { auditAndCleanupUploads, publicRoot, rememberUpload } from './upload-cle
 import { imagesFor, saveResourceExtras, validateStructure } from './resource-structure.js';
 import aiRoutes from './ai/routes.js';
 import { createModerationRoutes } from './comments/admin-routes.js';
+import { createFeedbackAdminRoutes } from './feedback/routes.js';
 import { homePlaylist, validatePlaylist, savePlaylist, homeWelcome, validateWelcome, saveWelcome } from './home-music.js';
 
 const router = express.Router();
@@ -50,6 +51,7 @@ router.use((req, res, next) => {
 
 const clean = (value, max = 10000) => String(value ?? '').trim().slice(0, max);
 router.use('/moderation', createModerationRoutes({ db: cardDb }));
+router.use('/feedback', createFeedbackAdminRoutes({ db: cardDb }));
 router.use('/ai', aiRoutes);
 const normalizeTags = value => [...new Set((Array.isArray(value) ? value : []).map(item => clean(item, 40)).filter(Boolean))].slice(0, 20);
 const normalizeActions = value => (Array.isArray(value) ? value : []).map(action => ({

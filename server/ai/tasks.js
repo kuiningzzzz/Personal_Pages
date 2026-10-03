@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { fork } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, cpSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
@@ -10,6 +10,7 @@ import { publicAncestors } from '../resource-structure.js';
 import { collectionTree, directory, localReferences, allowedUrls, readSource, imageSource, pdfPage, importAsset } from './sources.js';
 import { MODEL, HARNESS_VERSION, budgetReminder } from './prompt.js';
 import { INITIAL_BUDGET, BUDGET_INCREMENT, MAX_BUDGET } from './budget.js';
+import { safeDiagnostic } from './diagnostics.js';
 
 const dataRoot = process.env.DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 export const taskRoot = join(dataRoot, 'ai');
@@ -20,7 +21,39 @@ const now = () => new Date().toISOString();
 export const getTask = id => cardDb.prepare('SELECT * FROM ai_tasks WHERE id = ?').get(id);
 export const settings = () => JSON.parse(cardDb.prepare("SELECT data FROM site_configs WHERE key = 'ai_learning'").get().data);
 export function event(id, kind, message, data = {}) {
-    cardDb.prepare('INSERT INTO ai_task_events (task_id,kind,message,data,created_at) VALUES (?,?,?,?,?)').run(id, kind, String(message).slice(0, 20000), JSON.stringify(data), now());
+    const safeMessage = safeDiagnostic(String(message)), safeData = JSON.stringify(safeDiagnostic(data));
+    for (let offset = 0; offset < Math.max(safeMessage.length, 1); offset += 20000)
+        cardDb.prepare('INSERT INTO ai_task_events (task_id,kind,message,data,created_at) VALUES (?,?,?,?,?)').run(id, kind, safeMessage.slice(offset, offset + 20000), offset === 0 ? safeData : '{}', now());
+}
+export function taskEvents(id, { before = 0, after = 0, limit = 300 } = {}) {
+    const direction = after ? 'ASC' : 'DESC';
+    const rows = cardDb.prepare(`SELECT * FROM ai_task_events WHERE task_id=? ${before ? 'AND id<?' : after ? 'AND id>?' : ''} ORDER BY id ${direction} LIMIT ?`)
+        .all(...[id, ...(before || after ? [before || after] : []), limit + 1]);
+    const hasMore = rows.length > limit;
+    rows.splice(limit);
+    if (!after) rows.reverse();
+    return { events: rows.map(item => ({ ...item, data: JSON.parse(item.data) })), hasMore };
+}
+export function collectionSession(collectionId) {
+    const home = join(taskRoot, 'collections', String(collectionId), 'harness');
+    const current = cardDb.prepare('SELECT session_id FROM ai_collection_sessions WHERE collection_id=?').get(collectionId);
+    if (current) return { sessionId: current.session_id, home };
+    // Adopt the last available legacy conversation once, including its durable
+    // image attachments. Shared storage survives deleting individual task logs.
+    const candidates = cardDb.prepare(`SELECT e.task_id,e.data FROM ai_task_events e JOIN ai_tasks t ON t.id=e.task_id
+        WHERE t.collection_id=? AND e.kind='session' ORDER BY e.id DESC`).all(collectionId);
+    let sessionId = `learning-collection-${collectionId}`;
+    for (const row of candidates) {
+        const legacy = join(taskRoot, row.task_id, 'harness');
+        const id = JSON.parse(row.data).sessionId;
+        if (!id || !existsSync(join(legacy, 'sessions'))) continue;
+        mkdirSync(home, { recursive: true });
+        cpSync(legacy, home, { recursive: true });
+        sessionId = id;
+        break;
+    }
+    cardDb.prepare('INSERT INTO ai_collection_sessions(collection_id,session_id) VALUES (?,?)').run(collectionId, sessionId);
+    return { sessionId, home };
 }
 export function taskView(task, detailed = false) {
     if (!task) return null;
@@ -29,7 +62,8 @@ export function taskView(task, detailed = false) {
         files: cardDb.prepare('SELECT id,url,name,kind,role FROM ai_task_files WHERE task_id = ?').all(task.id) };
     if (detailed) {
         row.draft = JSON.parse(task.draft);
-        row.events = cardDb.prepare('SELECT * FROM ai_task_events WHERE task_id = ? ORDER BY id DESC LIMIT 300').all(task.id).reverse().map(item => ({ ...item, data: JSON.parse(item.data) }));
+        const page = taskEvents(task.id);
+        row.events = page.events; row.hasEarlierEvents = page.hasMore;
     } else { delete row.draft; delete row.prompt; }
     return row;
 }
@@ -88,6 +122,11 @@ export function failTask(id, reason, status = 'failed') {
 export async function dispatch(id, method, args = {}, signal) {
     const task = getTask(id);
     if (!task || task.status !== 'running') throw new Error('任务已结束');
+    if (method === 'log_events') {
+        if (!Array.isArray(args.events) || args.events.length > 100) throw new Error('日志批次无效');
+        cardDb.transaction(() => { for (const item of args.events) event(id, item.kind, item.message, item.data); })();
+        return { recorded: true };
+    }
     if (method === 'step') {
         if (task.iterations >= task.budget) { failTask(id, '迭代次数用尽，未成功调用 extend_budget 或 submit_document'); return { stop: true }; }
         const iterations = task.iterations + 1;
@@ -193,6 +232,9 @@ async function pump() {
     cardDb.prepare("UPDATE ai_tasks SET status='running',updated_at=? WHERE id=?").run(now(), task.id);
     event(task.id, 'running', `启动 DeepSeek Harness ${HARNESS_VERSION} / ${MODEL}`);
     mkdirSync(join(taskRoot, task.id), { recursive: true });
+    let conversation;
+    try { conversation = collectionSession(task.collection_id); }
+    catch (error) { failTask(task.id, `无法恢复合集会话：${error.message}`); setImmediate(pump); return; }
     const childEnv = Object.fromEntries(['PATH','Path','SystemRoot','WINDIR','TEMP','TMP','HOME','USERPROFILE','APPDATA','LOCALAPPDATA','HTTPS_PROXY','HTTP_PROXY','NO_PROXY'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
     childEnv.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
     const child = fork(fileURLToPath(new URL('./worker.js', import.meta.url)), [], { env: childEnv, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
@@ -204,7 +246,7 @@ async function pump() {
             try { const value = await dispatch(task.id, message.method, message.args, controller.signal); if (child.connected) child.send({ type: 'reply', requestId: message.requestId, value }); }
             catch (error) { if (child.connected) child.send({ type: 'reply', requestId: message.requestId, error: error.message }); }
         } else if (message.type === 'event') {
-            if (getTask(task.id)?.status === 'running') event(task.id, message.kind, message.message, message.data);
+            if (getTask(task.id)) event(task.id, message.kind, message.message, message.data);
         } else if (message.type === 'usage') {
             if (getTask(task.id)) cardDb.prepare('UPDATE ai_tasks SET usage=? WHERE id=?').run(JSON.stringify(message.usage), task.id);
         } else if (message.type === 'error') failTask(task.id, message.message);
@@ -219,6 +261,7 @@ async function pump() {
     });
     child.send({ type: 'start', task: { ...task, settings: JSON.parse(task.settings), links: JSON.parse(task.links), draft: JSON.parse(task.draft) },
         workspace: join(taskRoot, task.id), directory: directory(task.collection_id),
+        conversation,
         files: cardDb.prepare("SELECT url,name,kind FROM ai_task_files WHERE task_id=? AND role='input'").all(task.id) });
 }
 
