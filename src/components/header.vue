@@ -4,13 +4,16 @@ import { useRouter, useRoute } from 'vue-router'
 import ThemeToggle from './ThemeToggle.vue'
 import { visitor, loadVisitor } from '../lib/auth'
 import { music, loadStation } from '../lib/music'
+import { navigationPath, readingNavigation } from '../lib/navigation'
 
 const name = computed(() => music.profile?.name || '个人主页')
 const open = ref(false)
 const route = useRoute()
 const nav = ref(null)
 const links = [{ path: '/', label: '首页' }, { path: '/moments', label: '动态' }, { path: '/resource', label: '资源库' }, { path: '/activities', label: '活动' }]
-const activeIndex = computed(() => links.findIndex(item => item.path === '/' ? route.path === '/' : route.path.startsWith(item.path)))
+const pendingSection = ref(null)
+const activePath = computed(() => navigationPath(route.path, readingNavigation.value) || (route.path.startsWith('/entry/') ? pendingSection.value : null))
+const activeIndex = computed(() => links.findIndex(item => item.path === activePath.value))
 const slider = ref({ transform: 'translateX(0)', width: '0px', opacity: 0 })
 const slide = ref(false)
 let resizeObserver
@@ -19,17 +22,19 @@ function moveSlider() {
   if (!target) { slider.value = { ...slider.value, opacity: 0 }; return }
   slider.value = { transform: `translate3d(${target.offsetLeft}px, 0, 0)`, width: `${target.offsetWidth}px`, opacity: 1 }
 }
-watch(() => route.path, async (next, previous) => {
-  const tabPath = path => links.some(item => item.path === '/' ? path === '/' : path?.startsWith(item.path))
-  slide.value = tabPath(next) && tabPath(previous)
+watch(() => route.path, (_next, previous) => {
+  pendingSection.value = navigationPath(previous || '', readingNavigation.value)
+}, { flush: 'sync' })
+watch([() => route.path, activeIndex], async ([, nextIndex], [, previousIndex]) => {
+  slide.value = nextIndex >= 0 && previousIndex >= 0
   await nextTick(); moveSlider()
 })
 watch(open, async () => { await nextTick(); moveSlider() })
 useRouter().afterEach(() => { open.value = false })
-watch([name, () => route.path], () => {
-  const label = route.path.startsWith('/moments') ? '动态'
-    : route.path.startsWith('/resource') ? '资源库'
-      : route.path.startsWith('/activities') ? '活动'
+watch([name, () => route.path, activePath], () => {
+  const label = activePath.value === '/moments' ? '动态'
+    : activePath.value === '/resource' ? '资源库'
+      : activePath.value === '/activities' ? '活动'
         : route.path.startsWith('/admin') ? '内容管理'
           : route.path === '/register' ? '注册' : route.path === '/login' ? '登录' : route.path === '/reset-password' ? '重设密码' : route.path === '/account' ? '我的账号' : ''
   document.title = label ? `${label} · ${name.value}` : name.value
@@ -54,7 +59,7 @@ onUnmounted(() => resizeObserver?.disconnect())
       </button>
       <nav id="main-navigation" ref="nav" :class="{ open }" aria-label="主导航">
         <span class="nav-selector" :class="{ sliding: slide }" :style="slider" aria-hidden="true"></span>
-        <router-link v-for="link in links" :key="link.path" :to="link.path">{{ link.label }}</router-link>
+        <router-link v-for="link in links" :key="link.path" :to="link.path" :class="{ 'section-active': activePath === link.path }" :aria-current="activePath === link.path ? 'page' : undefined">{{ link.label }}</router-link>
       </nav>
       <div class="visitor-entry"><router-link v-if="visitor" class="user-tag" to="/account" :title="visitor.username" :aria-label="`${visitor.username}的账号`"><span>{{ visitor.username }}</span></router-link><router-link v-else class="user-tag" :to="{ path: '/login', query: { redirect: route.fullPath } }">登录/注册</router-link></div>
       </div>
@@ -99,7 +104,7 @@ nav a:hover { color: var(--cocoa); }
   nav { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 20; padding: 12px 16px; background: var(--paper); box-shadow: 0 7px 0 var(--paper-deep); }
   nav.open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   nav a { min-height: 43px; padding: 0 14px; border-radius: 5px; background: var(--page-bg); }
-  nav a.router-link-active { background: var(--accent-soft); }
+  nav a.section-active { background: var(--accent-soft); }
   .nav-selector { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .dock-slot, .nav-selector.sliding { transition: none; } }

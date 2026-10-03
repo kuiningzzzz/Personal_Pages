@@ -8,6 +8,7 @@ import CommentsPanel from '../components/CommentsPanel.vue'
 import { lockPageScroll, trapFocus } from '../lib/layers'
 import { entryPath, resourceLabel } from '../lib/resources'
 import { followActiveOutline } from '../lib/reading-outline'
+import { readingNavigation } from '../lib/navigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,6 +17,7 @@ const error = ref('')
 const downloading = ref(false)
 const downloadError = ref('')
 let downloadController
+let readerActive = true
 async function downloadGallery() {
   if (downloading.value || !entry.value?.images.length) return
   downloading.value = true; downloadError.value = ''
@@ -85,8 +87,11 @@ onMounted(async () => {
   window.addEventListener('scroll', readingScrolled, { passive: true })
   window.addEventListener('resize', scheduleTracking, { passive: true })
   try {
-    const result = await (await fetch(`/api/content/entries/${route.params.id}`)).json()
+    const id = route.params.id
+    const result = await (await fetch(`/api/content/entries/${id}`)).json()
+    if (!readerActive || String(route.params.id) !== String(id)) return
     if (!result.success) throw new Error(result.message)
+    readingNavigation.value = { id: result.data.id, kind: result.data.kind }
     if (result.data.kind === 'moment' && result.data.format === 'short') { router.replace('/moments'); return }
     if (result.data.kind === 'resource' && result.data.resource_kind === 'collection') { router.replace(entryPath(result.data)); return }
     entry.value = result.data
@@ -97,6 +102,7 @@ onMounted(async () => {
   } catch (cause) { error.value = cause.message || '内容加载失败' }
 })
 onUnmounted(() => {
+  readerActive = false
   downloadController?.abort()
   releaseScroll?.(); cancelAnimationFrame(frame); resizeObserver?.disconnect()
   media.removeEventListener('change', screenChanged)
