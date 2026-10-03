@@ -49,7 +49,11 @@ onUnmounted(() => {
   </div>
 </template>
 <style scoped>
-.global-record { position: fixed; z-index: 90; top: 0; left: 0; width: 360px; height: 360px; transform-origin: top left; transition: transform .9s cubic-bezier(.22,.75,.14,1); will-change: transform; }
+/* Home record < header (80); the small dock sits over the header's paper,
+   while the mobile navigation portal (100) stays above every record state. */
+.global-record { position: fixed; z-index: 75; top: 0; left: 0; width: 360px; height: 360px; transform-origin: top left; transition: transform .9s cubic-bezier(.22,.75,.14,1); will-change: transform; }
+.global-record.docked { z-index: 81; }
+.global-record.record-intro { z-index: 90; }
 .vinyl { position: absolute; inset: 0; padding: 17%; border-radius: 50%; background: #141518; box-shadow: 0 12px 0 #101115, 12px 18px 0 var(--accent-soft); animation: vinyl-spin 18s linear infinite; animation-play-state: paused; }
 .vinyl.spinning { animation-play-state: running; }
 .record-intro .vinyl { box-shadow: 0 12px 0 #101115, 12px 18px 0 var(--welcome-record-stack); }

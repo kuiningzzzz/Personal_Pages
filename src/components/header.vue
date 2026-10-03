@@ -8,6 +8,9 @@ import { navigationPath, readingNavigation } from '../lib/navigation'
 
 const name = computed(() => music.profile?.name || '个人主页')
 const open = ref(false)
+const navMedia = window.matchMedia('(max-width: 720px)')
+const mobileNav = ref(navMedia.matches)
+const navMediaChanged = event => { mobileNav.value = event.matches }
 const route = useRoute()
 const nav = ref(null)
 const links = [{ path: '/', label: '首页' }, { path: '/moments', label: '动态' }, { path: '/resource', label: '资源库' }, { path: '/activities', label: '活动' }]
@@ -40,13 +43,14 @@ watch([name, () => route.path, activePath], () => {
   document.title = label ? `${label} · ${name.value}` : name.value
 }, { immediate: true })
 onMounted(async () => {
+  navMedia.addEventListener('change', navMediaChanged)
   loadVisitor()
   loadStation().catch(() => {})
   resizeObserver = new ResizeObserver(moveSlider)
   if (nav.value) resizeObserver.observe(nav.value)
   moveSlider()
 })
-onUnmounted(() => resizeObserver?.disconnect())
+onUnmounted(() => { resizeObserver?.disconnect(); navMedia.removeEventListener('change', navMediaChanged) })
 </script>
 
 <template>
@@ -57,10 +61,10 @@ onUnmounted(() => resizeObserver?.disconnect())
       <button class="menu-button" type="button" :aria-expanded="open" aria-controls="main-navigation" @click="open = !open">
         {{ open ? '收起' : '目录' }}<span aria-hidden="true">{{ open ? '−' : '+' }}</span>
       </button>
-      <nav id="main-navigation" ref="nav" :class="{ open }" aria-label="主导航">
+      <Teleport to="body" :disabled="!mobileNav"><nav id="main-navigation" ref="nav" :class="{ open }" aria-label="主导航">
         <span class="nav-selector" :class="{ sliding: slide }" :style="slider" aria-hidden="true"></span>
         <router-link v-for="link in links" :key="link.path" :to="link.path" :class="{ 'section-active': activePath === link.path }" :aria-current="activePath === link.path ? 'page' : undefined">{{ link.label }}</router-link>
-      </nav>
+      </nav></Teleport>
       <div class="visitor-entry"><router-link v-if="visitor" class="user-tag" to="/account" :title="visitor.username" :aria-label="`${visitor.username}的账号`"><span>{{ visitor.username }}</span></router-link><router-link v-else class="user-tag" :to="{ path: '/login', query: { redirect: route.fullPath } }">登录/注册</router-link></div>
       </div>
     </div>
@@ -101,7 +105,7 @@ nav a:hover { color: var(--cocoa); }
   .brand { font-size: 18px; }
   .brand::before { width: 9px; height: 25px; }
   .menu-button { display: inline-flex; }
-  nav { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 20; padding: 12px 16px; background: var(--paper); box-shadow: 0 7px 0 var(--paper-deep); }
+  nav { display: none; position: fixed; top: 64px; left: 0; right: 0; z-index: 100; padding: 12px 16px; background: var(--paper); box-shadow: 0 7px 0 var(--paper-deep); }
   nav.open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   nav a { min-height: 43px; padding: 0 14px; border-radius: 5px; background: var(--page-bg); }
   nav a.section-active { background: var(--accent-soft); }
