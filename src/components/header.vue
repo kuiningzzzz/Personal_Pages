@@ -73,6 +73,8 @@ onUnmounted(() => { resizeObserver?.disconnect(); navMedia.removeEventListener('
 
 <style scoped>
 .site-header { position: sticky; top: 0; z-index: 80; background: var(--paper); }
+/* Extend the same paper above the moving header during elastic scrolling. */
+.site-header::before { content: ''; position: absolute; right: 0; bottom: 100%; left: 0; height: 100vh; height: 100dvh; background: var(--paper); pointer-events: none; }
 .header-inner { min-height: 78px; display: flex; align-items: stretch; justify-content: space-between; gap: 22px; perspective: 900px; }
 .brand-controls { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1; }
 .brand-cluster { display: flex; align-items: center; min-width: 0; }

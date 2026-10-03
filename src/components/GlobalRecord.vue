@@ -6,10 +6,16 @@ import { music, togglePlayback } from '../lib/music'
 
 const route = useRoute()
 const visible = ref(false)
+const returningHome = ref(false)
 const position = ref({ x: 0, y: 0, scale: 1 })
 const style = computed(() => ({ transform: `translate3d(${position.value.x}px, ${position.value.y}px, 0) scale(${position.value.scale})` }))
 const label = computed(() => !music.entered ? '播放唱片，展开首页' : !music.tracks.length ? '尚未配置歌单' : music.playing ? '暂停音乐' : music.time > 0 ? '继续播放音乐' : '播放音乐')
-let resizeObserver, observer, frame = 0, anchor
+let resizeObserver, observer, frame = 0, anchor, returnTimer
+function finishReturn(event) {
+  if (event && (event.target !== event.currentTarget || event.propertyName !== 'transform')) return
+  returningHome.value = false
+  clearTimeout(returnTimer)
+}
 function locate() {
   frame = 0
   const home = route.path === '/' ? document.querySelector('[data-player-home]') : null
@@ -21,8 +27,18 @@ function locate() {
   if (anchor !== target) { resizeObserver?.disconnect(); resizeObserver?.observe(target); anchor = target }
   const rect = target.getBoundingClientRect()
   if (rect.width <= 0) return
+  const nextSurface = home ? music.entered ? 'home' : 'intro' : 'dock'
+  const moved = position.value.x !== rect.left || position.value.y !== rect.top || position.value.scale !== rect.width / 360
+  if (nextSurface !== 'home') finishReturn()
+  else if (music.surface === 'dock' && visible.value && moved && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) returningHome.value = true
+  if (returningHome.value && moved) {
+    // transitionend normally lowers the layer. Keep a fallback for transitions
+    // suppressed by a theme change, and renew it if the destination moves.
+    clearTimeout(returnTimer)
+    returnTimer = setTimeout(() => finishReturn(), 1050)
+  }
   position.value = { x: rect.left, y: rect.top, scale: rect.width / 360 }
-  music.surface = home ? music.entered ? 'home' : 'intro' : 'dock'
+  music.surface = nextSurface
   visible.value = true
 }
 function schedule() { if (!frame) frame = requestAnimationFrame(locate) }
@@ -37,13 +53,14 @@ onMounted(() => {
   locate()
 })
 onUnmounted(() => {
+  clearTimeout(returnTimer)
   cancelAnimationFrame(frame); observer?.disconnect(); resizeObserver?.disconnect()
   window.removeEventListener('resize', schedule); window.removeEventListener('scroll', schedule, true)
   window.removeEventListener('home-player-open', schedule)
 })
 </script>
 <template>
-  <div v-show="visible" class="global-record" :class="{ docked: music.surface === 'dock', 'record-intro': !music.entered || music.entering }" :style="style">
+  <div v-show="visible" class="global-record" :class="{ docked: music.surface === 'dock', 'returning-home': returningHome, 'record-intro': !music.entered || music.entering }" :style="style" @transitionend="finishReturn">
     <div class="vinyl" :class="{ spinning: music.playing }"><div class="vinyl-grooves"></div><img v-if="music.profile?.avatar" :src="music.profile.avatar" :alt="`${music.profile.name}的头像唱片`" /></div>
     <button type="button" class="record-toggle" :aria-label="label" :title="label" :aria-pressed="music.playing" :disabled="music.entering || (music.entered && !music.tracks.length)" @click="togglePlayback"><span class="record-action" :class="{ hidden: music.playing && music.entered }"><PlayerIcon :name="music.playing ? 'pause' : 'play'" /></span></button>
   </div>
@@ -52,7 +69,7 @@ onUnmounted(() => {
 /* Home record < header (80); the small dock sits over the header's paper,
    while the mobile navigation portal (100) stays above every record state. */
 .global-record { position: fixed; z-index: 75; top: 0; left: 0; width: 360px; height: 360px; transform-origin: top left; transition: transform .9s cubic-bezier(.22,.75,.14,1); will-change: transform; }
-.global-record.docked { z-index: 81; }
+.global-record.docked, .global-record.returning-home { z-index: 81; }
 .global-record.record-intro { z-index: 90; }
 .vinyl { position: absolute; inset: 0; padding: 17%; border-radius: 50%; background: #141518; box-shadow: 0 12px 0 #101115, 12px 18px 0 var(--accent-soft); animation: vinyl-spin 18s linear infinite; animation-play-state: paused; }
 .vinyl.spinning { animation-play-state: running; }

@@ -97,7 +97,8 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+/* The root canvas is exposed by browser overscroll; match the header there. */
+html { scroll-behavior: smooth; background: var(--paper); }
 html.home-welcome-active { overflow: hidden; }
 body { min-width: 320px; margin: 0; background: var(--page-bg); }
 button, input, textarea, select { font: inherit; }
