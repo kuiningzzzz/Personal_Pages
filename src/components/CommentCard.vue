@@ -93,7 +93,7 @@ const date = value => new Date(value).toLocaleString('zh-CN', { month: 'numeric'
 </script>
 <template>
   <article :id="`comment-${comment.id}`" class="comment-card" :class="{ focused, 'reply-card': comment.root_id }">
-    <header><strong>{{ comment.username }}</strong><span class="comment-email">{{ comment.email }}</span></header>
+    <header><div class="comment-identity"><strong>{{ comment.username }}</strong><span v-if="comment.owned" class="identity-tag self-tag">自己</span><span v-if="comment.is_owner" class="identity-tag owner-tag">站主</span></div><span class="comment-email">{{ comment.email }}</span></header>
     <div :id="contentId" ref="viewport" class="comment-viewport" :style="viewportStyle"><p ref="content" class="comment-body"><span v-if="comment.root_id" class="reply-to">回复 @{{ comment.reply_to_name }}：</span>{{ comment.body }}</p></div>
     <button v-if="overflowing" class="fold-button" type="button" :aria-expanded="expanded" :aria-controls="contentId" @click="expanded = !expanded">{{ expanded ? '收回' : '展开' }}<span aria-hidden="true">{{ expanded ? '↑' : '↓' }}</span></button>
     <footer><time :datetime="comment.created_at">{{ date(comment.created_at) }}</time><div class="comment-actions">
@@ -114,6 +114,10 @@ const date = value => new Date(value).toLocaleString('zh-CN', { month: 'numeric'
 .reply-card { background: var(--card-sky); }
 header { display: grid; gap: 4px; overflow-wrap: anywhere; }
 strong { color: var(--ink); font-size: 13px; font-weight: 800; }
+.comment-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.identity-tag { flex: none; padding: 2px 5px; border-radius: 3px; font-size: 10px; font-weight: 700; line-height: 1.4; }
+.self-tag { color: var(--link); background: var(--paper); }
+.owner-tag { color: var(--ink); background: var(--accent-soft); box-shadow: 1px 2px 0 var(--sun); }
 .comment-email { color: var(--soft); font-size: 10px; line-height: 1.5; }
 .comment-viewport { margin: 10px 0 8px; overflow: hidden; font-size: 13px; line-height: 1.8; transition: max-height .25s ease; }
 .comment-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

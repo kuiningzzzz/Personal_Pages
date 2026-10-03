@@ -39,6 +39,10 @@ export function migrateUsers(db) {
     if (!db.pragma('table_info(users)').some(column => column.name === 'reply_notifications')) {
         db.exec('ALTER TABLE users ADD COLUMN reply_notifications INTEGER NOT NULL DEFAULT 1 CHECK (reply_notifications IN (0,1))');
     }
+    if (!db.pragma('table_info(users)').some(column => column.name === 'is_owner')) {
+        db.exec('ALTER TABLE users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0 CHECK (is_owner IN (0,1))');
+    }
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_owner ON users(is_owner) WHERE is_owner=1');
     if (!db.pragma('table_info(registration_codes)').some(column => column.name === 'purpose')) {
         db.exec("ALTER TABLE registration_codes ADD COLUMN purpose TEXT NOT NULL DEFAULT 'register' CHECK (purpose IN ('register', 'password-reset'))");
     }

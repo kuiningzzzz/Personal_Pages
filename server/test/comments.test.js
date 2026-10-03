@@ -9,6 +9,7 @@ import { discussionMessage } from '../auth/mail.js';
 import { migrateComments } from '../comments/schema.js';
 import { createCommentRoutes } from '../comments/routes.js';
 import { createModerationRoutes } from '../comments/admin-routes.js';
+import { createUserAdminRoutes } from '../auth/admin-routes.js';
 import { createDiscussionMailService, REPORT_MAIL_COOLDOWN } from '../comments/mail-service.js';
 
 async function fixture(t, options = {}) {
@@ -50,6 +51,7 @@ async function fixture(t, options = {}) {
     app.use('/api/auth', createUserRoutes({ db, clock, mailer, secret: 'isolated-test-secret', passwordVerifier: async () => true }));
     // The production Admin middleware is covered in content.test.js.
     app.use('/api/admin/moderation', (req, res, next) => req.get('x-test-admin') === 'yes' ? next() : res.sendStatus(401), createModerationRoutes({ db, clock }));
+    app.use('/api/admin/users', (req, res, next) => req.get('x-test-admin') === 'yes' ? next() : res.sendStatus(401), createUserAdminRoutes({ db }));
     app.use((error, _req, res, _next) => res.status(500).json({ success: false, message: error.message }));
     const server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
     const base = `http://127.0.0.1:${server.address().port}`;
@@ -88,6 +90,64 @@ test('公开阅读及身份隔离：长文、资源、图集与短帖可评论�
     assert.equal((await f.request('/api/comments/1', { user: 1 })).body.data[0].owned, true);
     assert.equal((await f.request(`/api/comments/items/${comment.id}/like`, { user: 1, method: 'POST', body: { enabled: true }, headers: { origin: 'https://evil.invalid' } })).status, 403);
     assert.equal((await f.request('/api/admin/moderation/reports', { user: 1 })).status, 401);
+});
+
+test('站主可由管理员指定并转移，评论、回复和自己的身份均即时反映账户设置', async t => {
+    const f = await fixture(t);
+    const root = await f.post(1, 1, '站主的评论'), reply = await f.post(1, 1, '站主的回复', root.id);
+    await f.post(2, 1, '普通用户');
+    assert.equal((await f.request('/api/admin/users', { user: 1 })).status, 401);
+    assert.equal((await f.request('/api/admin/users/1/owner', { user: 1, method: 'POST', body: { enabled: true } })).status, 401);
+    const listed = await f.request('/api/admin/users', { admin: true });
+    assert.equal(listed.body.total, 3);
+    assert.equal(listed.body.owner, null);
+    assert.deepEqual(Object.keys(listed.body.data[0]).sort(), ['created_at','email','id','is_owner','username']);
+    assert.equal(listed.body.data.find(user => user.id === 1).email, 'one@example.com');
+    assert.equal((await f.request('/api/admin/users/1/owner', { admin: true, method: 'POST', body: { enabled: true } })).status, 200);
+    let rows = (await f.request('/api/comments/1', { user: 1 })).body.data;
+    assert.equal(rows.find(row => row.id === root.id).owned, true);
+    assert.equal(rows.find(row => row.id === root.id).is_owner, true);
+    assert.equal(rows.find(row => row.id === root.id).replies[0].owned, true);
+    assert.equal(rows.find(row => row.id === root.id).replies[0].is_owner, true);
+    assert.equal(rows.find(row => row.username === '用户二').is_owner, false);
+    rows = (await f.request('/api/comments/1')).body.data;
+    assert.equal(rows.find(row => row.id === root.id).owned, false);
+    assert.equal(rows.find(row => row.id === root.id).is_owner, true);
+    const replies = (await f.request(`/api/comments/1/replies/${root.id}`, { user: 2 })).body.data;
+    assert.equal(replies.find(row => row.id === reply.id).is_owner, true);
+    assert.equal(replies.find(row => row.id === reply.id).owned, false);
+    await f.request('/api/admin/users/2/owner', { admin: true, method: 'POST', body: { enabled: true } });
+    assert.equal(f.db.prepare('SELECT count(*) AS n FROM users WHERE is_owner=1').get().n, 1);
+    assert.equal((await f.request('/api/admin/users', { admin: true })).body.owner.id, 2);
+    rows = (await f.request('/api/comments/1', { user: 2 })).body.data;
+    assert.equal(rows.find(row => row.id === root.id).is_owner, false);
+    assert.equal(rows.find(row => row.username === '用户二').is_owner, true);
+    assert.equal(rows.find(row => row.username === '用户二').owned, true);
+    await f.request('/api/admin/users/1/owner', { admin: true, method: 'POST', body: { enabled: false } });
+    assert.equal((await f.request('/api/admin/users', { admin: true })).body.owner.id, 2, '取消其他用户不影响当前站主');
+    await f.request('/api/admin/users/2/owner', { admin: true, method: 'POST', body: { enabled: false } });
+    assert.equal((await f.request('/api/admin/users', { admin: true })).body.owner, null);
+    assert.equal((await f.request('/api/admin/users/999/owner', { admin: true, method: 'POST', body: { enabled: true } })).status, 404);
+    assert.equal((await f.request('/api/admin/users/1/owner', { admin: true, method: 'POST', body: { enabled: 1 } })).status, 400);
+});
+
+test('用户管理搜索与分页包含所有注册账户，站主唯一性和迁移保持稳定', async t => {
+    const f = await fixture(t);
+    for (let id = 4; id <= 34; id++) f.db.prepare('INSERT INTO users(id,username,username_key,email,password_hash,created_at) VALUES(?,?,?,?,?,?)').run(id, `用户${id}`, `用户${id}`, `person${id}@example.com`, 'private-hash', '2026-10-03');
+    const first = (await f.request('/api/admin/users', { admin: true })).body;
+    assert.equal(first.total, 34); assert.equal(first.totalPages, 3); assert.equal(first.data.length, 15);
+    const second = (await f.request('/api/admin/users?page=2', { admin: true })).body;
+    const third = (await f.request('/api/admin/users?page=999', { admin: true })).body;
+    assert.equal(third.page, 3);
+    assert.equal(new Set([...first.data, ...second.data, ...third.data].map(row => row.id)).size, 34);
+    assert.deepEqual((await f.request('/api/admin/users?q=PERSON34', { admin: true })).body.data.map(row => row.id), [34]);
+    assert.deepEqual((await f.request('/api/admin/users?q=' + encodeURIComponent('用户一'), { admin: true })).body.data.map(row => row.id), [1]);
+    assert.equal((await f.request('/api/admin/users?q=%25', { admin: true })).body.total, 0, '搜索符号按普通文字处理');
+    await f.request('/api/admin/users/1/owner', { admin: true, method: 'POST', body: { enabled: true } });
+    assert.throws(() => f.db.prepare('UPDATE users SET is_owner=1 WHERE id=2').run(), /UNIQUE/);
+    migrateUsers(f.db); migrateUsers(f.db);
+    assert.equal(f.db.prepare('SELECT is_owner FROM users WHERE id=1').get().is_owner, 1);
+    assert.equal((await f.request('/api/admin/users?q=PERSON34', { admin: true })).body.owner.id, 1, '搜索结果不隐藏当前站主摘要');
 });
 
 test('短帖在列表使用完整评论功能，回复及举报链接可正确定位短帖和评论', async t => {

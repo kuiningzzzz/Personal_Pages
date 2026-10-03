@@ -16,7 +16,7 @@ export const maskedEmail = email => {
     const [name, domain] = email.split('@');
     return `${name.slice(0, 1)}***@${domain}`;
 };
-const selectComment = `SELECT c.*, u.username, u.email,
+const selectComment = `SELECT c.*, u.username, u.email, u.is_owner,
     (SELECT COUNT(*) FROM comment_likes l WHERE l.comment_id = c.id) AS likes,
     EXISTS(SELECT 1 FROM comment_likes l WHERE l.comment_id = c.id AND l.user_id = ?) AS liked,
     (SELECT COUNT(*) FROM entry_comments r WHERE r.root_id = c.id) AS reply_count
@@ -24,7 +24,7 @@ const selectComment = `SELECT c.*, u.username, u.email,
 export function publicComment(row, viewerId) {
     return { id: row.id, entry_id: row.entry_id, root_id: row.root_id, reply_to_id: row.reply_to_id, reply_to_name: row.reply_to_name,
         username: row.username, email: maskedEmail(row.email), body: row.body, created_at: row.created_at,
-        likes: row.likes, liked: Boolean(row.liked), owned: row.user_id === viewerId, reply_count: row.reply_count };
+        likes: row.likes, liked: Boolean(row.liked), owned: row.user_id === viewerId, is_owner: Boolean(row.is_owner), reply_count: row.reply_count };
 }
 export function findComment(db, id, viewerId = null) {
     return db.prepare(`${selectComment} WHERE c.id = ?`).get(viewerId, id);

@@ -74,7 +74,7 @@ test('邮箱注册、两种登录、私有会话及退出形成完整流程', as
     assert.match(mail.code, /^\d{6}$/);
     const storedCode = f.db.prepare('SELECT * FROM registration_codes').get();
     assert.notEqual(storedCode.code_hash, mail.code);
-    const registered = await browser.request('/register', signup(mail.email, mail.code));
+    const registered = await browser.request('/register', { ...signup(mail.email, mail.code), is_owner: true });
     assert.equal(registered.status, 201);
     assert.equal(registered.body.user.username, '学习访客');
     assert.ok(!Object.hasOwn(registered.body.user, 'password_hash'));
@@ -83,6 +83,7 @@ test('邮箱注册、两种登录、私有会话及退出形成完整流程', as
     assert.match(registered.cookie, /Path=\/api/);
     assert.equal(f.db.prepare('SELECT count(*) AS n FROM registration_codes').get().n, 0);
     const storedUser = f.db.prepare('SELECT * FROM users').get();
+    assert.equal(storedUser.is_owner, 0, '注册参数不能自行授予站主身份');
     assert.match(storedUser.password_hash, /^scrypt:/);
     assert.equal(await verifyPassword(signup('', '').password, storedUser.password_hash), true);
     assert.equal(await verifyPassword('incorrect', storedUser.password_hash), false);

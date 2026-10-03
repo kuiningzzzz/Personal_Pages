@@ -43,11 +43,16 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/moderation/reports')).status, 401);
         assert.equal((await request('/api/admin/moderation/blacklist')).status, 401);
         assert.equal((await request('/api/admin/feedback')).status, 401);
+        assert.equal((await request('/api/admin/users')).status, 401);
+        assert.equal((await request('/api/admin/users/1/owner', write('POST', { enabled: true }))).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'wrong' }))).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'test-secret-123' }))).status, 200);
         assert.equal((await request('/api/admin/moderation/reports')).status, 200);
         assert.equal((await request('/api/admin/moderation/blacklist')).status, 200);
         assert.equal((await request('/api/admin/feedback')).status, 200);
+        assert.equal((await request('/api/admin/users')).status, 200);
+        assert.equal((await request('/api/admin/users')).body.total, 0);
+        assert.equal((await request('/api/admin/users/1/owner', { ...write('POST', { enabled: true }), headers: { 'content-type': 'application/json', origin: 'https://evil.invalid' } })).status, 403);
         assert.equal((await request('/api/admin/moderation/blacklist', write('POST', { email: 'ban-test@example.com' }))).status, 200);
         assert.equal((await request('/api/admin/moderation/blacklist', write('DELETE', { email: 'ban-test@example.com' }))).status, 200);
         const aiConfig = (await request('/api/admin/ai/config')).body.data;
