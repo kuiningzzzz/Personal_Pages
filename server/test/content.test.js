@@ -42,10 +42,12 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/ai/tasks/missing/events')).status, 401);
         assert.equal((await request('/api/admin/moderation/reports')).status, 401);
         assert.equal((await request('/api/admin/moderation/blacklist')).status, 401);
+        assert.equal((await request('/api/admin/feedback')).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'wrong' }))).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'test-secret-123' }))).status, 200);
         assert.equal((await request('/api/admin/moderation/reports')).status, 200);
         assert.equal((await request('/api/admin/moderation/blacklist')).status, 200);
+        assert.equal((await request('/api/admin/feedback')).status, 200);
         assert.equal((await request('/api/admin/moderation/blacklist', write('POST', { email: 'ban-test@example.com' }))).status, 200);
         assert.equal((await request('/api/admin/moderation/blacklist', write('DELETE', { email: 'ban-test@example.com' }))).status, 200);
         const aiConfig = (await request('/api/admin/ai/config')).body.data;

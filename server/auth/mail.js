@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { FEEDBACK_CATEGORIES } from '../feedback/store.js';
 
 const escape = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 
@@ -55,6 +56,19 @@ export function discussionMessage({ kind, siteName, title, name, body, details, 
     };
 }
 
+export function feedbackMessage({ id, siteName, category, username, email, user_id, body, song, artist, notes, created_at, manageUrl, pictures = [] }) {
+    const label = FEEDBACK_CATEGORIES[category];
+    const content = category === 'music' ? `歌名：${song}\n歌手名：${artist}\n其他备注：${notes || '无'}` : body;
+    const author = `用户名：${username}\n邮箱：${email}\n用户 ID：${user_id ?? '已注销'}\n提交时间：${new Date(created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+    const cid = image => `feedback-${id}-${image.id}@personal-pages`;
+    return {
+        subject: `【${siteName}】${label} · ${username}`.replace(/[\r\n]/g, ' ').slice(0, 240),
+        text: `${siteName}\n\n新反馈 #${id} · ${label}\n\n${author}\n\n${content}\n\n${pictures.length ? '辅助图片：' + pictures.map(image => image.name).join('、') + '（随邮件附上）\n\n' : ''}${manageUrl ? '反馈管理：' + manageUrl : '请登录网站管理端的“反馈管理”处理。'}`,
+        html: `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="color-scheme" content="light only"></head><body style="margin:0;background:#f4efe6;color:#293b4d;font-family:'Microsoft YaHei',Arial,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:30px 18px"><tr><td align="center"><table role="presentation" width="100%" style="max-width:520px"><tr><td style="padding:0 0 20px;font-size:22px;font-weight:800">${escape(siteName)}</td></tr><tr><td style="padding:0 6px 7px 0;background:#c8d5d7;border-radius:6px"><div style="padding:28px;background:#fffbf4;border-radius:6px"><span style="padding:5px 10px;background:#f3ddb8;font-size:12px">新反馈 #${id} · ${escape(label)}</span><h1 style="font-size:24px;margin:20px 0">${escape(username)}</h1><p style="white-space:pre-wrap;font-size:13px;line-height:1.8">${escape(author)}</p><div style="padding:16px;background:#f4e2c4;white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.8">${escape(content)}</div>${pictures.map(image => `<p style="font-size:12px">${escape(image.name)}</p><img src="cid:${cid(image)}" alt="${escape(image.name)}" style="display:block;width:100%;height:auto;margin-bottom:16px" />`).join('')}<p style="margin-top:24px;font-size:13px">${manageUrl ? `<a href="${escape(manageUrl)}" style="color:#293b4d;font-weight:700">前往反馈管理 ↗</a>` : '请登录网站管理端的“反馈管理”处理。'}</p></div></td></tr></table></td></tr></table></body></html>`,
+        attachments: pictures.map(image => ({ filename: image.name, content: image.content, contentType: image.mime_type, cid: cid(image) }))
+    };
+}
+
 export function createRegistrationMailer(env = process.env) {
     const user = String(env.QQ_SMTP_USER || '').trim();
     const pass = String(env.QQ_SMTP_AUTH_CODE || '').replace(/\s/g, '');
@@ -86,6 +100,9 @@ export function createRegistrationMailer(env = process.env) {
         },
         async sendReportNotification(fields) {
             await deliver(user, fields.siteName, discussionMessage({ ...fields, kind: 'report' }));
+        },
+        async sendFeedbackNotification(fields) {
+            await deliver(user, fields.siteName, { ...feedbackMessage(fields), replyTo: { name: fields.username, address: fields.email } });
         }
     };
 }
