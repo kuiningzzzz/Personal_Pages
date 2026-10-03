@@ -2,7 +2,7 @@ import { reactive, computed } from 'vue'
 import { queueIndex, PLAY_MODES } from './music-queue.js'
 
 const DEFAULT_VOLUME = .5
-export const MAX_VOLUME = .8
+const OUTPUT_VOLUME_SCALE = .8
 
 export const music = reactive({
   profile: null, cards: [], tracks: [], welcome: [], ready: false, entered: false, entering: false,
@@ -10,20 +10,20 @@ export const music = reactive({
   mode: 'single', surface: 'hidden', error: '', volume: DEFAULT_VOLUME,
 })
 export const currentTrack = computed(() => music.tracks[music.currentIndex] || null)
-export const volumeIcon = computed(() => music.volume === 0 ? 'volume-muted' : music.volume <= MAX_VOLUME / 3 ? 'volume-low' : music.volume <= MAX_VOLUME * 2 / 3 ? 'volume-medium' : 'volume-high')
+export const volumeIcon = computed(() => music.volume === 0 ? 'volume-muted' : music.volume <= 1 / 3 ? 'volume-low' : music.volume <= 2 / 3 ? 'volume-medium' : 'volume-high')
 let audio, loading, source = '', prepared = null, history = [], workerReady
 let audioContext, volumeGain, lastVolume = DEFAULT_VOLUME
 
 export function setVolume(value) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return
-  music.volume = Math.max(0, Math.min(MAX_VOLUME, numeric))
+  music.volume = Math.max(0, Math.min(1, numeric))
   if (music.volume > 0) lastVolume = music.volume
   if (!audio) return
   audio.muted = music.volume === 0
   if (volumeGain) {
-    volumeGain.gain.setTargetAtTime(music.volume, audioContext.currentTime, .015)
-  } else audio.volume = music.volume
+    volumeGain.gain.setTargetAtTime(music.volume * OUTPUT_VOLUME_SCALE, audioContext.currentTime, .015)
+  } else audio.volume = music.volume * OUTPUT_VOLUME_SCALE
 }
 export function toggleMute() { setVolume(music.volume === 0 ? lastVolume : 0) }
 
@@ -35,7 +35,7 @@ function prepareVolume(player) {
       try {
         context = new Context()
         const gain = context.createGain()
-        gain.gain.value = music.volume
+        gain.gain.value = music.volume * OUTPUT_VOLUME_SCALE
         node = context.createMediaElementSource(player)
         node.connect(gain); gain.connect(context.destination)
         audioContext = context; volumeGain = gain
@@ -47,7 +47,7 @@ function prepareVolume(player) {
     }
   }
   player.muted = music.volume === 0
-  player.volume = volumeGain ? 1 : music.volume
+  player.volume = volumeGain ? 1 : music.volume * OUTPUT_VOLUME_SCALE
   // Build and resume the gain path in the initiating user gesture. This also
   // controls volume on mobile browsers that ignore the element's volume.
   if (audioContext && audioContext.state !== 'running') audioContext.resume().catch(() => {})

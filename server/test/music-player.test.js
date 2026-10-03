@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} 应接近 ${expected}`);
 
 test('播放由用户手势启动，同一 Audio 跨页面保留；单曲不预取，其他模式最后 30 秒只预取一次', async t => {
     const descriptors = new Map();
@@ -26,14 +27,16 @@ test('播放由用户手势启动，同一 Audio 跨页面保留；单曲不预�
     assert.equal(audios.length, 1); assert.equal(audios[0].src, '/source/song-1.mp3');
     assert.equal(audios[0].loop, true); assert.equal(player.music.playing, true);
     const audio = audios[0];
-    assert.equal(audio.volume, .5, '首次有声播放默认 50%');
-    player.setVolume(.2); assert.equal(player.volumeIcon.value, 'volume-low'); assert.equal(audio.volume, .2);
+    assert.equal(player.music.volume, .5, '首次有声播放默认显示 50%');
+    assert.equal(audio.volume, .4, '新 50% 对应原输出的 40%');
+    player.setVolume(.2); assert.equal(player.volumeIcon.value, 'volume-low'); near(audio.volume, .16);
     player.setVolume(.5); assert.equal(player.volumeIcon.value, 'volume-medium');
     player.setVolume(.9); assert.equal(player.volumeIcon.value, 'volume-high');
     player.toggleMute(); assert.equal(player.volumeIcon.value, 'volume-muted'); assert.equal(audio.muted, true);
     assert.equal(audio.paused, false, '静音不暂停播放');
-    player.toggleMute(); assert.equal(audio.volume, .8); assert.equal(audio.muted, false);
+    player.toggleMute(); near(audio.volume, .72); assert.equal(player.music.volume, .9); assert.equal(audio.muted, false);
     player.setVolume(2); assert.equal(audio.volume, .8, '输出最高为原先的 80%');
+    assert.equal(player.music.volume, 1, '界面上限仍为 100%');
     player.setVolume(NaN); assert.equal(audio.volume, .8);
     audio.currentTime = 90; audio.dispatchEvent(new Event('durationchange')); audio.dispatchEvent(new Event('timeupdate'));
     assert.equal(messages.filter(m => m.type === 'MUSIC_PREFETCH').length, 0, '单曲循环仅加载当前歌曲');
@@ -88,16 +91,16 @@ test('静音访问在播放前设为零；Gain 音量、进度与单一输出路
     assert.deepEqual(starts[0], { muted: true, gain: 0 }, '首次播放不能先出声再静音');
     const audio = audios[0], context = contexts[0];
     assert.equal(player.music.volume, 0); assert.equal(player.music.playing, true); assert.equal(context.resumes, 1);
-    player.toggleMute(); assert.equal(context.gain.gain.value, .5, '静音访问后首次恢复音量为 50%');
+    player.toggleMute(); assert.equal(player.music.volume, .5); assert.equal(context.gain.gain.value, .4, '恢复显示 50%，输出为原先的 40%');
     audio.currentTime = 35;
     player.setVolume(.4);
     assert.equal(audio.muted, false); assert.equal(audio.volume, 1, '增益控制不与原生音量重复衰减');
-    assert.equal(context.gain.gain.value, .4); assert.equal(audio.currentTime, 35);
+    near(context.gain.gain.value, .32); assert.equal(audio.currentTime, 35);
     player.music.surface = 'dock'; player.nextTrack();
     assert.equal(contexts.length, 1); assert.equal(context.sources, 1); assert.equal(audios.length, 1);
-    assert.equal(audio.src, '/source/two.mp3'); assert.equal(context.gain.gain.value, .4);
+    assert.equal(audio.src, '/source/two.mp3'); near(context.gain.gain.value, .32);
     player.toggleMute(); assert.equal(audio.muted, true); assert.equal(audio.paused, false);
-    player.toggleMute(); assert.equal(context.gain.gain.value, .4);
+    player.toggleMute(); near(context.gain.gain.value, .32);
     player.togglePlayback(); context.state = 'suspended'; player.togglePlayback();
     assert.equal(context.resumes, 2, '用户再次播放时恢复被浏览器挂起的输出');
     player.setVolume(1); assert.equal(context.gain.gain.value, .8, 'Gain 输出同样限制到 80%');
