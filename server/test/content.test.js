@@ -39,6 +39,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.ok(ready, '服务应成功启动');
         assert.equal((await request('/api/admin/profile')).status, 401);
         assert.equal((await request('/api/admin/ai/config')).status, 401);
+        assert.equal((await request('/api/admin/ai/tasks/missing/events')).status, 401);
         assert.equal((await request('/api/admin/moderation/reports')).status, 401);
         assert.equal((await request('/api/admin/moderation/blacklist')).status, 401);
         assert.equal((await request('/api/admin/login', write('POST', { password: 'wrong' }))).status, 401);
@@ -58,6 +59,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(updatedAiConfig.reportInstructions, '中文讲解');
         assert.ok(!Object.hasOwn(updatedAiConfig, 'apiKey'));
         assert.equal((await request('/api/admin/ai/tasks/missing')).status, 404);
+        assert.equal((await request('/api/admin/ai/tasks/missing/events')).status, 404);
         const disabledAiUpload = new FormData();
         disabledAiUpload.append('files', new Blob(['temporary learning source']), 'disabled-learning.txt');
         assert.equal((await request('/api/admin/ai/tasks', { method: 'POST', body: disabledAiUpload })).status, 400);

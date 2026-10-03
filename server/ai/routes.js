@@ -8,7 +8,7 @@ import { publicRoot, rememberUpload, auditAndCleanupUploads } from '../upload-cl
 import { publicAncestors } from '../resource-structure.js';
 import { MODEL, HARNESS_VERSION } from './prompt.js';
 import { INITIAL_BUDGET, BUDGET_INCREMENT, MAX_BUDGET } from './budget.js';
-import { createTask, getTask, taskView, settings, cancelTask, retryTask, taskRoot, taskStopping } from './tasks.js';
+import { createTask, getTask, taskView, taskEvents, settings, cancelTask, retryTask, taskRoot, taskStopping } from './tasks.js';
 
 const router = express.Router();
 router.get('/config', (_req, res) => res.json({ success: true, data: { ...settings(), model: MODEL, harnessVersion: HARNESS_VERSION, initialIterations: INITIAL_BUDGET, iterationIncrement: BUDGET_INCREMENT, maxIterations: MAX_BUDGET, keyConfigured: !!process.env.DEEPSEEK_API_KEY } }));
@@ -30,6 +30,12 @@ router.get('/tasks', (_req, res) => res.json({ success: true, data: cardDb.prepa
 router.get('/tasks/:id', (req, res) => {
     const task = taskView(getTask(req.params.id), true);
     res.status(task ? 200 : 404).json(task ? { success: true, data: task } : { success: false, message: '任务不存在' });
+});
+router.get('/tasks/:id/events', (req, res) => {
+    if (!getTask(req.params.id)) return res.status(404).json({ success: false, message: '任务不存在' });
+    const before = Number(req.query.before || 0), after = Number(req.query.after || 0);
+    if (![before, after].every(value => Number.isSafeInteger(value) && value >= 0) || (before && after)) return res.status(400).json({ success: false, message: '日志分页参数无效' });
+    res.json({ success: true, data: taskEvents(req.params.id, { before, after }) });
 });
 const extensions = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.txt', '.md']);
 const upload = multer({ storage: multer.diskStorage({

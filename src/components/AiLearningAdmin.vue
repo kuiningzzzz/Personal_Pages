@@ -7,6 +7,8 @@ const config = ref(null), collections = ref([]), tasks = ref([]), selected = ref
 const busy = ref(false), error = ref(''), files = ref([]), fileInput = ref(null)
 const form = ref({ title: '', collection_id: '', prompt: '', links: '' })
 const statusText = { queued: '排队中', running: '正在学习', published: '已发布', failed: '失败', cancelled: '已取消' }
+const logLabels = { reasoning: '思考', assistant: '输出', 'tool-call': '工具调用', 'tool-result': '工具结果', 'tool-error': '工具错误', phase: '阶段', model: '模型', 'model-finish': '请求结束', 'model-error': '请求错误', compaction: '压缩', 'idle-warning': '空转提醒', step: '迭代', session: '会话' }
+const loadingEarlier = ref(false)
 const working = task => task && (['queued', 'running'].includes(task.status) || task.stopping)
 const ready = computed(() => config.value?.keyConfigured && collections.value.some(item => item.publishable))
 const request = async (path, options = {}) => {
@@ -18,7 +20,31 @@ const request = async (path, options = {}) => {
 const json = (method, body = {}) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 async function refresh() {
   tasks.value = await request('/tasks')
-  if (selected.value) selected.value = await request(`/tasks/${selected.value.id}`)
+  if (!selected.value) return
+  const current = selected.value, id = current.id
+  const latest = await request(`/tasks/${id}`)
+  let events = current.events || []
+  if (events.length) {
+    let more = true
+    while (more) {
+      const page = await request(`/tasks/${id}/events?after=${events.at(-1).id}`)
+      if (selected.value?.id !== id) return
+      events = [...events, ...page.events]; more = page.hasMore
+    }
+  } else events = latest.events
+  if (selected.value?.id === id) {
+    const merged = [...new Map([...events, ...selected.value.events].map(item => [item.id, item])).values()].sort((a, b) => a.id - b.id)
+    selected.value = { ...latest, events: merged, hasEarlierEvents: current.events?.length ? selected.value.hasEarlierEvents : latest.hasEarlierEvents }
+  }
+}
+async function earlierLogs() {
+  const current = selected.value
+  if (!current?.events?.length) return
+  loadingEarlier.value = true
+  try {
+    const page = await request(`/tasks/${current.id}/events?before=${current.events[0].id}`)
+    if (selected.value?.id === current.id) selected.value = { ...selected.value, events: [...page.events, ...selected.value.events], hasEarlierEvents: page.hasMore }
+  } catch (cause) { error.value = cause.message } finally { loadingEarlier.value = false }
 }
 async function select(task) { try { selected.value = await request(`/tasks/${task.id}`); error.value = '' } catch (cause) { error.value = cause.message } }
 async function start() {
@@ -98,7 +124,7 @@ onUnmounted(() => { disposed = true; clearTimeout(timer) })
         <details><summary>资料与学习要求</summary><p class="task-prompt">{{ selected.prompt || '按默认要求学习资料' }}</p><ul><li v-for="file in selected.files" :key="file.id"><a :href="file.url" target="_blank" rel="noopener">{{ file.name }}</a> <small>{{ file.role === 'derived' ? '生成附件' : '源资料' }}</small></li><li v-for="link in selected.links" :key="link"><a :href="link" target="_blank" rel="noopener">{{ link }}</a></li></ul></details>
         <p class="task-usage">主模型用量：输入 {{ (selected.usage.inputTokens || 0).toLocaleString() }} / 输出 {{ (selected.usage.outputTokens || 0).toLocaleString() }} tokens。搜索与压缩会另有消耗。</p>
         <details v-if="selected.draft?.body"><summary>已保存报告预览</summary><MarkdownContent :source="selected.draft.body" /></details>
-        <h4>运行日志</h4><ol class="task-log" aria-live="polite"><li v-for="item in selected.events" :key="item.id" :class="item.kind"><time>{{ new Date(item.created_at).toLocaleTimeString('zh-CN') }}</time><span>{{ item.message }}</span></li></ol>
+        <h4>运行日志</h4><button v-if="selected.hasEarlierEvents" type="button" class="ghost-button" :disabled="loadingEarlier" @click="earlierLogs">{{ loadingEarlier ? '加载中…' : '加载更早的日志' }}</button><ol class="task-log" aria-live="polite"><li v-for="item in selected.events" :key="item.id" :class="item.kind"><time>{{ new Date(item.created_at).toLocaleTimeString('zh-CN') }}</time><div><small class="log-label">{{ logLabels[item.kind] || item.kind }}</small><span>{{ item.message }}</span><details v-if="Object.keys(item.data || {}).length" class="log-data"><summary>查看参数与详细信息</summary><pre>{{ JSON.stringify(item.data, null, 2) }}</pre></details></div></li></ol>
       </article>
       <div v-else class="surface state">选择任务查看进度、资料和报告</div>
     </div>
@@ -121,5 +147,6 @@ small { font-size: 11px; font-weight: 400; } .learning-submit { margin: 0; } .le
 .task-status { flex-shrink: 0; font-size: 11px; padding: 4px 8px; align-self: start; background: var(--paper-deep); border-radius: 3px; } .task-status.running,.task-status.queued { background: var(--accent-soft); } .task-status.published { background: var(--mint); } .task-status.failed { background: var(--failed-bg); }
 .task-detail { padding: 23px; min-width: 0; } .task-detail header { display: flex; justify-content: space-between; gap: 12px; } .task-progress,.task-usage { font-size: 12px; } progress { width: 100%; height: 8px; accent-color: var(--denim); } .task-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; } .task-actions a,.task-actions button { min-height: 35px; padding: 6px 10px; font-size: 12px; } .task-detail details { padding: 14px; margin: 15px 0; border-radius: 4px; background: var(--paper-deep); } .task-detail details p,.task-detail details li { font-size: 12px; overflow-wrap: anywhere; } .task-prompt { white-space: pre-wrap; } .task-detail details .markdown { margin-top: 16px; }
 .task-log { padding: 0; list-style: none; max-height: 460px; overflow-y: auto; } .task-log li { display: grid; grid-template-columns: 62px minmax(0,1fr); gap: 10px; padding: 10px 0; font-size: 12px; } .task-log li:nth-child(even) { background: var(--paper-deep); } .task-log time { color: var(--soft); font-size: 10px; } .task-log span { white-space: pre-wrap; overflow-wrap: anywhere; } .task-log .tool-error,.task-log .failed { color: var(--error-text); }
+.task-log span { display: block; }.task-log .log-label { display: inline-block; margin-bottom: 5px; color: var(--ink); font-weight: 700; }.task-log .reasoning .log-label { color: var(--link); }.task-log .idle-warning { color: var(--error-text); }.task-log .log-data { padding: 8px; margin: 8px 0 0; }.task-log pre { margin: 8px 0 0; max-height: 280px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.6; }
 @media (max-width: 760px) { .learning-history { grid-template-columns: 1fr; } .learning-heading,.learning-submit { align-items: flex-start; flex-wrap: wrap; } .learning-grid { grid-template-columns: 1fr; gap: 0; } .learning-form,.task-detail,.learning-config { padding: 18px; } }
 </style>
