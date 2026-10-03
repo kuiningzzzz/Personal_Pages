@@ -13,11 +13,10 @@ import { createTask, getTask, taskView, taskEvents, settings, cancelTask, retryT
 const router = express.Router();
 router.get('/config', (_req, res) => res.json({ success: true, data: { ...settings(), model: MODEL, harnessVersion: HARNESS_VERSION, initialIterations: INITIAL_BUDGET, iterationIncrement: BUDGET_INCREMENT, maxIterations: MAX_BUDGET, keyConfigured: !!process.env.DEEPSEEK_API_KEY } }));
 router.put('/config', (req, res) => {
-    const maxOutputTokens = Number(req.body.maxOutputTokens);
     const taskTimeoutMinutes = Number(req.body.taskTimeoutMinutes);
     const reportInstructions = String(req.body.reportInstructions || '').trim();
-    if (!Number.isInteger(maxOutputTokens) || maxOutputTokens < 4096 || maxOutputTokens > 32768 || !Number.isInteger(taskTimeoutMinutes) || taskTimeoutMinutes < 5 || taskTimeoutMinutes > 120 || reportInstructions.length > 10000) return res.status(400).json({ success: false, message: '输出上限需为 4096–32768，任务时限为 5–120 分钟，附加要求最多 10000 字' });
-    const data = { maxOutputTokens, taskTimeoutMinutes, reportInstructions };
+    if (!Number.isInteger(taskTimeoutMinutes) || taskTimeoutMinutes < 5 || taskTimeoutMinutes > 120 || reportInstructions.length > 10000) return res.status(400).json({ success: false, message: '任务时限为 5–120 分钟，附加要求最多 10000 字' });
+    const data = { taskTimeoutMinutes, reportInstructions };
     cardDb.prepare("UPDATE site_configs SET data=?,updated_at=CURRENT_TIMESTAMP WHERE key='ai_learning'").run(JSON.stringify(data));
     res.json({ success: true, data });
 });

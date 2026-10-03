@@ -1,6 +1,6 @@
 import { expandAssistantStream } from '@deepseek-ai/dsh-llm';
 
-export const IDLE_REMINDER = '你已经连续 3 次迭代没有输出任何内容，也没有调用任何工具。请立即检查本任务的报告：如果已完成，调用 submit_document 提交任务；尚未保存时先调用 write_document 保存当前任务的完整报告，再提交。不要继续空转，也不要将上一任务的报告重复提交。确有未完成的学习工作时，请调用资料工具继续。';
+export const IDLE_REMINDER = '你已经连续 3 次迭代没有输出任何内容，也没有调用任何工具。请立即检查本任务的报告：如果已完成，调用 submit_document 提交任务；尚未保存时先调用原生 write/edit 保存当前任务的 Markdown 报告，再提交。不要继续空转，也不要将上一任务的报告重复提交。确有未完成的学习工作时，请调用资料工具继续。';
 
 // Count completed steps, not failed attempts or individual stream chunks.
 export function createIdleWatch() {
