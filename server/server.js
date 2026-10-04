@@ -3,7 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import contentRoutes from './content-routes.js';
 import contentAdminRoutes from './content-admin-routes.js';
-import { startTasks, stopTasks } from './ai/tasks.js';
+import { startTasks, stopTasks, pauseTasksForBackup, resumeTasksAfterBackup } from './ai/tasks.js';
+import { configureMaintenance, maintenanceMiddleware } from './maintenance.js';
 import { randomBytes } from 'node:crypto';
 import { cardDb } from './db.js';
 import { createUserRoutes } from './auth/routes.js';
@@ -22,9 +23,14 @@ const userMailer = createRegistrationMailer();
 const subscriptions = createSubscriptionService({ db: cardDb, mailer: userMailer, origin: siteOrigin() });
 const discussionMail = createDiscussionMailService({ db: cardDb, mailer: userMailer, origin: siteOrigin() });
 const feedbackMail = createFeedbackMailService({ db: cardDb, mailer: userMailer, origin: siteOrigin() });
+configureMaintenance({
+    async pause() { pauseTasksForBackup(); await Promise.all([subscriptions.stop(), discussionMail.stop(), feedbackMail.stop()]); },
+    resume() { subscriptions.start(); discussionMail.start(); feedbackMail.start(); resumeTasksAfterBackup(); }
+});
 
 // 中间件
 app.use(cors()); // 允许跨域请求
+app.use(maintenanceMiddleware);
 app.use(express.json({ limit: '2mb' })); // 解析 JSON 请求体
 app.use(express.urlencoded({ extended: true })); // 解析 URL 编码的请求体
 

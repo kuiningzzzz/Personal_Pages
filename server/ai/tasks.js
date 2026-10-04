@@ -16,6 +16,12 @@ import { collectionWorkspace, reportFile, readWorkspaceReport } from './workspac
 const dataRoot = process.env.DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 export const taskRoot = join(dataRoot, 'ai');
 let active = null;
+let backupPaused = false;
+export function pauseTasksForBackup() {
+    if (active) throw new Error('AI 学习任务正在运行，请在任务完成后进行备份或还原');
+    backupPaused = true;
+}
+export function resumeTasksAfterBackup() { backupPaused = false; if (!stopping) setImmediate(pump); }
 let stopping = false;
 export const taskStopping = id => active?.id === id && getTask(id)?.status !== 'running';
 const now = () => new Date().toISOString();
@@ -253,7 +259,7 @@ export function retryTask(id) {
 }
 
 async function pump() {
-    if (active || stopping) return;
+    if (active || stopping || backupPaused) return;
     const task = cardDb.prepare("SELECT * FROM ai_tasks WHERE status='queued' ORDER BY created_at LIMIT 1").get();
     if (!task) return;
     if (!process.env.DEEPSEEK_API_KEY) { failTask(task.id, '服务器根目录 .env 中未配置 DEEPSEEK_API_KEY'); setImmediate(pump); return; }

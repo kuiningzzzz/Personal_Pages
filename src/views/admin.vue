@@ -8,6 +8,7 @@ import ModerationAdmin from '../components/ModerationAdmin.vue'
 import FeedbackAdmin from '../components/FeedbackAdmin.vue'
 import UsersAdmin from '../components/UsersAdmin.vue'
 import AnnouncementsAdmin from '../components/AnnouncementsAdmin.vue'
+import BackupAdmin from '../components/BackupAdmin.vue'
 import PaginationNav from '../components/PaginationNav.vue'
 import { adminListing } from '../lib/admin-list'
 import HomePlaylistAdmin from '../components/HomePlaylistAdmin.vue'
@@ -22,7 +23,7 @@ const hasWarnings = ref(false)
 const busy = ref(false)
 const route = useRoute()
 const initialTab = route.query.tab === 'blacklist' ? 'users' : route.query.tab === 'reports' ? 'feedback' : route.query.tab
-const tab = ref(['feedback', 'users', 'announcements'].includes(initialTab) ? initialTab : 'profile')
+const tab = ref(['feedback', 'users', 'announcements', 'backups'].includes(initialTab) ? initialTab : 'profile')
 const usersSection = ref(route.query.tab === 'blacklist' || route.query.section === 'blacklist' ? 'blacklist' : 'accounts')
 const feedbackSection = ref(route.query.tab === 'reports' || route.query.section === 'reports' ? 'reports' : 'feedback')
 const profile = ref({ avatar: '', name: '', description: '' })
@@ -169,6 +170,7 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
         <button :class="{ active: tab === 'users' }" @click="tab = 'users'">用户管理</button>
         <button :class="{ active: tab === 'feedback' }" @click="tab = 'feedback'">反馈管理</button>
         <button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">站点文案</button>
+        <button :class="{ active: tab === 'backups' }" @click="tab = 'backups'">备份管理</button>
       </nav>
       <AiLearningAdmin v-if="tab === 'learning'" @notice="report" />
       <section v-if="tab === 'users'" class="admin-group" aria-label="用户管理">
@@ -188,6 +190,7 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
         <ModerationAdmin v-else mode="reports" />
       </section>
       <AnnouncementsAdmin v-if="tab === 'announcements'" />
+      <BackupAdmin v-if="tab === 'backups'" @restored="loadAll" />
 <section v-if="tab === 'profile'" class="admin-section"><div class="section-head"><div><h2>个人介绍</h2><p>头像、名称、描述和下方卡片都会实时显示在首页。</p></div><button class="primary-button" :disabled="busy" @click="saveProfile">保存首页</button></div><div class="surface editor-box"><div class="form-grid"><label>头像地址<input v-model="profile.avatar" placeholder="/picture/avatar.png" /></label><label>显示名称<input v-model="profile.name" placeholder="你的名字" /></label></div><label>上传头像<input type="file" accept="image/*" @change="uploadFile($event, 'avatar')" /></label><img v-if="profile.avatar" :src="profile.avatar" class="avatar-preview" alt="当前头像" /><label>描述<textarea v-model="profile.description" rows="4" placeholder="简单介绍一下自己"></textarea></label></div><HomeWelcomeAdmin v-model="welcome" /><HomePlaylistAdmin v-model="playlist" :busy="busy" @notice="report" @uploading="busy = $event" /><div class="section-head card-head"><div><h2>介绍卡片</h2><p>卡片内容支持 Markdown，使用 ++文字++ 添加下划线。</p></div><button class="ghost-button" @click="cards.push({ title: '', content: '' })">+ 添加卡片</button></div><div v-for="(card, index) in cards" :key="index" class="surface editor-box card-editor"><div class="card-controls"><strong>卡片 {{ index + 1 }}</strong><div><button @click="moveCard(index, -1)" :disabled="index === 0">上移</button><button @click="moveCard(index, 1)" :disabled="index === cards.length - 1">下移</button><button @click="cards.splice(index, 1)">删除</button></div></div><label>卡片标题<input v-model="card.title" placeholder="例如：联系方式" /></label><label>卡片内容 · Markdown<textarea v-model="card.content" rows="6" placeholder="支持链接、代码块、加粗、斜体、划去、下划线"></textarea></label><details><summary>预览</summary><MarkdownContent :source="card.content" /></details></div></section>
       <section v-else-if="tab === 'settings'" class="admin-section"><div class="section-head"><div><h2>站点文案</h2><p>编辑各页面介绍和页脚备案信息。</p></div><button class="primary-button" :disabled="busy" @click="saveSettings">保存文案</button></div><div class="surface editor-box"><label>动态页介绍<textarea v-model="settings.momentsDescription" rows="3"></textarea></label><label>资源库介绍<textarea v-model="settings.resourceDescription" rows="3"></textarea></label><label>活动页施工说明<textarea v-model="settings.activitiesMessage" rows="3"></textarea></label><label>备案号<input v-model="settings.icpNumber" placeholder="留空则不显示" /></label></div></section>
       <section v-else-if="tab === 'moment' || tab === 'resource'" class="admin-section">

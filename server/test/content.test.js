@@ -45,6 +45,8 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/feedback')).status, 401);
         assert.equal((await request('/api/admin/users')).status, 401);
         assert.equal((await request('/api/admin/announcements')).status, 401);
+        assert.equal((await request('/api/admin/backups')).status, 401);
+        assert.equal((await request('/api/admin/backups', { method: 'POST' })).status, 401);
         assert.equal((await request('/api/admin/entries/1/pin', write('POST', { enabled: true }))).status, 401);
         assert.equal((await request('/api/admin/announcements/tags', write('POST', { name: '更新日志' }))).status, 401);
         assert.equal((await request('/api/admin/users/1/owner', write('POST', { enabled: true }))).status, 401);
@@ -56,6 +58,8 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/users')).status, 200);
         assert.equal((await request('/api/admin/users')).body.total, 0);
         assert.equal((await request('/api/admin/announcements')).body.total, 0);
+        assert.equal((await request('/api/admin/backups')).status, 200);
+        assert.equal((await request('/api/admin/backups', { method: 'POST', headers: { origin: 'https://evil.invalid' } })).status, 403);
         assert.equal((await request('/api/content/announcements')).body.total, 0);
         assert.equal((await request('/api/admin/announcements', { ...write('POST', { title: '无效来源' }), headers: { 'content-type': 'application/json', origin: 'https://evil.invalid' } })).status, 403);
         assert.equal((await request('/api/admin/entries/1/pin', { ...write('POST', { enabled: true }), headers: { 'content-type': 'application/json', origin: 'https://evil.invalid' } })).status, 403);

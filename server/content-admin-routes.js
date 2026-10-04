@@ -4,7 +4,9 @@ import multer from 'multer';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { extname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
-import { cardDb } from './db.js';
+import { cardDb, commentDb, DATA_DIR } from './db.js';
+import { createBackupStore } from './backups/store.js';
+import { createBackupRoutes } from './backups/routes.js';
 import { auditAndCleanupUploads, publicRoot, rememberUpload } from './upload-cleanup.js';
 import { imagesFor, saveResourceExtras, validateStructure } from './resource-structure.js';
 import aiRoutes from './ai/routes.js';
@@ -58,6 +60,7 @@ router.use('/feedback', createFeedbackAdminRoutes({ db: cardDb }));
 router.use('/users', createUserAdminRoutes({ db: cardDb }));
 router.use('/announcements', createAnnouncementAdminRoutes({ db: cardDb, cleanup: auditAndCleanupUploads }));
 router.use('/ai', aiRoutes);
+router.use('/backups', createBackupRoutes(createBackupStore({ cardDb, commentDb, dataRoot: DATA_DIR, publicRoot })));
 const normalizeTags = value => [...new Set((Array.isArray(value) ? value : []).map(item => clean(item, 40)).filter(Boolean))].slice(0, 20);
 const normalizeActions = value => (Array.isArray(value) ? value : []).map(action => ({
     label: String(action.label ?? '').trim(), url: clean(action.url, 2048)

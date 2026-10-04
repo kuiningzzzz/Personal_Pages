@@ -15,13 +15,15 @@ import { migrateHomeMusic } from './home-music.js';
 import { migrateFeedback } from './feedback/schema.js';
 import { migrateAnnouncements } from './announcements.js';
 import { migrateMomentPins } from './moment-pins.js';
+import { recoverRestore } from './backups/store.js';
 
 // 获取当前文件的目录
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // 数据目录路径
-const DATA_DIR = process.env.DATA_DIR || join(__dirname, 'data');
+export const DATA_DIR = process.env.DATA_DIR || join(__dirname, 'data');
+await recoverRestore(DATA_DIR, process.env.PUBLIC_DIR || (process.env.NODE_ENV === 'production' ? '/app/public' : join(__dirname, '..', 'public')));
 
 // 确保数据目录存在
 if (!existsSync(DATA_DIR)) {
