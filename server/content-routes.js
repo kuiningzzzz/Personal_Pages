@@ -50,10 +50,22 @@ router.get('/entries', (req, res) => {
         if (!parent || publicAncestors(parent) === null) return res.status(404).json({ success: false, message: '合集不存在' });
     }
     const rootType = kind === 'resource' && parentId === null ? type : null;
-    let rows = cardDb.prepare(`${entrySelect}
+    const recursiveSearch = kind === 'resource' && terms.length > 0;
+    // Browsing shows direct members. A search starts from those members and
+    // follows published collection branches, never crossing a draft ancestor.
+    const scope = recursiveSearch ? `WITH RECURSIVE search_scope(id, resource_kind) AS (
+        SELECT id, resource_kind FROM entries
+        WHERE kind = 'resource' AND status = 'published' AND parent_id IS ?
+            AND (? IS NULL OR resource_type_id = ?)
+        UNION
+        SELECT child.id, child.resource_kind FROM entries child JOIN search_scope parent ON child.parent_id = parent.id
+        WHERE parent.resource_kind = 'collection' AND child.kind = 'resource' AND child.status = 'published'
+    ) ` : '';
+    let rows = cardDb.prepare(`${scope}${entrySelect}
         WHERE e.kind = ? AND e.status = 'published' AND (? IS NULL OR e.resource_type_id = ?)
-        AND (e.kind != 'resource' OR e.parent_id IS ?) AND (? IS NULL OR e.format = ?)`)
-        .all(kind, rootType, rootType, parentId, format, format)
+        AND ${recursiveSearch ? 'e.id IN (SELECT id FROM search_scope)' : "(e.kind != 'resource' OR e.parent_id IS ?)"} AND (? IS NULL OR e.format = ?)`)
+        .all(...(recursiveSearch ? [parentId, rootType, rootType, kind, null, null, format, format]
+            : [kind, rootType, rootType, parentId, format, format]))
         .map(entry);
     if (terms.length) {
         rows = rows.map(row => {
@@ -75,7 +87,9 @@ router.get('/entries', (req, res) => {
     if (locatedIndex >= 0) page = Math.floor(locatedIndex / limit) + 1;
     page = Math.min(page, Math.max(1, Math.ceil(total / limit)));
     // 列表仅返回摘要；正文仍用于搜索，详情接口返回完整内容。
-    const data = rows.slice((page - 1) * limit, page * limit).map(({ body, actions, ...rest }) => ({ ...rest, body: rest.format === 'short' ? body : '', actions: kind === 'resource' ? actions : [] }));
+    const data = rows.slice((page - 1) * limit, page * limit).map(({ body, actions, ...rest }) => ({ ...rest,
+        ...(recursiveSearch ? { ancestors: publicAncestors(rest) || [] } : {}),
+        body: rest.format === 'short' ? body : '', actions: kind === 'resource' ? actions : [] }));
     res.json({ success: true, data, total, page, limit });
 });
 

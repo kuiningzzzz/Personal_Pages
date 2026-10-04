@@ -129,7 +129,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
     </nav>
 
     <div class="list-toolbar">
-      <label class="search-box"><span>搜索</span><input v-model="input" type="search" :placeholder="collection ? '搜索当前合集的标题、标签或正文' : '标题、标签或正文'" aria-label="搜索标题、标签或正文" /><span class="search-arrow" aria-hidden="true">↗</span></label>
+      <label class="search-box"><span>搜索</span><input v-model="input" type="search" :placeholder="collection ? '搜索当前合集及所有子合集' : kind === 'resource' ? selectedType ? '搜索当前大类及所有子合集' : '搜索全部资源的标题、标签或正文' : '标题、标签或正文'" aria-label="搜索标题、标签或正文" /><span class="search-arrow" aria-hidden="true">↗</span></label>
       <label class="sort-box"><span>排序</span><select v-model="sort"><option v-if="query" value="relevance">匹配程度</option><option value="latest">最新发布</option><option value="updated">最新修改</option></select></label>
     </div>
 
@@ -149,6 +149,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
             </component>
             <div class="entry-content">
               <div class="entry-top"><span v-if="kind === 'moment' && row.pinned" class="moment-pin-label">置顶</span><span>{{ kind === 'resource' ? resourceLabel(row) : row.format === 'short' ? '短帖' : '长文' }}</span><span v-if="!collectionId && row.resource_type_name">{{ row.resource_type_name }}</span><small v-if="row.resource_kind === 'collection'">{{ row.child_count }} 项内容</small><small v-else-if="row.resource_kind === 'gallery'">{{ row.image_count }} 张图片</small><time :datetime="row.published_at">{{ date(row.published_at) }}</time></div>
+              <ResourceBreadcrumbs v-if="kind === 'resource' && query && row.ancestors?.length" class="search-result-location" :ancestors="row.ancestors" />
               <h2 v-if="isShort(row) && row.title" class="entry-title">{{ row.title }}</h2>
               <router-link v-else-if="row.title" class="entry-title" :to="entryPath(row)">{{ row.title }}<span aria-hidden="true">↗</span></router-link>
               <ShortPostBody v-if="isShort(row)" :source="row.body" />

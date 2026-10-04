@@ -248,7 +248,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         await request('/api/admin/profile', write('PUT', { profile: { ...profile, avatar: '/picture/test.png' }, cards: [{ title: '资料', content: '' }] }));
         assert.ok(!existsSync(filePath(imageUrl)));
 
-        // Nested collections hide their members from all root listings and searches.
+        // Browsing hides nested members; search recursively includes public descendants.
         const collection = { kind: 'resource', resource_kind: 'collection', title: '游戏收藏', body: '整理游戏资源', status: 'published', parent_id: null, resource_type_id: types[1].id };
         const outer = await request('/api/admin/entries', write('POST', collection));
         assert.equal(outer.status, 201);
@@ -271,7 +271,14 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         const rootResources = (await request('/api/content/entries?kind=resource')).body.data;
         assert.ok(rootResources.some(row => row.id === outerId));
         assert.ok(!rootResources.some(row => [nestedId, galleryId, childDocument.body.id].includes(row.id)));
-        assert.equal((await request('/api/content/entries?kind=resource&q=' + encodeURIComponent(gallery.title))).body.total, 0);
+        assert.equal((await request('/api/content/entries?kind=resource&q=' + encodeURIComponent(gallery.title))).body.total, 1);
+        assert.equal((await request(`/api/content/entries?kind=resource&parent=${outerId}&q=${encodeURIComponent(gallery.title)}`)).body.data[0].id, galleryId);
+        assert.equal((await request(`/api/content/entries?kind=resource&parent=${nestedId}&q=${encodeURIComponent(gallery.title)}`)).body.data[0].id, galleryId);
+        assert.equal((await request(`/api/content/entries?kind=resource&type=${types[0].id}&q=${encodeURIComponent(gallery.title)}`)).body.total, 0, '根大类筛选仍限定递归搜索范围');
+        const captionSearch = (await request('/api/content/entries?kind=resource&q=' + encodeURIComponent('游戏画面'))).body;
+        assert.equal(captionSearch.data[0].id, galleryId);
+        assert.deepEqual(captionSearch.data[0].ancestors.map(row => row.id), [outerId, nestedId]);
+        assert.equal((await request(`/api/content/entries?kind=resource&parent=${outerId}&q=${encodeURIComponent(collection.title)}`)).body.total, 0, '起始合集自身不参与成员搜索');
         const outerList = (await request(`/api/content/entries?kind=resource&parent=${outerId}`)).body.data;
         assert.equal((await request(`/api/content/entries/${childDocument.body.id}`)).body.data.article_navigation, null, '同级只有一篇文档，子合集不参与阅读队列');
         assert.deepEqual(new Set(outerList.map(row => row.id)), new Set([nestedId, childDocument.body.id]));
@@ -290,6 +297,31 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.deepEqual(galleryDetail.images.map(image => image.caption), ['游戏画面', '外部图片']);
         assert.equal((await request('/api/admin/entries?kind=resource')).body.data.find(row => row.id === galleryId).images.length, 2);
 
+        const recursiveFixtures = [];
+        async function searchFixture(input) {
+            const result = await request('/api/admin/entries', write('POST', input));
+            assert.equal(result.status, 201); recursiveFixtures.push(result.body.id); return result.body.id;
+        }
+        const deepId = await searchFixture({ ...collection, title: '深层搜索目录', parent_id: nestedId });
+        const deepArticle = await searchFixture({ ...resource, title: '递归范围专用文档', parent_id: deepId, body: '递归正文验收', tags: ['递归标签验收'] });
+        const otherId = await searchFixture({ ...collection, title: '另一处搜索目录' });
+        const otherArticle = await searchFixture({ ...resource, title: '其他分支文档', parent_id: otherId, body: '递归正文验收', tags: ['递归标签验收'] });
+        const privateId = await searchFixture({ ...collection, title: '未公开分支', parent_id: outerId, status: 'draft' });
+        await searchFixture({ ...resource, title: '草稿合集中的已发布文档', parent_id: privateId, body: '递归正文验收', tags: ['递归标签验收'] });
+        await searchFixture({ ...resource, title: '未公开文档', parent_id: deepId, body: '递归正文验收', tags: ['递归标签验收'], status: 'draft' });
+        for (const term of ['递归正文验收', '递归标签验收']) {
+            const searchPath = '/api/content/entries?kind=resource&q=' + encodeURIComponent(term);
+            assert.deepEqual(new Set((await request(searchPath)).body.data.map(row => row.id)), new Set([deepArticle, otherArticle]));
+            for (const start of [outerId, nestedId, deepId]) {
+                const result = (await request(`${searchPath}&parent=${start}`)).body;
+                assert.equal(result.total, 1); assert.equal(result.data[0].id, deepArticle);
+                assert.deepEqual(result.data[0].ancestors.map(row => row.id), [outerId, nestedId, deepId]);
+            }
+            assert.equal((await request(`${searchPath}&parent=${privateId}`)).status, 404);
+        }
+        assert.ok(!(await request(`/api/content/entries?kind=resource&parent=${outerId}&q=%20%20`)).body.data.some(row => row.id === deepArticle), '清空搜索后恢复直接成员列表');
+        for (const id of recursiveFixtures.reverse()) assert.equal((await request(`/api/admin/entries/${id}`, { method: 'DELETE' })).status, 200);
+
         // Failed moves are atomic and cannot create a collection cycle.
         assert.equal((await request(`/api/admin/entries/${outerId}`, write('PUT', { ...collection, parent_id: outerId, member_ids: [] }))).status, 400);
         assert.equal((await request(`/api/admin/entries/${outerId}`, write('PUT', { ...collection, parent_id: nestedId }))).status, 400);
@@ -305,6 +337,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         await request(`/api/admin/entries/${outerId}`, write('PUT', { ...collection, status: 'draft' }));
         assert.equal((await request(`/api/content/entries/${galleryId}`)).status, 404);
         assert.equal((await request(`/api/content/entries?kind=resource&parent=${nestedId}`)).status, 404);
+        assert.equal((await request('/api/content/entries?kind=resource&q=' + encodeURIComponent(gallery.title))).body.total, 0, '根搜索不泄露草稿祖先的内容');
         assert.ok(existsSync(filePath(galleryUrl)), '草稿合集里的图片仍需保留');
         await request(`/api/admin/entries/${outerId}`, write('PUT', collection));
 
@@ -390,13 +423,13 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         }
         const resourceQuery = '/api/content/entries?kind=resource&q=' + encodeURIComponent('分页验收资源');
         assert.equal((await request(`${resourceQuery}&sort=latest`)).body.data[0].id, resourceIds[14]);
-        assert.equal((await request(`${resourceQuery}&sort=updated`)).body.data[0].id, pagedCollection, '子内容更新使旧合集在最新修改排序中优先');
-        for (const [parent, ids] of [[null, resourceIds], [pagedCollection, childIds]]) {
+        assert.equal((await request('/api/content/entries?kind=resource&sort=updated')).body.data[0].id, pagedCollection, '子内容更新使旧合集在普通列表的最新修改排序中优先');
+        for (const [parent, ids] of [[null, [...resourceIds, ...childIds]], [pagedCollection, childIds]]) {
             const query = resourceQuery + (parent ? `&parent=${parent}` : '');
-            const pages = await Promise.all([1, 2].map(n => request(`${query}&page=${n}`)));
-            assert.deepEqual(pages.map(p => p.body.data.length), [15, 1]);
+            const pages = await Promise.all(Array.from({ length: Math.ceil(ids.length / 15) }, (_, i) => request(`${query}&page=${i + 1}`)));
+            assert.deepEqual(pages.map(p => p.body.data.length), parent ? [15, 1] : [15, 15, 2]);
             assert.deepEqual(new Set(pages.flatMap(p => p.body.data.map(r => r.id))), new Set(ids));
-            assert.ok(pages.every(p => p.body.total === 16));
+            assert.ok(pages.every(p => p.body.total === ids.length));
         }
         // Long and short posts share a single pin budget, across create/edit
         // and the list's quick action. Pagination counts pinned rows once.
