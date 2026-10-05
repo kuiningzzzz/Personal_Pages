@@ -3,6 +3,7 @@ import Home from '../views/home.vue'
 import Moments from '../views/moments.vue'
 import Resource from '../views/resource.vue'
 import Activities from '../views/activities.vue'
+import ActivityPlayer from '../views/activity-player.vue'
 import Entry from '../views/entry.vue'
 import Admin from '../views/admin.vue'
 import Auth from '../views/auth.vue'
@@ -17,6 +18,8 @@ const routes = [
   { path: '/resource/collection/:collectionId', component: Resource },
   { path: '/resource/gallery/:id', component: Entry },
   { path: '/activities', component: Activities },
+  { path: '/activities/collection/:collectionId', component: Activities },
+  { path: '/activities/play/:id', component: ActivityPlayer },
   { path: '/entry/:id', component: Entry },
   { path: '/admin', component: Admin },
   { path: '/login', component: Auth },

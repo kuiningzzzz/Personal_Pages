@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
+# 使用官方现代 CLI，避免 Debian 自带旧客户端与宿主机 Docker API 不兼容。
+FROM docker:29-cli AS docker-cli
+
 # 依赖阶段：只安装 JavaScript 依赖
 FROM node:24-bookworm-slim AS deps
 
@@ -33,6 +36,8 @@ RUN for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
 
 # 复制生产依赖
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 COPY package*.json ./
 
 # 复制应用代码

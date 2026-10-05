@@ -50,11 +50,15 @@ services:
       - QQ_SMTP_USER=${QQ_SMTP_USER:-}
       - QQ_SMTP_AUTH_CODE=${QQ_SMTP_AUTH_CODE:-}
       - PUBLIC_SITE_URL=${PUBLIC_SITE_URL:-}
+      - ACTIVITIES_IN_DOCKER=1
+      - ACTIVITIES_DOCKER_NETWORK=personal-pages-activities
     volumes:
       - ./server/data:/app/data  # 挂载数据库到项目目录，方便查看和备份
       - ./public:/app/public  # 挂载宿主机的 public 目录
+      - /var/run/docker.sock:/var/run/docker.sock  # 用宿主机 Docker 管理各活动后端
     networks:
       - personal-pages-network
+      - activities-network
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/"]
       interval: 30s
@@ -68,4 +72,7 @@ volumes:
 
 networks:
   personal-pages-network:
+    driver: bridge
+  activities-network:
+    name: personal-pages-activities
     driver: bridge

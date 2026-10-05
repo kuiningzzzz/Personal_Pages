@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, writeFile, readdir, rm, copyFile, stat } from
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import Database from '../sqlite.js';
 import { createBackupStore, recoverRestore } from '../backups/store.js';
 import { extractArchive, safeName } from '../backups/archive.js';
@@ -141,6 +141,42 @@ test('增量还原处理编号、用户名和文件冲突；保留当前修改�
     for (const table of Object.keys(before.tables)) assert.equal(snapshot(target.card).tables[table].length, before.tables[table].length, table);
     assert.equal((await readdir(join(target.publicRoot, 'source'))).length, fileCount);
     assert.deepEqual(target.card.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('活动版本、合集、标签、代码与存档进入备份，增量还原正确映射用户和外部活动目录', async t => {
+    const source = await fixture(t), target = await fixture(t);
+    const user = Number(source.card.prepare("INSERT INTO users(username,username_key,email,password_hash,created_at) VALUES('活动访客','活动访客','player@example.com','hash','2026-10-05')").run().lastInsertRowid);
+    const tag = Number(source.card.prepare("INSERT INTO plaza_tags(name) VALUES('小游戏')").run().lastInsertRowid);
+    const collection = Number(source.card.prepare("INSERT INTO plaza_items(kind,source,state,title,created_at,updated_at) VALUES('collection','external','published','游戏合集','2026-10-05','2026-10-05')").run().lastInsertRowid);
+    const version = randomUUID();
+    const game = Number(source.card.prepare("INSERT INTO plaza_items(kind,identifier,state,parent_id,title,tags,published_version_id,created_at,updated_at) VALUES('activity','lesson-game','published',?,'课堂小游戏',?,?,'2026-10-05','2026-10-05')").run(collection, JSON.stringify([tag]), version).lastInsertRowid);
+    source.card.prepare("INSERT INTO plaza_versions(id,item_id,version,manifest,backend_enabled,backend_port,build_status,runtime_status,created_at) VALUES(?,?,'release-a','{}',1,40001,'ready','running','2026-10-05')").run(version, game);
+    const external = Number(source.card.prepare("INSERT INTO plaza_items(kind,source,state,title,external_url,created_at,updated_at) VALUES('activity','external','published','外部活动','https://example.com/','2026-10-05','2026-10-05')").run().lastInsertRowid);
+    await source.file(`data/activities/lesson-game/versions/${version}/frontend/index.html`, 'game page');
+    await source.file(`data/activities/lesson-game/versions/${version}/backend/Dockerfile`, 'FROM node:24');
+    await source.file('data/activities/lesson-game/storage/backend/progress.json', '{"score":8}');
+    await source.file(`data/activities/lesson-game/storage/users/user-${user}/save.json`, '{"level":2}');
+    await source.file(`data/activities/external-${external}/storage/users/user-${user}/save.json`, '{"level":3}');
+    const saved = await source.successful(source.store.generate()), archive = (await source.store.get(saved.id)).path;
+    source.card.prepare("UPDATE plaza_items SET title='改名' WHERE id=?").run(game);
+    await source.successful(source.store.restore(archive, 'overwrite'));
+    assert.equal(source.card.prepare('SELECT title FROM plaza_items WHERE id=?').get(game).title, '课堂小游戏');
+    assert.equal(source.card.prepare('SELECT runtime_status FROM plaza_versions WHERE id=?').get(version).runtime_status, 'stopped');
+    target.card.prepare("INSERT INTO users(username,username_key,email,password_hash,created_at) VALUES('原有用户','原有用户','current@example.com','hash','2026-10-06')").run();
+    target.card.prepare("INSERT INTO plaza_tags(name) VALUES('其他')").run();
+    target.card.prepare("INSERT INTO plaza_items(kind,source,title,created_at,updated_at) VALUES('collection','external','原有合集','2026-10-06','2026-10-06')").run();
+    await target.file('data/activities/lesson-game/storage/users/user-1/save.json', 'current save');
+    await target.successful(target.store.restore(archive, 'merge'));
+    const imported = target.card.prepare("SELECT * FROM plaza_items WHERE identifier='lesson-game'").get(), owner = target.card.prepare("SELECT id FROM users WHERE email='player@example.com'").get().id;
+    const importedTag = target.card.prepare("SELECT id FROM plaza_tags WHERE name='小游戏'").get().id, externalId = target.card.prepare("SELECT id FROM plaza_items WHERE title='外部活动'").get().id;
+    assert.notEqual(imported.parent_id, collection); assert.deepEqual(JSON.parse(imported.tags), [importedTag]); assert.notEqual(importedTag, tag);
+    assert.equal(target.card.prepare('SELECT item_id FROM plaza_versions WHERE id=?').get(version).item_id, imported.id);
+    assert.equal(await readFile(join(target.data, `activities/lesson-game/storage/users/user-${owner}/save.json`), 'utf8'), '{"level":2}');
+    assert.equal(await readFile(join(target.data, 'activities/lesson-game/storage/users/user-1/save.json'), 'utf8'), 'current save');
+    assert.equal(await readFile(join(target.data, `activities/external-${externalId}/storage/users/user-${owner}/save.json`), 'utf8'), '{"level":3}');
+    assert.equal(await readFile(join(target.data, `activities/lesson-game/versions/${version}/frontend/index.html`), 'utf8'), 'game page');
+    await target.successful(target.store.restore(archive, 'merge'));
+    assert.equal(target.card.prepare('SELECT COUNT(*) AS n FROM plaza_versions').get().n, 1);
 });
 
 function tamper(bytes, change) {

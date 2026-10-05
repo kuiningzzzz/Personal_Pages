@@ -54,3 +54,9 @@ public/*
 !public/favicon.ico
 !public/favicon.png
 !public/music-sw.js
+
+# 活动源码及发布产物独立管理，保留工作区说明。
+activities/dev/*
+!activities/dev/README.md
+activities/release/*
+!activities/release/README.md

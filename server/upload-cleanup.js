@@ -68,6 +68,7 @@ export function auditAndCleanupUploads() {
     for (const card of cardDb.prepare('SELECT title, content FROM home_cards').all()) markdown(card.content, `首页卡片「${card.title}」`);
     for (const announcement of cardDb.prepare('SELECT title,body FROM announcements').all()) markdown(announcement.body, `公告「${announcement.title}」`);
     for (const track of cardDb.prepare('SELECT title,url FROM home_tracks').all()) inspect(track.url, `歌单「${track.title}」`);
+    for (const activity of cardDb.prepare('SELECT title,cover FROM plaza_items').all()) inspect(activity.cover, `活动「${activity.title}」封面`);
     for (const row of cardDb.prepare('SELECT id, title, summary, cover_image, body, actions FROM entries').all()) {
         const place = `帖子「${row.title || `#${row.id}`}」`;
         inspect(row.cover_image, `${place}封面`);

@@ -15,6 +15,7 @@ import { createFeedbackAdminRoutes } from './feedback/routes.js';
 import { createUserAdminRoutes } from './auth/admin-routes.js';
 import { createAnnouncementAdminRoutes } from './announcements.js';
 import { validateMomentPin, setMomentPin } from './moment-pins.js';
+import { activities, activityRoutes } from './activities/index.js';
 import { homePlaylist, validatePlaylist, savePlaylist, homeWelcome, validateWelcome, saveWelcome } from './home-music.js';
 
 const router = express.Router();
@@ -60,7 +61,8 @@ router.use('/feedback', createFeedbackAdminRoutes({ db: cardDb }));
 router.use('/users', createUserAdminRoutes({ db: cardDb }));
 router.use('/announcements', createAnnouncementAdminRoutes({ db: cardDb, cleanup: auditAndCleanupUploads }));
 router.use('/ai', aiRoutes);
-router.use('/backups', createBackupRoutes(createBackupStore({ cardDb, commentDb, dataRoot: DATA_DIR, publicRoot })));
+router.use('/activities', activityRoutes.admin);
+router.use('/backups', createBackupRoutes(createBackupStore({ cardDb, commentDb, dataRoot: DATA_DIR, publicRoot, onRestored: () => activities.restored() })));
 const normalizeTags = value => [...new Set((Array.isArray(value) ? value : []).map(item => clean(item, 40)).filter(Boolean))].slice(0, 20);
 const normalizeActions = value => (Array.isArray(value) ? value : []).map(action => ({
     label: String(action.label ?? '').trim(), url: clean(action.url, 2048)

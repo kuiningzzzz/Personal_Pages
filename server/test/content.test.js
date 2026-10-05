@@ -46,6 +46,9 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request('/api/admin/users')).status, 401);
         assert.equal((await request('/api/admin/announcements')).status, 401);
         assert.equal((await request('/api/admin/backups')).status, 401);
+        assert.equal((await request('/api/admin/activities')).status, 401);
+        assert.equal((await request('/api/admin/activities/items', write('POST', {}))).status, 401);
+        assert.equal((await request('/api/plaza/items')).body.data.length, 0);
         assert.equal((await request('/api/admin/backups', { method: 'POST' })).status, 401);
         assert.equal((await request('/api/admin/entries/1/pin', write('POST', { enabled: true }))).status, 401);
         assert.equal((await request('/api/admin/announcements/tags', write('POST', { name: '更新日志' }))).status, 401);

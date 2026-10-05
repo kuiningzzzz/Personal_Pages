@@ -16,7 +16,8 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_API_TARGET || 'http://localhost:3002',
         // Admin writes compare Origin with Host. Preserve the browser-facing host.
-        changeOrigin: false
+        changeOrigin: false,
+        ws: true
       }
     }
   }

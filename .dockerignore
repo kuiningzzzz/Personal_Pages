@@ -54,3 +54,5 @@ DOCKER_DEPLOY.md
 # 其他
 .cache
 .temp
+activities/dev
+activities/release

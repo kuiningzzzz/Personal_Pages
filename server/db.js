@@ -15,6 +15,7 @@ import { migrateHomeMusic } from './home-music.js';
 import { migrateFeedback } from './feedback/schema.js';
 import { migrateAnnouncements } from './announcements.js';
 import { migrateMomentPins } from './moment-pins.js';
+import { migrateActivities } from './activities/schema.js';
 import { recoverRestore } from './backups/store.js';
 
 // 获取当前文件的目录
@@ -179,6 +180,7 @@ function initializeDatabase() {
         migrateComments(cardDb);
         migrateFeedback(cardDb);
         migrateAnnouncements(cardDb);
+        migrateActivities(cardDb);
 
         // 检查评论数据库是否有数据
         const commentCount = commentDb.prepare('SELECT COUNT(*) as count FROM comments').get();

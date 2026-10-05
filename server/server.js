@@ -4,7 +4,7 @@ import cors from 'cors';
 import contentRoutes from './content-routes.js';
 import contentAdminRoutes from './content-admin-routes.js';
 import { startTasks, stopTasks, pauseTasksForBackup, resumeTasksAfterBackup } from './ai/tasks.js';
-import { configureMaintenance, maintenanceMiddleware } from './maintenance.js';
+import { configureMaintenance, maintenanceMiddleware, maintenanceActive } from './maintenance.js';
 import { randomBytes } from 'node:crypto';
 import { cardDb } from './db.js';
 import { createUserRoutes } from './auth/routes.js';
@@ -15,6 +15,7 @@ import { createCommentRoutes } from './comments/routes.js';
 import { createDiscussionMailService } from './comments/mail-service.js';
 import { createFeedbackRoutes } from './feedback/routes.js';
 import { createFeedbackMailService } from './feedback/mail-service.js';
+import { activities, activityRoutes } from './activities/index.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -24,8 +25,8 @@ const subscriptions = createSubscriptionService({ db: cardDb, mailer: userMailer
 const discussionMail = createDiscussionMailService({ db: cardDb, mailer: userMailer, origin: siteOrigin() });
 const feedbackMail = createFeedbackMailService({ db: cardDb, mailer: userMailer, origin: siteOrigin() });
 configureMaintenance({
-    async pause() { pauseTasksForBackup(); await Promise.all([subscriptions.stop(), discussionMail.stop(), feedbackMail.stop()]); },
-    resume() { subscriptions.start(); discussionMail.start(); feedbackMail.start(); resumeTasksAfterBackup(); }
+    async pause() { pauseTasksForBackup(); await activities.pause(); await Promise.all([subscriptions.stop(), discussionMail.stop(), feedbackMail.stop()]); },
+    resume() { subscriptions.start(); discussionMail.start(); feedbackMail.start(); resumeTasksAfterBackup(); activities.start(); }
 });
 
 // 中间件
@@ -37,7 +38,7 @@ app.use(express.urlencoded({ extended: true })); // 解析 URL 编码的请求�
 // 请求日志
 app.use((req, res, next) => {
     const userPaths = ['/api/auth/config', '/api/auth/session', '/api/auth/code', '/api/auth/register', '/api/auth/login', '/api/auth/reset-password', '/api/auth/settings', '/api/auth/logout'];
-    const loggedPath = req.path.startsWith('/api/auth') ? (userPaths.includes(req.path) ? req.path : '/api/auth') : req.path.startsWith('/api/subscriptions') ? '/api/subscriptions' : req.url;
+    const loggedPath = req.path.startsWith('/api/auth') ? (userPaths.includes(req.path) ? req.path : '/api/auth') : req.path.startsWith('/api/subscriptions') ? '/api/subscriptions' : req.path.startsWith('/api/plaza/run/') ? '/api/plaza/run/[activity assets]' : req.path.startsWith('/api/plaza') ? req.path : req.url;
     console.log(`${new Date().toISOString()} - ${req.method} ${loggedPath}`);
     next();
 });
@@ -49,6 +50,7 @@ app.use('/api/auth', createUserRoutes({ db: cardDb, mailer: userMailer, secret: 
 app.use('/api/subscriptions', createSubscriptionRoutes({ db: cardDb }));
 app.use('/api/comments', createCommentRoutes({ db: cardDb }));
 app.use('/api/feedback', createFeedbackRoutes({ db: cardDb }));
+app.use('/api/plaza', activityRoutes.publicRoutes);
 
 // 根路径
 app.get('/', (req, res) => {
@@ -108,8 +110,10 @@ const server = app.listen(PORT, () => {
     subscriptions.start();
     discussionMail.start();
     feedbackMail.start();
+    activities.start();
 });
 let closing = false;
+server.on('upgrade', (req, socket, head) => { if (maintenanceActive() || !activityRoutes.upgrade(req, socket, head)) socket.destroy(); });
 async function shutdown() {
     if (closing) return;
     closing = true;
@@ -118,6 +122,7 @@ async function shutdown() {
     await discussionMail.stop();
     await feedbackMail.stop();
     await stopTasks();
+    await activities.stop();
     process.exit(0);
 }
 process.on('SIGTERM', shutdown);

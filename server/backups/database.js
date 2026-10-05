@@ -114,6 +114,7 @@ export function merge(db, dump, rewrite = value => value) {
         if (pending.has(token)) throw new Error('备份中存在循环数据引用'); pending.add(token);
         const row = { ...item.values };
         for (const fk of [...info.foreign, ...(implicit[table] || [])]) if (!fk.when || fk.when(row)) row[fk.from] = resolve(fk.table, row[fk.from], fk.to, fk.optional);
+        if (table === 'plaza_items') row.tags = JSON.stringify(JSON.parse(row.tags).map(id => resolve('plaza_tags', id)));
         if (table === 'entries' && row.parent_id) row.resource_type_id = db.prepare('SELECT resource_type_id FROM entries WHERE id=?').get(row.parent_id).resource_type_id;
         if (table === 'entry_comments' && row.reply_to_id) row.reply_to_name = db.prepare('SELECT u.username FROM entry_comments c JOIN users u ON u.id=c.user_id WHERE c.id=?').get(row.reply_to_id)?.username || row.reply_to_name;
         // At this point collection/task identities exist; rewrite URLs and workspace references.
@@ -171,4 +172,5 @@ export function neutralizeImportedJobs(dump) {
     for (const { values: r } of dump.tables.subscription_events || []) r.prepared = 1;
     for (const name of ['subscription_deliveries', 'discussion_mail_queue']) for (const { values: r } of dump.tables[name] || []) if (['pending', 'sending'].includes(r.status)) r.status = 'skipped';
     for (const { values: r } of dump.tables.visitor_feedback || []) if (['pending', 'sending'].includes(r.mail_status)) r.mail_status = 'failed';
+    for (const { values: r } of dump.tables.plaza_versions || []) { r.runtime_status = 'stopped'; if (r.build_status !== 'ready') r.build_status = 'pending'; r.error = ''; }
 }

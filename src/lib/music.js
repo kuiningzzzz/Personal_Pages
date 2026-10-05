@@ -13,6 +13,12 @@ export const currentTrack = computed(() => music.tracks[music.currentIndex] || n
 export const volumeIcon = computed(() => music.volume === 0 ? 'volume-muted' : music.volume <= 1 / 3 ? 'volume-low' : music.volume <= 2 / 3 ? 'volume-medium' : 'volume-high')
 let audio, loading, source = '', prepared = null, history = [], workerReady
 let audioContext, volumeGain, lastVolume = DEFAULT_VOLUME
+let playbackRevision = 0
+export function pauseForActivity() {
+  const wasPlaying = music.playing || Boolean(audio && !audio.paused), revision = playbackRevision
+  if (audio) audio.pause()
+  return () => { if (wasPlaying && playbackRevision === revision && !music.playing) play() }
+}
 
 export function setVolume(value) {
   const numeric = Number(value)
@@ -124,8 +130,8 @@ function play() {
   })
   if ('mediaSession' in navigator && window.MediaMetadata) {
     navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist || music.profile?.name || '' })
-    navigator.mediaSession.setActionHandler('play', play)
-    navigator.mediaSession.setActionHandler('pause', () => player.pause())
+    navigator.mediaSession.setActionHandler('play', () => { playbackRevision++; play() })
+    navigator.mediaSession.setActionHandler('pause', () => { playbackRevision++; player.pause() })
     navigator.mediaSession.setActionHandler('previoustrack', previousTrack)
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack())
   }
@@ -144,21 +150,25 @@ export function syncMusicRoute(path) {
   if (path && path !== '/') music.entered = true
 }
 export function togglePlayback() {
+  playbackRevision++
   if (!music.entered) { enterHome(); return }
   if (!music.tracks.length) return
   if (audio && !audio.paused) audio.pause(); else play()
 }
 export function selectTrack(index) {
+  playbackRevision++
   if (!music.tracks[index]) return
   if (source && index !== music.currentIndex) history.push(music.currentIndex)
   music.currentIndex = index; music.entered = true; play()
 }
 export function previousTrack() {
+  playbackRevision++
   const previous = music.mode === 'shuffle' && history.length ? history.pop() : queueIndex(music.currentIndex, music.tracks.length, { direction: -1, mode: music.mode })
   if (previous < 0) return
   music.currentIndex = previous; play()
 }
 export function nextTrack(automatic = false) {
+  if (!automatic) playbackRevision++
   const next = prepared?.from === source && prepared.mode === music.mode ? prepared.index : queueIndex(music.currentIndex, music.tracks.length, { mode: music.mode, automatic })
   if (next < 0) return
   if (source) history.push(music.currentIndex)

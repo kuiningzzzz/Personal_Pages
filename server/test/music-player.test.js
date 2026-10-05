@@ -26,6 +26,8 @@ test('播放由用户手势启动，同一 Audio 跨页面保留；单曲不预�
     player.enterHome();
     assert.equal(audios.length, 1); assert.equal(audios[0].src, '/source/song-1.mp3');
     assert.equal(audios[0].loop, true); assert.equal(player.music.playing, true);
+    const restore = player.pauseForActivity(); assert.equal(player.music.playing, false); restore(); assert.equal(player.music.playing, true);
+    const manual = player.pauseForActivity(); player.togglePlayback(); player.togglePlayback(); manual(); assert.equal(player.music.playing, false, '活动期间手动暂停后，离开不会擅自恢复'); player.togglePlayback();
     const audio = audios[0];
     assert.equal(player.music.volume, .5, '首次有声播放默认显示 50%');
     assert.equal(audio.volume, .4, '新 50% 对应原输出的 40%');

@@ -13,7 +13,7 @@ const mobileNav = ref(navMedia.matches)
 const navMediaChanged = event => { mobileNav.value = event.matches }
 const route = useRoute()
 const nav = ref(null)
-const links = [{ path: '/', label: '首页' }, { path: '/moments', label: '动态' }, { path: '/resource', label: '资源库' }, { path: '/activities', label: '活动' }]
+const links = [{ path: '/', label: '首页' }, { path: '/moments', label: '动态' }, { path: '/resource', label: '资源库' }, { path: '/activities', label: '广场' }]
 const pendingSection = ref(null)
 const activePath = computed(() => navigationPath(route.path, readingNavigation.value) || (route.path.startsWith('/entry/') ? pendingSection.value : null))
 const activeIndex = computed(() => links.findIndex(item => item.path === activePath.value))
@@ -37,7 +37,7 @@ useRouter().afterEach(() => { open.value = false })
 watch([name, () => route.path, activePath], () => {
   const label = activePath.value === '/moments' ? '动态'
     : activePath.value === '/resource' ? '资源库'
-      : activePath.value === '/activities' ? '活动'
+      : activePath.value === '/activities' ? '广场'
         : route.path.startsWith('/admin') ? '内容管理'
           : route.path === '/register' ? '注册' : route.path === '/login' ? '登录' : route.path === '/reset-password' ? '重设密码' : route.path === '/account' ? '我的账号' : ''
   document.title = label ? `${label} · ${name.value}` : name.value

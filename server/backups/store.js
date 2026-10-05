@@ -6,6 +6,7 @@ import Database from '../sqlite.js';
 import { writeArchive, extractArchive, digest, safeName } from './archive.js';
 import { snapshot, validateSnapshot, initializeBackupDb, overwrite, merge, neutralizeImportedJobs } from './database.js';
 import { withMaintenance } from '../maintenance.js';
+import { validIdentifier } from '../activities/package.js';
 
 const PUBLIC_FOLDERS = ['articles', 'emoji', 'friend_avatar', 'picture', 'source'];
 const protectedName = name => ['backups', 'card.sqlite', 'comment.sqlite', 'card.sqlite-wal', 'card.sqlite-shm', 'card.sqlite-journal', 'comment.sqlite-wal', 'comment.sqlite-shm', 'comment.sqlite-journal', 'restore-journal.json', 'restore-journal.json.tmp', '.env'].includes(name) || name.startsWith('.backup-');
@@ -29,7 +30,7 @@ async function walk(root, prefix = '') {
     return files;
 }
 async function json(path, value) { await writeFile(path, JSON.stringify(value)); }
-export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, maintenance = withMaintenance }) {
+export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, maintenance = withMaintenance, onRestored = () => {} }) {
     dataRoot = resolve(dataRoot); publicRoot = resolve(publicRoot);
     if (dataRoot === publicRoot || dataRoot.startsWith(publicRoot + sep)) throw new Error('数据库目录不能放在公开目录内');
     const publicDataFolder = publicRoot.startsWith(dataRoot + sep) ? relative(dataRoot, publicRoot).split(sep)[0] : null;
@@ -147,6 +148,17 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         }
         if (rows.filter(r => r.kind === 'moment' && r.pinned).length > 5 || db.prepare('SELECT COUNT(*) AS n FROM announcements WHERE pinned=1').get().n > 2) throw new Error('备份中置顶内容超出限制');
         if (!db.prepare('SELECT id FROM profile WHERE id=1').get() || !db.prepare('SELECT id FROM home_welcome WHERE id=1').get()) throw new Error('备份缺少首页设置');
+        if (db.prepare("SELECT name FROM sqlite_master WHERE name='plaza_items'").get()) {
+            const items = db.prepare('SELECT * FROM plaza_items').all(), byId = new Map(items.map(row => [row.id, row]));
+            const tags = new Set(db.prepare('SELECT id FROM plaza_tags').all().map(row => row.id));
+            for (const row of items) {
+                if (row.identifier !== null && !validIdentifier(row.identifier) || !Array.isArray(JSON.parse(row.tags)) || JSON.parse(row.tags).some(id => !tags.has(id))) throw new Error('备份中的活动标识或标签无效');
+                const seen = new Set([row.id]); let parent = row.parent_id;
+                while (parent) { const p = byId.get(parent); if (p?.kind !== 'collection' || seen.has(parent)) throw new Error('备份中的活动合集关系无效'); seen.add(parent); parent = p.parent_id; }
+                for (const id of [row.preview_version_id, row.published_version_id].filter(Boolean)) if (db.prepare('SELECT item_id FROM plaza_versions WHERE id=?').get(id)?.item_id !== row.id) throw new Error('备份中的活动版本关系无效');
+            }
+            for (const row of db.prepare('SELECT id FROM plaza_versions').all()) if (!/^[a-f0-9-]{36}$/.test(row.id)) throw new Error('备份中的活动版本标识无效');
+        }
     }
     function mappedId(maps, table, id) { return maps?.[table]?.get(JSON.stringify([Number(id)]))?.id ?? Number(id); }
     async function restore(upload, work, mode) {
@@ -172,6 +184,7 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         const rewrite = (value, maps, table, column) => {
             for (const [from, to] of substitutions) { value = value.replaceAll(from, to).replaceAll(encodeURI(from), encodeURI(to)); }
             value = value.replace(/(\/(?:entry|resource\/(?:collection|gallery))\/)(\d+)(?=[/#?"\s)]|$)/g, (_, prefix, id) => prefix + mappedId(maps, 'entries', id));
+            value = value.replace(/(\/activities\/(?:play|collection)\/)(\d+)(?=[/#?"\s)]|$)/g, (_, prefix, id) => prefix + mappedId(maps, 'plaza_items', id));
             if (table === 'ai_collection_sessions' && (column === 'session_id' || column === 'previous_session_id')) value = value.replace(/learning-collection-(\d+)/g, (_, id) => `learning-collection-${mappedId(maps, 'entries', id)}`);
             return value;
         };
@@ -185,6 +198,8 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             let name = file.name;
             let text;
             if (mode === 'merge') {
+                name = name.replace(/^data\/activities\/external-(\d+)\//, (_, id) => `data/activities/external-${mappedId(entryMaps, 'plaza_items', id)}/`);
+                name = name.replace(/^(data\/activities\/[^/]+\/storage\/users\/)user-(\d+)\//, (_, prefix, id) => `${prefix}user-${mappedId(entryMaps, 'users', id)}/`);
                 name = name.replace(/^data\/ai\/collections\/(\d+)\//, (_, id) => `data/ai/collections/${mappedId(entryMaps, 'entries', id)}/`);
                 name = name.replace(/learning-collection-(\d+)/g, (_, id) => `learning-collection-${mappedId(entryMaps, 'entries', id)}`);
                 if (name.startsWith('data/ai/') && /\.(jsonl?|md|txt)$/i.test(name) && (await stat(file.source)).size < 20 * 1024 ** 2) {
@@ -262,6 +277,7 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             if (cardDb.prepare("SELECT value FROM backup_state WHERE key='restore'").get()?.value !== journal.id) await rollbackJournal(journal, dataRoot, publicRoot);
             await rm(journalPath, { force: true }); throw cause;
         }
+        onRestored();
         return { mode, importedRecords: mode === 'merge' ? card.result.count + comment.result.count : Object.values(card.dump.tables).concat(Object.values(comment.dump.tables)).reduce((n, rows) => n + rows.length, 0), importedFiles, skippedFiles,
             safetyBackup: safety.id, retainedWorkspaceConflicts: dataConflicts.length, message: mode === 'merge' ? '增量导入完成，当前内容已保留' : '覆盖还原完成' };
     }
