@@ -2,6 +2,7 @@
 (() => {
   if (window.ActivitySDK) return;
   let port, serial = 0, runtime, appearance = 'light';
+  const connectionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const pending = new Map(), listeners = new Map();
   let resolveReady, rejectReady;
   const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
@@ -23,11 +24,11 @@
       }
       const call = pending.get(data.id); if (!call) return;
       pending.delete(data.id); clearTimeout(call.timer);
-      if (data.error) call.reject(new Error(data.error)); else call.resolve(data.data);
+      if (data.error) { const error = new Error(data.error); if (Number.isInteger(data.status)) error.status = data.status; call.reject(error); } else call.resolve(data.data);
     };
     port.start(); clearTimeout(timer); resolveReady({ runtime, theme: appearance });
   });
-  const hello = () => { if (!port && window.parent !== window) window.parent.postMessage({ type: 'PP_ACTIVITY_READY' }, window.ActivityRuntime?.parentOrigin || window.ActivityParentOrigin || '*'); };
+  const hello = () => { if (!port && window.parent !== window) window.parent.postMessage({ type: 'PP_ACTIVITY_READY', connectionId }, window.ActivityRuntime?.parentOrigin || window.ActivityParentOrigin || '*'); };
   hello(); window.addEventListener('load', hello, { once: true });
   async function call(method, args = {}) {
     await ready; const id = ++serial;
@@ -41,9 +42,19 @@
     ready, getUser: () => call('user'), getRuntime: async () => { await ready; return runtime; },
     getTheme: async () => { await ready; return appearance; }, onThemeChange: callback => on('theme', callback), onRuntimeChange: callback => on('runtime', callback),
     requestLogin: () => call('login'),
+    browserStorage: Object.freeze({
+      get: key => call('browserStorage.get', { key }), set: (key, value) => call('browserStorage.set', { key, value }), remove: key => call('browserStorage.remove', { key })
+    }),
     storage: Object.freeze({
       get: key => call('storage.get', { key }), set: (key, value) => call('storage.set', { key, value }), remove: key => call('storage.remove', { key }),
+      read: key => call('storage.read', { key }), compareAndSet: (key, revision, value) => call('storage.compareAndSet', { key, revision, value }),
       upload: file => call('file.upload', { file }), readFile: async id => new Blob([await call('file.read', { id })]), deleteFile: id => call('file.remove', { id })
+    }),
+    sharedStorage: Object.freeze({
+      get: key => call('sharedStorage.get', { key }),
+      list: (options = {}) => call('sharedStorage.list', options),
+      set: (key, value, revision) => call('sharedStorage.set', { key, value, revision }),
+      remove: (key, revision) => call('sharedStorage.remove', { key, revision })
     }),
     backend: Object.freeze({
       async openSocket(path, protocols) {

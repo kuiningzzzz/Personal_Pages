@@ -2,11 +2,12 @@ import express from 'express';
 import multer from 'multer';
 import { randomUUID, createHmac, timingSafeEqual, createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { mkdir, readFile, writeFile, readdir, rm, stat, rename } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, rm, stat } from 'node:fs/promises';
 import { join, resolve, sep, extname } from 'node:path';
 import http from 'node:http';
 import { sessionUser } from '../auth/routes.js';
 import { activityOpen } from './schema.js';
+import { storageName, readJsonRecord, writeJsonRecord, listJsonRecords } from './json-storage.js';
 
 const route = fn => (req, res, next) => Promise.resolve().then(() => fn(req, res)).catch(next);
 const guestPattern = /^[a-f0-9-]{36}$/;
@@ -128,14 +129,29 @@ export function createActivityRoutes({ service, secret, sdkPath, clock = Date.no
         const identifier = a.item.identifier || `external-${a.item.id}`, actor = a.data.userId ? `user-${a.data.userId}` : `guest-${a.data.guest}`;
         const directory = join(service.root, identifier, 'storage', 'users', actor); await mkdir(directory, { recursive: true }); return directory;
     }
-    const key = req => { const value = String(req.params.key || ''); if (!value || value.length > 100) throw new Error('存档键需为 1～100 字'); return createHash('sha256').update(value).digest('hex'); };
-    publicRoutes.get('/:id/storage/:key', route(async (req, res) => { const folder = await storage(req); let value = null; try { value = JSON.parse(await readFile(join(folder, `${key(req)}.json`), 'utf8')).value; } catch (e) { if (e.code !== 'ENOENT') throw e; } res.json({ success: true,data: value }); }));
+    publicRoutes.get('/:id/storage/:key', route(async (req, res) => { const record = await readJsonRecord(await storage(req), req.params.key); res.json({ success: true,data: req.query.versioned === '1' ? record : record.value }); }));
     publicRoutes.put('/:id/storage/:key', sourceAllowed, route(async (req, res) => {
-        const folder = await storage(req), bytes = Buffer.from(JSON.stringify({ key: req.params.key,value: req.body.value ?? null }));
-        if (bytes.length > 512 * 1024) throw new Error('单份存档最多 512KB');
-        await withStorageLock(folder, async () => { await quota(folder, bytes.length, `${key(req)}.json`); const path = join(folder, `${key(req)}.json`), temporary = `${path}.${randomUUID()}.tmp`; try { await writeFile(temporary, bytes); await rename(temporary, path); } finally { await rm(temporary, { force: true }); } }); res.json({ success: true });
+        const folder = await storage(req), options = Object.hasOwn(req.body, 'expectedRevision') ? { expectedRevision: req.body.expectedRevision } : {};
+        const data = await withStorageLock(folder, () => writeJsonRecord(folder, req.params.key, req.body.value, options)); res.json({ success: true, data });
     }));
-    publicRoutes.delete('/:id/storage/:key', sourceAllowed, route(async (req, res) => { const folder = await storage(req); await withStorageLock(folder, () => rm(join(folder, `${key(req)}.json`), { force: true })); res.json({ success: true }); }));
+    publicRoutes.delete('/:id/storage/:key', sourceAllowed, route(async (req, res) => { const folder = await storage(req); await withStorageLock(folder, () => rm(join(folder, storageName(req.params.key)), { force: true })); res.json({ success: true }); }));
+    function sharedStorage(req, write = false) {
+        const auth = authorize(req);
+        if (auth.item.id !== Number(req.params.id)) throw new Error('活动权限不匹配');
+        if (write && !auth.user) { const error = new Error('登录后可修改活动公共空间'); error.status = 401; throw error; }
+        return join(service.root, auth.item.identifier || `external-${auth.item.id}`, 'storage', 'shared');
+    }
+    publicRoutes.get('/:id/shared-storage', route(async (req, res) => {
+        const folder = sharedStorage(req), options = { prefix: req.query.prefix ?? '', cursor: req.query.cursor ?? '', limit: req.query.limit === undefined ? 50 : Number(req.query.limit) };
+        const data = await withStorageLock(folder, () => listJsonRecords(folder, options)); res.json({ success: true, data });
+    }));
+    publicRoutes.get('/:id/shared-storage/:key', route(async (req, res) => { res.json({ success: true, data: await readJsonRecord(sharedStorage(req), req.params.key) }); }));
+    for (const method of ['put', 'delete']) publicRoutes[method]('/:id/shared-storage/:key', sourceAllowed, route(async (req, res) => {
+        const folder = sharedStorage(req, true);
+        if (!Object.hasOwn(req.body || {}, 'expectedRevision')) throw new Error('公共空间写入需提供 expectedRevision，首次创建为 null');
+        const data = await withStorageLock(folder, () => writeJsonRecord(folder, req.params.key, req.body.value, { expectedRevision: req.body.expectedRevision, remove: method === 'delete', maxFiles: 10000, maxBytes: 100 * 1024 ** 2 }));
+        res.json({ success: true, data });
+    }));
     const fileUpload = multer({ storage: multer.memoryStorage(),limits: { fileSize: 10 * 1024 ** 2,files: 1 } });
     publicRoutes.post('/:id/files', sourceAllowed, (req, _res, next) => { try { const a = authorize(req); if (a.item.id !== Number(req.params.id)) throw new Error('活动权限不匹配'); next(); } catch (e) { next(e); } }, fileUpload.single('file'), route(async (req, res) => { if (!req.file) throw new Error('请选择文件'); const folder = await storage(req), id = randomUUID(); await withStorageLock(folder, async () => { await quota(folder, req.file.size, null); await writeFile(join(folder, `${id}.bin`), req.file.buffer); }); res.json({ success: true,data: { id,name: req.file.originalname,size: req.file.size } }); }));
     publicRoutes.get('/:id/files/:file', route(async (req, res) => { if (!guestPattern.test(req.params.file)) throw new Error('文件标识无效'); const path = join(await storage(req), `${req.params.file}.bin`); res.set('X-Content-Type-Options', 'nosniff').type('application/octet-stream').sendFile(path); }));

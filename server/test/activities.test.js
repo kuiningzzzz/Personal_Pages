@@ -19,6 +19,48 @@ import { releaseActivity } from '../../activities/release.js';
 import { unpackActivity } from '../activities/package.js';
 
 const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+test('活动公共空间跨用户共享、按活动隔离，游客只读；版本检查防止并发覆盖', async t => {
+  const f = await fixture(t);
+  async function create(title) {
+    const id = f.service.create('activity', 'external', { title, external_url: 'https://example.com/', tags: [] });
+    await f.successful(f.service.activate(id, 'preview')); await f.successful(f.service.activate(id, 'published')); return id;
+  }
+  const id = await create('公共空间'), otherId = await create('另一个活动'), a = f.user('共享甲'), b = f.user('共享乙');
+  async function actor(user, activity = id) {
+    const headers = { 'content-type': 'application/json', ...(user ? { cookie: user.cookie } : {}) };
+    const launch = (await f.request(`/api/plaza/${activity}/launch`, { ...json('POST', {}), headers })).body.data;
+    return (path, method = 'GET', body) => f.request(`/api/plaza/${activity}${path}`, { method, headers: { ...headers, 'x-activity-ticket': launch.runtime.ticket }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  }
+  const first = await actor(a), second = await actor(b), guest = await actor(), other = await actor(a, otherId);
+  assert.deepEqual((await guest('/shared-storage')).body.data, { entries: [], cursor: null });
+  assert.equal((await guest('/shared-storage/board', 'PUT', { value: {}, expectedRevision: null })).status, 401);
+  assert.equal((await first('/shared-storage/board', 'PUT', { value: {} })).status, 400);
+  const created = await first('/shared-storage/board', 'PUT', { value: { score: 1 }, expectedRevision: null });
+  assert.equal(created.status, 200); const revision = created.body.data.revision;
+  assert.deepEqual((await second('/shared-storage/board')).body.data.value, { score: 1 });
+  assert.deepEqual((await guest('/shared-storage/board')).body.data.value, { score: 1 });
+  assert.equal((await other('/shared-storage/board')).body.data.value, null);
+  const races = await Promise.all([first, second].map((request, index) => request('/shared-storage/board', 'PUT', { value: { score: index + 2 }, expectedRevision: revision })));
+  assert.deepEqual(races.map(result => result.status).sort(), [200, 409]);
+  const updated = (await first('/shared-storage/board')).body.data;
+  assert.equal((await first('/shared-storage/board', 'DELETE', { expectedRevision: revision })).status, 409);
+  assert.equal((await second('/shared-storage/board', 'DELETE', { expectedRevision: updated.revision })).status, 200);
+  assert.equal((await guest('/shared-storage/board')).body.data.revision, null);
+  for (const key of ['score-c', 'score-a', 'score-b']) await first(`/shared-storage/${key}`, 'PUT', { value: { key }, expectedRevision: null });
+  const page = (await second('/shared-storage?prefix=score-&limit=2')).body.data;
+  assert.deepEqual(page.entries.map(entry => entry.key), ['score-a', 'score-b']); assert.equal(page.cursor, 'score-b');
+  assert.deepEqual((await guest('/shared-storage?prefix=score-&limit=2&cursor=score-b')).body.data.entries.map(entry => entry.key), ['score-c']);
+  assert.equal((await first('/shared-storage/large', 'PUT', { value: 'x'.repeat(512 * 1024), expectedRevision: null })).status, 400);
+  // The original per-user storage remains private and its unversioned API works.
+  await first('/storage/game', 'PUT', { value: { attempt: 1 } });
+  assert.deepEqual((await first('/storage/game')).body.data, { attempt: 1 }); assert.equal((await second('/storage/game')).body.data, null);
+  const personal = (await first('/storage/game?versioned=1')).body.data;
+  assert.equal((await first('/storage/game', 'PUT', { value: { attempt: 2 }, expectedRevision: personal.revision })).status, 200);
+  assert.equal((await first('/storage/game', 'PUT', { value: { attempt: 3 }, expectedRevision: personal.revision })).status, 409);
+  assert.deepEqual((await first('/storage/game')).body.data, { attempt: 2 });
+  assert.deepEqual((await f.request(`/api/plaza/${id}/shared-storage`)).status, 400);
+});
 const exists = async path => { try { await access(path); return true; } catch { return false; } };
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'pages-activities-')), db = new Database(':memory:');
@@ -37,7 +79,7 @@ async function fixture(t) {
   };
   const service = createActivityService({ db, root: join(root, 'data/activities'), docker, clock: () => time });
   const routes = createActivityRoutes({ service, secret: 'isolated-test-secret', sdkPath: fileURLToPath(new URL('../activities/sdk.js', import.meta.url)), clock: () => time });
-  const app = express(); app.use(express.json()); app.use('/api/admin/activities', routes.admin); app.use('/api/plaza', routes.publicRoutes);
+  const app = express(); app.use(express.json({ limit: '2mb' })); app.use('/api/admin/activities', routes.admin); app.use('/api/plaza', routes.publicRoutes);
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
   const connections = new Set(); server.on('connection', socket => { connections.add(socket); socket.on('close', () => connections.delete(socket)); });
   server.on('upgrade', (req, socket, head) => { if (!routes.upgrade(req, socket, head)) socket.destroy(); });

@@ -160,6 +160,10 @@ test('活动版本、合集、标签、代码与存档进入备份，增量还�
     await source.file(`data/activities/lesson-game/versions/${version}/frontend/index.html`, 'game page');
     await source.file(`data/activities/lesson-game/versions/${version}/backend/Dockerfile`, 'FROM node:24');
     await source.file('data/activities/lesson-game/storage/backend/progress.json', '{"score":8}');
+    const sharedName = createHash('sha256').update('public-state').digest('hex') + '.json';
+    const sharedValue = JSON.stringify({ key: 'public-state', value: { score: 8 }, revision: randomUUID() });
+    await source.file(`data/activities/lesson-game/storage/shared/${sharedName}`, sharedValue);
+    await source.file(`data/activities/external-${external}/storage/shared/${sharedName}`, sharedValue);
     await source.file(`data/activities/lesson-game/storage/users/user-${user}/save.json`, '{"level":2}');
     await source.file(`data/activities/external-${external}/storage/users/user-${user}/save.json`, '{"level":3}');
     const saved = await source.successful(source.store.generate()), archive = (await source.store.get(saved.id)).path;
@@ -167,6 +171,7 @@ test('活动版本、合集、标签、代码与存档进入备份，增量还�
     await source.successful(source.store.restore(archive, 'overwrite'));
     assert.equal(source.card.prepare('SELECT title FROM plaza_items WHERE id=?').get(game).title, '课堂小游戏');
     assert.equal(source.card.prepare('SELECT runtime_status FROM plaza_versions WHERE id=?').get(version).runtime_status, 'stopped');
+    assert.equal(await readFile(join(source.data, `activities/lesson-game/storage/shared/${sharedName}`), 'utf8'), sharedValue);
     target.card.prepare("INSERT INTO users(username,username_key,email,password_hash,created_at) VALUES('原有用户','原有用户','current@example.com','hash','2026-10-06')").run();
     target.card.prepare("INSERT INTO plaza_tags(name) VALUES('其他')").run();
     target.card.prepare("INSERT INTO plaza_items(kind,source,title,created_at,updated_at) VALUES('collection','external','原有合集','2026-10-06','2026-10-06')").run();
@@ -179,6 +184,8 @@ test('活动版本、合集、标签、代码与存档进入备份，增量还�
     assert.equal(await readFile(join(target.data, `activities/lesson-game/storage/users/user-${owner}/save.json`), 'utf8'), '{"level":2}');
     assert.equal(await readFile(join(target.data, 'activities/lesson-game/storage/users/user-1/save.json'), 'utf8'), 'current save');
     assert.equal(await readFile(join(target.data, `activities/external-${externalId}/storage/users/user-${owner}/save.json`), 'utf8'), '{"level":3}');
+    assert.equal(await readFile(join(target.data, `activities/lesson-game/storage/shared/${sharedName}`), 'utf8'), sharedValue);
+    assert.equal(await readFile(join(target.data, `activities/external-${externalId}/storage/shared/${sharedName}`), 'utf8'), sharedValue);
     assert.equal(await readFile(join(target.data, `activities/lesson-game/versions/${version}/frontend/index.html`), 'utf8'), 'game page');
     await target.successful(target.store.restore(archive, 'merge'));
     assert.equal(target.card.prepare('SELECT COUNT(*) AS n FROM plaza_versions').get().n, 1);

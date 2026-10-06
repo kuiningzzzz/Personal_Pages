@@ -4,9 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { activityRequest, activityJson, activityGuest, activityUuid, safeRuntime, backendPath } from '../lib/activities'
 import { theme } from '../lib/theme'
 import { pauseForActivity } from '../lib/music'
+import { activityBrowserStorage } from '../lib/activity-browser-storage'
 const route = useRoute(), router = useRouter()
 const frame = ref(null), activity = ref(null), loaded = ref(false), error = ref(''), preview = route.query.preview === '1'
-let channel, poll, loadTimer, restoreMusic, disposed = false, pendingCalls = 0
+let channel, connectionId, poll, loadTimer, restoreMusic, disposed = false, pendingCalls = 0
 const sockets = new Map()
 function closeSockets() { for (const socket of sockets.values()) socket.close(); sockets.clear() }
 async function request(path, options = {}) {
@@ -38,9 +39,20 @@ async function dispatch(method, args) {
   const encode = value => encodeURIComponent(String(value))
   if (method === 'user') return (await request('/user')).data
   if (method === 'login') { router.push({ path: '/login', query: { redirect: route.fullPath } }); return true }
+  if (['browserStorage.get', 'browserStorage.set', 'browserStorage.remove'].includes(method)) return activityBrowserStorage(window.localStorage, activity.value.id, method.split('.')[1], args.key, args.value)
   if (method === 'storage.get') return (await request(`/storage/${encode(args.key)}`)).data
+  if (method === 'storage.read') return (await request(`/storage/${encode(args.key)}?versioned=1`)).data
+  if (method === 'storage.compareAndSet') return (await request(`/storage/${encode(args.key)}`, activityJson('PUT', { value: args.value, expectedRevision: args.revision }))).data
   if (method === 'storage.set') { await request(`/storage/${encode(args.key)}`, activityJson('PUT', { value: args.value })); return true }
   if (method === 'storage.remove') { await request(`/storage/${encode(args.key)}`, { method: 'DELETE' }); return true }
+  if (method === 'sharedStorage.get') return (await request(`/shared-storage/${encode(args.key)}`)).data
+  if (method === 'sharedStorage.list') {
+    const query = new URLSearchParams()
+    for (const key of ['prefix', 'cursor', 'limit']) if (args[key] !== undefined) query.set(key, args[key])
+    return (await request(`/shared-storage${query.size ? `?${query}` : ''}`)).data
+  }
+  if (method === 'sharedStorage.set') return (await request(`/shared-storage/${encode(args.key)}`, activityJson('PUT', { value: args.value, expectedRevision: args.revision }))).data
+  if (method === 'sharedStorage.remove') return (await request(`/shared-storage/${encode(args.key)}`, activityJson('DELETE', { expectedRevision: args.revision }))).data
   if (method === 'file.upload') {
     if (!(args.file instanceof Blob) || args.file.size > 10 * 1024 ** 2) throw new Error('文件最多 10MB')
     const data = new FormData(); data.append('file', args.file, args.file.name || 'file'); return (await request('/files', { method: 'POST', body: data })).data
@@ -81,6 +93,8 @@ async function dispatch(method, args) {
 }
 function connect(event) {
   if (event.source !== frame.value?.contentWindow || event.data?.type !== 'PP_ACTIVITY_READY' || !activity.value) return
+  if (channel && typeof event.data.connectionId === 'string' && event.data.connectionId === connectionId) return
+  connectionId = event.data.connectionId
   closeSockets(); channel?.port1.close(); channel?.port2.close()
   channel = new MessageChannel()
   const reply = channel.port1
@@ -89,7 +103,7 @@ function connect(event) {
     if (pendingCalls >= 20) { channel?.port1.postMessage({ id: data.id, error: '请求过于频繁' }); return }
     pendingCalls++
     try { const result = await dispatch(data.method, data.args || {}); if (!disposed) reply.postMessage({ id: data.id, data: result }) }
-    catch (cause) { if (!disposed) reply.postMessage({ id: data.id, error: cause.message }) }
+    catch (cause) { if (!disposed) reply.postMessage({ id: data.id, error: cause.message, status: cause.status }) }
     finally { pendingCalls-- }
   }
   channel.port1.start()

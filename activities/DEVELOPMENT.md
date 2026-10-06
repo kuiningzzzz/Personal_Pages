@@ -141,9 +141,16 @@ QQ 机器人、抽奖、报名、投票等均可在活动后端实现。容器�
 | `sdk.onThemeChange(fn)` | 主题变化通知，返回取消监听函数 |
 | `sdk.onRuntimeChange(fn)` | 端口等运行配置变化通知，返回取消监听函数 |
 | `await sdk.requestLogin()` | 打开主站登录页，登录后返回活动 |
+| `await sdk.browserStorage.get(key)` / `.set(key, value)` / `.remove(key)` | 仅在当前浏览器保存 JSON，不写入服务器；按活动隔离，适用于游客本地存档 |
 | `await sdk.storage.get(key)` | 读取 JSON 存档，无存档返回 null |
 | `await sdk.storage.set(key, value)` | 保存可 JSON 序列化的数据 |
 | `await sdk.storage.remove(key)` | 删除该存档 |
+| `await sdk.storage.read(key)` | 读取个人 JSON 存档及版本，返回 `{value, revision}`；不存在为 `{value:null, revision:null}` |
+| `await sdk.storage.compareAndSet(key, revision, value)` | 按版本更新个人存档，返回新 `{value, revision}`，冲突抛出 `error.status === 409` |
+| `await sdk.sharedStorage.get(key)` | 读取当前活动公共 JSON 存档，返回 `{value, revision}` |
+| `await sdk.sharedStorage.set(key, value, revision)` | 按版本保存公共存档，首次创建传 `null`，返回新 `{value, revision}`；需要登录 |
+| `await sdk.sharedStorage.remove(key, revision)` | 按版本删除公共存档；需要登录 |
+| `await sdk.sharedStorage.list({prefix?, cursor?, limit?})` | 分页读取公共存档，返回 `{entries:[{key,value,revision}], cursor}`，默认/最大每页 50 条，`cursor:null` 表示结束 |
 | `await sdk.storage.upload(file)` | 上传 File/Blob，返回 `{id,name,size}` |
 | `await sdk.storage.readFile(id)` | 读取自己上传的文件，返回 Blob |
 | `await sdk.storage.deleteFile(id)` | 删除文件 |
@@ -167,10 +174,38 @@ await connection.send('hello');
 
 每个活动、每位用户的 SDK 存档分别隔离，登录用户跨设备可读自己的存档。游客使用当前浏览器保存的匿名 ID，不会自动转移到新注册账户；清理浏览器数据后匿名 ID 也会丢失。每位用户在每个活动中最多 20MB / 200 文件，单个 JSON 存档 512KB，单文件 10MB。后端 `/activity-data` 是活动共享数据，不同于 SDK 的每用户存档目录。
 
+活动 SDK 现在提供三个空间：`sharedStorage` 是按活动隔离的公共空间，同一活动所有玩家读取同一份内容，游客可读、登录用户可共同写入；`storage` 保留原有的每用户个人空间与接口；`browserStorage` 仅保存到当前浏览器。个人存档不会因为新增公共空间而公开或迁移。公共空间适用于排行榜、协作状态等活动数据，个人题目和其他私有内容应保存到个人空间。
+
+公共空间持久化在 `server/data/activities/<活动标识>/storage/shared/`，活动各版本共享，随主站完整备份、还原与活动删除处理。无需独立活动后端或 Docker。每个活动的公共空间最多 100MB / 10000 份 JSON，每份最多 512KB，键名为 1～100 字并以哈希文件名落盘。列表按键名排序，支持前缀过滤，每页 JSON 数据最多约 768KB；有更多内容时将返回的 `cursor` 原样传入下一次调用。公共 JSON 内容由活动解释，备份不解析其业务字段或改写其中的用户 ID。
+
+公共写入必须使用最近读到的 `revision`，主站将版本检查与保存放在同一临界区，并通过临时文件和重命名原子落盘。版本不一致时拒绝覆盖并返回 409；前端重新读取后重新计算更新值。个人空间新增 `read/compareAndSet` 以支持同样的并发检查，旧的 `get/set/remove` 和旧存档继续可用。
+
+```js
+const record = await sdk.sharedStorage.get('public-counter');
+try {
+  await sdk.sharedStorage.set('public-counter', { count: (record.value?.count || 0) + 1 }, record.revision);
+} catch (error) {
+  if (error.status === 409) {
+    // 另一页面先完成更新：重新读取，并重新计算后重试。
+  } else throw error;
+}
+
+let cursor;
+do {
+  const page = await sdk.sharedStorage.list({ prefix: 'score-', ...(cursor ? { cursor } : {}) });
+  console.log(page.entries);
+  cursor = page.cursor;
+} while (cursor);
+```
+
+只依赖 SDK 的纯前端活动可设 `backend:false`。出题、判定等活动业务在浏览器执行，主站提供通用的认证、存储和版本检查。公共空间信任登录玩家提交的活动数据，不执行游戏专属验算。需要服务器验证成绩的活动仍可选择独立后端。
+
 WebSocket 单个活动最多同时 8 个连接；单条 SDK 发送消息最多 1MB。活动退出、版本替换、下线或时段关闭时，连接会关闭。凭证约 12 小时有效，长时间打开时可重新进入活动。
 `backend.fetch` 的单次响应最多 20MB，防止把大型下载完整缓冲进浏览器内存；游戏图片、音频等较大静态资源直接使用活动包中的相对 URL。
 
 ## 5. 自动产包
+
+`browserStorage` 通过主站桥接访问浏览器 localStorage，不要求活动 iframe 具有同源权限。键名只允许 1～80 位字母、数字、下划线、连字符，每份 JSON 最多 512KB，每个活动最多 32 份；浏览器自己的空间限制可能更小。存档不会跨设备同步、不会进入服务器备份、不会自动迁移到登录账号，清理浏览器数据后丢失。浏览器禁止本地存储或空间不足时方法会抛错，活动应明确提示保存失败。旧主站没有此方法，需要先更新主站。
 
 项目根目录执行：
 
@@ -259,6 +294,7 @@ server/data/activities/
       frontend/
       backend/
     storage/
+      shared/                   SDK 活动公共 JSON 空间（跨用户共享）
       backend/                  后端共享目录
       users/user-<账号ID>/       登录用户 SDK 存档
       users/guest-<匿名UUID>/    游客 SDK 存档
