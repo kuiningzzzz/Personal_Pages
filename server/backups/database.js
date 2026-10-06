@@ -52,6 +52,38 @@ export function validateSnapshot(db, dump) {
     }
     for (const alias of dump.aliases || []) if (!dump.tables[alias.table_name]?.some(r => rowKey(dump.schema[alias.table_name], r.values) === alias.row_key) || !/^[a-f0-9-]{36}$/.test(alias.identity)) throw new Error('备份的数据标识无效');
 }
+export function upgradeSnapshot(db, dump) {
+    const layout = schema(db);
+    if (!dump?.schema || !dump?.tables || JSON.stringify(Object.keys(dump.schema).sort()) !== JSON.stringify(Object.keys(dump.tables).sort()) || Object.keys(dump.schema).some(table => !layout[table])) throw new Error('备份的数据结构与当前网站版本不兼容');
+    const defaults = new Map();
+    for (const [table, info] of Object.entries(layout)) {
+        const previous = dump.schema[table];
+        if (!previous) {
+            dump.tables[table] = ['profile', 'home_welcome'].includes(table) ? snapshot(db).tables[table] : [];
+            continue;
+        }
+        if (!Array.isArray(previous.columns) || !Array.isArray(previous.foreign) || !Array.isArray(dump.tables[table]) || previous.columns.some(c => !info.columns.some(now => now.name === c.name && now.type === c.type && now.pk === c.pk && now.notnull === c.notnull)) || previous.foreign.some(f => !info.foreign.some(now => JSON.stringify(now) === JSON.stringify(f)))) throw new Error('备份的数据结构与当前网站版本不兼容');
+        const trusted = db.prepare(`PRAGMA table_info(${quote(table)})`).all();
+        for (const column of info.columns.filter(c => !previous.columns.some(old => old.name === c.name))) {
+            const definition = trusted.find(c => c.name === column.name);
+            if (column.pk || definition.dflt_value === null && column.notnull) throw new Error('备份缺少无法自动迁移的字段');
+            // SQL comes only from the installed project's schema, never the ZIP.
+            const value = definition.dflt_value === null ? null : db.prepare(`SELECT ${definition.dflt_value} AS value`).get().value;
+            defaults.set(`${table}.${column.name}`, value);
+        }
+    }
+    // Validate the old records before filling new fields, so omitted/tampered
+    // existing columns cannot masquerade as a legitimate older schema.
+    for (const [table, rows] of Object.entries(dump.tables)) {
+        if (!layout[table] || !Array.isArray(rows)) throw new Error('备份数据库内容无效');
+        const expected = (dump.schema[table] || layout[table]).columns.map(c => c.name).sort();
+        for (const row of rows) {
+            if (!row?.values || JSON.stringify(Object.keys(row.values).sort()) !== JSON.stringify(expected)) throw new Error('备份数据库字段无效');
+            for (const [key, value] of defaults) if (key.startsWith(table + '.')) row.values[key.slice(table.length + 1)] = value;
+        }
+    }
+    dump.schema = layout; validateSnapshot(db, dump); return dump;
+}
 function triggers(db, namespace = 'main') {
     return db.prepare(`SELECT name,sql FROM ${quote(namespace)}.sqlite_master WHERE type='trigger'`).all();
 }

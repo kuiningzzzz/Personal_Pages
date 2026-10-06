@@ -204,6 +204,13 @@ export function createActivityService({ db, root, docker, clock = Date.now, onRe
     }
     return {
         db, root, docker, item, version, directory, importPackage, save, activate, remove, changePort, allocate, jobs: () => jobs,
+        async exportBackupImages(path, log) {
+            const versions = db.prepare('SELECT * FROM plaza_versions WHERE backend_enabled=1 AND build_status=\'ready\'').all();
+            for (const v of versions) if (!await docker.imageReady(v)) await docker.build(v, directory(v), log);
+            return docker.exportImages(versions, path, log);
+        },
+        async importBackupImages(versions, path, log) { return docker.loadImages(versions, path, log); },
+        async discardBackupImages(versions) { for (const v of versions) await docker.remove(v); },
         create(kind, source, input) {
             if (kind === 'activity' && source !== 'external') throw new Error('网页包活动请通过上传创建');
             const id = Number(db.prepare('INSERT INTO plaza_items(kind,source,title,display_order,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(kind, source, String(input.title || (kind === 'collection' ? '新合集' : '新活动')), nextOrder(null), now(), now()).lastInsertRowid);

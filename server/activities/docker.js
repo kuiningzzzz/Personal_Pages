@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { resolve, relative, join, sep } from 'node:path';
 import { createHash } from 'node:crypto';
+import { validateImageArchive } from './image-archive.js';
 
 const label = 'com.personal-pages.plaza';
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -106,7 +107,27 @@ export function createDocker({ inDocker = process.env.ACTIVITIES_IN_DOCKER === '
             if (versionId && !validIds.has(versionId)) await remove({ id: versionId });
         }
     }
-    return { free, build, imageReady, configured, start, stop, remove, prune, inspect: owned, target: v => ({ host: inDocker ? containerName(v.id) : '127.0.0.1', port: inDocker ? 3000 : v.backend_port }) };
+    async function exportImages(versions, path, log = () => {}) {
+        const saved = [];
+        for (const v of versions) { if (!await imageReady(v)) throw new Error('活动镜像缺失或与版本不一致，无法生成完整备份'); saved.push(v); }
+        if (saved.length) await run(['image', 'save', '--output', path, ...saved.map(v => imageName(v.id))], { log });
+        return saved.map(v => v.id);
+    }
+    async function loadImages(versions, path, log = () => {}) {
+        await validateImageArchive(path, versions, imageName);
+        const added = [];
+        for (const v of versions) {
+            const present = await inspect('image', imageName(v.id));
+            if (present && !await imageReady(v)) throw new Error('本机已有同名但内容不同的活动镜像，拒绝覆盖');
+            if (!present) added.push(v);
+        }
+        try {
+            if (added.length) await run(['image', 'load', '--input', path], { log });
+            for (const v of versions) if (!await imageReady(v)) throw new Error('活动镜像导入后校验失败');
+            return added;
+        } catch (error) { for (const v of added) await remove(v).catch(() => {}); throw error; }
+    }
+    return { free, build, imageReady, configured, start, stop, remove, prune, exportImages, loadImages, inspect: owned, target: v => ({ host: inDocker ? containerName(v.id) : '127.0.0.1', port: inDocker ? 3000 : v.backend_port }) };
 }
 const reachable = (host, port) => new Promise(resolveReachable => {
     const socket = createConnection({ host, port }); let done = false;

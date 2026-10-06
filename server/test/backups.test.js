@@ -11,9 +11,12 @@ import { createBackupStore, recoverRestore } from '../backups/store.js';
 import { extractArchive, safeName } from '../backups/archive.js';
 import { snapshot } from '../backups/database.js';
 import { createBackupRoutes } from '../backups/routes.js';
+import { relocatePaths } from '../backups/paths.js';
+import { sessionProjectKey, decodedSessionFrames } from '../backups/ai-sessions.js';
+import { zstdCompressSync } from 'node:zlib';
 import express from 'express';
 
-async function fixture(t) {
+async function fixture(t, options = {}) {
     const folder = await mkdtemp(join(tmpdir(), 'pages-backup-'));
     const data = join(folder, 'data'), publicRoot = join(folder, 'public');
     await mkdir(data); await mkdir(publicRoot);
@@ -23,7 +26,7 @@ async function fixture(t) {
     assert.equal(initialized.status, 0, initialized.stderr + initialized.stdout);
     const card = new Database(join(data, 'card.sqlite')), comment = new Database(join(data, 'comment.sqlite'));
     card.exec('PRAGMA foreign_keys=ON'); comment.exec('PRAGMA foreign_keys=ON');
-    const store = createBackupStore({ cardDb: card, commentDb: comment, dataRoot: data, publicRoot, maintenance: work => work() });
+    const store = createBackupStore({ cardDb: card, commentDb: comment, dataRoot: data, publicRoot, maintenance: work => work(), ...options });
     t.after(async () => {
         while (store.busy()) await new Promise(r => setTimeout(r, 10));
         card.close(); comment.close();
@@ -82,7 +85,9 @@ test('完整备份、覆盖还原和历史下载删除：保留所有内容关�
     const row = await f.store.get(generated.id), zip = unzipSync(await readFile(row.path));
     const manifest = JSON.parse(strFromU8(zip['manifest.json']));
     assert.ok(manifest.files.some(r => r.name.includes('/workspace/reports/notes.md')));
-    assert.ok(!manifest.files.some(r => r.name.includes('backups/') || r.name.includes('favicon') || r.name.includes('music-sw')));
+    assert.equal(manifest.version, 2);
+    assert.ok(manifest.files.some(r => r.name === 'public/favicon.png'));
+    assert.ok(!manifest.files.some(r => r.name.includes('backups/') || r.name.includes('music-sw')));
     assert.equal(JSON.parse(strFromU8(zip['databases/card.json'])).tables.users[0].values.password_hash, 'stored-password-hash');
     f.card.prepare("UPDATE entries SET title='被改掉' WHERE id=?").run(ids.article);
     f.card.prepare("INSERT INTO users(username,username_key,email,password_hash,created_at) VALUES('新用户','新用户','extra@example.com','hash','2026-10-04')").run();
@@ -185,6 +190,127 @@ function tamper(bytes, change) {
     manifest.files = Object.entries(files).filter(([name]) => name !== 'manifest.json').map(([name, bytes]) => ({ name, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }));
     files['manifest.json'] = strToU8(JSON.stringify(manifest)); return zipSync(files);
 }
+
+test('干净服务器覆盖还原所有运行数据、公开扩展目录、空目录和 AI 绝对路径', async t => {
+    const source = await fixture(t), target = await fixture(t), ids = await seed(source);
+    source.card.prepare("UPDATE site_configs SET data=? WHERE key='page_settings'").run(JSON.stringify({ activitiesMessage: '广场介绍', momentsDescription: '动态介绍', icpNumber: '测试备案' }));
+    source.card.prepare("UPDATE home_welcome SET line_1='欢迎回来' WHERE id=1").run();
+    source.card.prepare("INSERT INTO user_blacklist(email,created_at) VALUES('blocked@example.com',123)").run();
+    source.card.prepare("INSERT INTO ai_task_events(task_id,kind,message,data,created_at) VALUES('task-a','session','会话',?,'2026-10-03')").run(JSON.stringify({ workspace: join(source.data, 'ai/collections', String(ids.collection), 'workspace') }));
+    const session = { messages: ['完整对话'], cwd: join(source.data, 'ai/collections', String(ids.collection), 'workspace'), source: join(source.publicRoot, 'source/course.pdf') };
+    await source.file(`data/ai/collections/${ids.collection}/harness/session.json`, JSON.stringify(session));
+    await source.file('public/custom-downloads/payload.bin', Buffer.from([0, 1, 254, 255]));
+    await source.file('public/site-icon.webp', 'custom icon');
+    await source.file('data/custom-runtime/options.json', '{"enabled":true}');
+    await mkdir(join(source.data, 'custom-runtime/empty'), { recursive: true });
+    await mkdir(join(source.publicRoot, 'custom-downloads/empty'), { recursive: true });
+    await target.file('public/custom-old/unused.png', 'must disappear');
+    await target.file('public/music-sw.js', 'current application code');
+    const saved = await source.successful(source.store.generate()), archive = (await source.store.get(saved.id)).path;
+    await target.successful(target.store.restore(archive, 'overwrite'));
+    for (const table of Object.keys(snapshot(source.card).tables)) assert.equal(snapshot(target.card).tables[table].length, snapshot(source.card).tables[table].length, table);
+    assert.equal(target.card.prepare('SELECT password_hash FROM users WHERE id=?').get(ids.user).password_hash, 'stored-password-hash');
+    assert.equal(target.card.prepare('SELECT COUNT(*) AS n FROM user_blacklist').get().n, 1);
+    assert.equal(target.card.prepare('SELECT line_1 FROM home_welcome').get().line_1, '欢迎回来');
+    assert.equal(target.card.prepare("SELECT data FROM site_configs WHERE key='page_settings'").get().data, source.card.prepare("SELECT data FROM site_configs WHERE key='page_settings'").get().data);
+    assert.deepEqual(await readFile(join(target.publicRoot, 'custom-downloads/payload.bin')), Buffer.from([0, 1, 254, 255]));
+    assert.equal(await readFile(join(target.publicRoot, 'site-icon.webp'), 'utf8'), 'custom icon');
+    assert.deepEqual(await readdir(join(target.data, 'custom-runtime/empty')), []);
+    assert.deepEqual(await readdir(join(target.publicRoot, 'custom-downloads/empty')), []);
+    await assert.rejects(stat(join(target.publicRoot, 'custom-old')));
+    assert.equal(await readFile(join(target.publicRoot, 'music-sw.js'), 'utf8'), 'current application code');
+    const restoredSession = JSON.parse(await readFile(join(target.data, `ai/collections/${ids.collection}/harness/session.json`), 'utf8'));
+    assert.equal(restoredSession.cwd, join(target.data, 'ai/collections', String(ids.collection), 'workspace'));
+    assert.equal(restoredSession.source, join(target.publicRoot, 'source/course.pdf'));
+    assert.deepEqual(restoredSession.messages, session.messages);
+    assert.equal(JSON.parse(target.card.prepare("SELECT data FROM ai_task_events WHERE task_id='task-a'").get().data).workspace, restoredSession.cwd);
+});
+
+test('迁移支持 Windows、JSON 转义、file URL 和 Linux 路径，且不误改相邻目录', () => {
+    const change = relocatePaths({ dataRoot: 'D:\\old\\server\\data', projectRoot: 'D:\\old', projectRootUrl: 'file:///D:/old' }, { dataRoot: '/srv/new/data', projectRoot: '/srv/new', projectRootUrl: 'file:///srv/new' });
+    assert.equal(change('D:\\old\\server\\data\\ai\\session'), '/srv/new/data/ai/session');
+    assert.equal(JSON.parse(change(JSON.stringify({ path: 'D:\\old\\server\\data\\ai' }))).path, '/srv/new/data/ai');
+    assert.equal(change('file:///D:/old/server/ai/plugin.js'), 'file:///srv/new/server/ai/plugin.js');
+    assert.equal(change('D:\\older\\not-ours'), 'D:\\older\\not-ours');
+    const docker = relocatePaths({ serverRootUrl: 'file:///D:/old/server', projectRootUrl: 'file:///D:/old' }, { serverRootUrl: 'file:///app', projectRootUrl: 'file:///' });
+    assert.equal(docker('file:///D:/old/server/ai/harness-plugin.js'), 'file:///app/ai/harness-plugin.js');
+});
+
+test('原生 DSH 多帧压缩日志连同工作区索引、会话身份和附件一起迁移', async t => {
+    const source = await fixture(t), target = await fixture(t), ids = await seed(source);
+    const cwd = join(source.data, 'ai/collections', String(ids.collection), 'workspace'), key = sessionProjectKey(cwd), sessionId = `learning-collection-${ids.collection}-workspace`;
+    const logRoot = `data/ai/collections/${ids.collection}/harness/sessions/${key}/${sessionId}`;
+    const header = { type: 'session', version: 4, id: sessionId, cwd, createdAt: 1, isSeeded: false, delegationDepth: 0 };
+    const event = { type: 'user/message', seq: 0, data: { text: '继续学习', file: join(source.data, logRoot.slice(5), 'attachment.png') } };
+    await source.file(`${logRoot}/v4.jsonl.zstd`, Buffer.concat([zstdCompressSync(Buffer.from(JSON.stringify(header) + '\n')), zstdCompressSync(Buffer.from(JSON.stringify(event) + '\n'))]));
+    await source.file(`${logRoot}/attachment.png`, Buffer.from([0, 1, 254, 255]));
+    const saved = await source.successful(source.store.generate()), archive = (await source.store.get(saved.id)).path;
+    const check = async (collection, expectedMessage) => {
+        const workspace = join(target.data, 'ai/collections', String(collection), 'workspace'), project = sessionProjectKey(workspace), id = `learning-collection-${collection}-workspace`;
+        const folder = join(target.data, 'ai/collections', String(collection), 'harness/sessions', project, id);
+        let content = ''; for await (const frame of decodedSessionFrames(join(folder, 'v4.jsonl.zstd'))) content += frame.toString();
+        const restored = content.trim().split('\n').map(line => JSON.parse(line));
+        assert.equal(restored[0].cwd, workspace); assert.equal(restored[0].id, id); assert.equal(restored[1].seq, 0); assert.equal(restored[1].data.text, expectedMessage);
+        assert.equal(restored[1].data.file, join(folder, 'attachment.png')); assert.deepEqual(await readFile(restored[1].data.file), Buffer.from([0, 1, 254, 255]));
+    };
+    await target.successful(target.store.restore(archive, 'overwrite')); await check(ids.collection, '继续学习');
+    const merged = await fixture(t);
+    merged.card.prepare("INSERT INTO entries(kind,resource_kind,title,published_at,created_at,updated_at) VALUES('resource','collection','已有合集','2026-10-06','2026-10-06','2026-10-06')").run();
+    await merged.successful(merged.store.restore(archive, 'merge'));
+    const collection = merged.card.prepare("SELECT id FROM entries WHERE title='课程合集'").get().id;
+    const workspace = join(merged.data, 'ai/collections', String(collection), 'workspace'), id = `learning-collection-${collection}-workspace`;
+    let content = ''; for await (const frame of decodedSessionFrames(join(merged.data, 'ai/collections', String(collection), 'harness/sessions', sessionProjectKey(workspace), id, 'v4.jsonl.zstd'))) content += frame.toString();
+    const restored = content.split('\n').filter(Boolean).map(JSON.parse);
+    assert.notEqual(collection, ids.collection); assert.equal(restored[0].cwd, workspace); assert.equal(restored[0].id, id);
+});
+
+test('旧版备份可在新服务器导入，且不会清除旧格式未覆盖的公开资源', async t => {
+    const source = await fixture(t), target = await fixture(t); await seed(source);
+    const saved = await source.successful(source.store.generate()), current = await readFile((await source.store.get(saved.id)).path);
+    const zip = unzipSync(current), manifest = JSON.parse(strFromU8(zip['manifest.json']));
+    manifest.version = 1; delete manifest.directories; delete manifest.paths; delete manifest.activityImages;
+    const oldDatabase = JSON.parse(strFromU8(zip['databases/card.json']));
+    for (const table of ['plaza_items', 'plaza_versions', 'plaza_tags']) { delete oldDatabase.schema[table]; delete oldDatabase.tables[table]; }
+    for (const column of ['is_owner', 'reply_notifications']) {
+        oldDatabase.schema.users.columns = oldDatabase.schema.users.columns.filter(c => c.name !== column);
+        for (const row of oldDatabase.tables.users) delete row.values[column];
+    }
+    zip['databases/card.json'] = strToU8(JSON.stringify(oldDatabase));
+    delete zip['public/favicon.png']; manifest.files = manifest.files.filter(file => file.name !== 'public/favicon.png');
+    for (const file of manifest.files) { file.size = zip[file.name].length; file.sha256 = createHash('sha256').update(zip[file.name]).digest('hex'); }
+    zip['manifest.json'] = strToU8(JSON.stringify(manifest));
+    const old = await source.file('old.zip', zipSync(zip));
+    await target.file('public/root-avatar.webp', 'current root asset');
+    await target.successful(target.store.restore(old, 'overwrite'));
+    assert.equal(target.card.prepare('SELECT name FROM profile').get().name, '测试小站');
+    assert.equal(target.card.prepare('SELECT reply_notifications FROM users LIMIT 1').get().reply_notifications, 1);
+    assert.equal(target.card.prepare('SELECT COUNT(*) AS n FROM plaza_items').get().n, 0);
+    assert.equal(await readFile(join(target.publicRoot, 'root-avatar.webp'), 'utf8'), 'current root asset');
+});
+
+test('镜像保存与导入参与备份事务，镜像加载失败不替换当前数据库及文件', async t => {
+    const id = randomUUID(), actions = [];
+    const runtime = {
+        async exportBackupImages(path) { actions.push('save'); await writeFile(path, 'fake validated image archive'); return [id]; },
+        async importBackupImages(versions, path) { actions.push('load'); assert.equal(versions[0].id, id); assert.equal(await readFile(path, 'utf8'), 'fake validated image archive'); return versions; },
+        async discardBackupImages() { actions.push('discard'); }
+    };
+    const source = await fixture(t, { activityRuntime: runtime }), target = await fixture(t, { activityRuntime: { ...runtime, exportBackupImages: async () => [], importBackupImages: async () => { throw new Error('镜像加载失败'); } } });
+    const game = Number(source.card.prepare("INSERT INTO plaza_items(kind,identifier,title,created_at,updated_at) VALUES('activity','image-game','镜像活动','2026-10-05','2026-10-05')").run().lastInsertRowid);
+    source.card.prepare("INSERT INTO plaza_versions(id,item_id,version,manifest,backend_enabled,build_status,created_at) VALUES(?,?,'v1','{}',1,'ready','2026-10-05')").run(id, game);
+    const saved = await source.successful(source.store.generate()), archive = (await source.store.get(saved.id)).path;
+    assert.equal(saved.images, 1);
+    await target.file('public/picture/current.png', 'current');
+    const before = snapshot(target.card).tables;
+    const failed = await target.wait(target.store.restore(archive, 'overwrite'));
+    assert.equal(failed.status, 'failed'); assert.match(failed.message, /镜像加载失败/);
+    assert.deepEqual(snapshot(target.card).tables, before);
+    assert.equal(await readFile(join(target.publicRoot, 'picture/current.png'), 'utf8'), 'current');
+    const capable = await fixture(t, { activityRuntime: { ...runtime, exportBackupImages: async () => [] } });
+    await capable.successful(capable.store.restore(archive, 'overwrite'));
+    assert.equal(capable.card.prepare('SELECT title FROM plaza_items').get().title, '镜像活动'); assert.ok(actions.includes('load'));
+    await assert.rejects(stat(join(capable.data, 'activity-images.tar')), '镜像归档不应成为永久存档的重复文件');
+});
 test('损坏、截断、路径越界及关系错误的备份不能删除或修改当前数据', async t => {
     const f = await fixture(t); await seed(f); const saved = await f.successful(f.store.generate()); const valid = await readFile((await f.store.get(saved.id)).path);
     const variations = [Buffer.from('invalid zip'), valid.subarray(0, valid.length - 30),

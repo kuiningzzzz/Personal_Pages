@@ -4,18 +4,21 @@ import { join, resolve, relative, sep, basename, extname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import Database from '../sqlite.js';
 import { writeArchive, extractArchive, digest, safeName } from './archive.js';
-import { snapshot, validateSnapshot, initializeBackupDb, overwrite, merge, neutralizeImportedJobs } from './database.js';
+import { snapshot, upgradeSnapshot, initializeBackupDb, overwrite, merge, neutralizeImportedJobs } from './database.js';
 import { withMaintenance } from '../maintenance.js';
 import { validIdentifier } from '../activities/package.js';
+import { runtimePaths, relocatePaths } from './paths.js';
+import { migrateSession, sessionProjectKey } from './ai-sessions.js';
 
 const PUBLIC_FOLDERS = ['articles', 'emoji', 'friend_avatar', 'picture', 'source'];
+const publicProtected = name => ['music-sw.js', '.git', '.codex', '.agents', 'node_modules'].includes(name) || name === '.env' || name.startsWith('.env.');
 const protectedName = name => ['backups', 'card.sqlite', 'comment.sqlite', 'card.sqlite-wal', 'card.sqlite-shm', 'card.sqlite-journal', 'comment.sqlite-wal', 'comment.sqlite-shm', 'comment.sqlite-journal', 'restore-journal.json', 'restore-journal.json.tmp', '.env'].includes(name) || name.startsWith('.backup-');
 const exists = async path => { try { await access(path); return true; } catch { return false; } };
 async function removeWithin(root, path) {
     if (!resolve(path).startsWith(resolve(root) + sep)) throw new Error('清理路径越界');
     await rm(path, { recursive: true, force: true });
 }
-async function walk(root, prefix = '') {
+async function walk(root, prefix = '', directories) {
     if (!await exists(root)) return [];
     const files = [];
     for (const item of await readdir(root, { withFileTypes: true })) {
@@ -24,13 +27,13 @@ async function walk(root, prefix = '') {
         // Refuse symlinks/junctions: backups must not follow paths outside these roots.
         const info = await lstat(path);
         if (info.isSymbolicLink()) throw new Error(`无法备份符号链接：${name}`);
-        if (info.isDirectory()) files.push(...await walk(path, name));
+        if (info.isDirectory()) { directories?.add(name); files.push(...await walk(path, name, directories)); }
         else if (info.isFile()) files.push({ name, path, size: info.size });
     }
     return files;
 }
 async function json(path, value) { await writeFile(path, JSON.stringify(value)); }
-export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, maintenance = withMaintenance, onRestored = () => {} }) {
+export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, maintenance = withMaintenance, onRestored = () => {}, activityRuntime }) {
     dataRoot = resolve(dataRoot); publicRoot = resolve(publicRoot);
     if (dataRoot === publicRoot || dataRoot.startsWith(publicRoot + sep)) throw new Error('数据库目录不能放在公开目录内');
     const publicDataFolder = publicRoot.startsWith(dataRoot + sep) ? relative(dataRoot, publicRoot).split(sep)[0] : null;
@@ -61,27 +64,36 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         const id = randomUUID(), created_at = new Date().toISOString();
         progress('正在读取数据库与资源文件…');
         const card = snapshot(cardDb), comment = snapshot(commentDb);
-        const files = [];
+        const files = [], directories = new Set();
         await mkdir(work, { recursive: true });
         for (const [name, dump] of [['card', card], ['comment', comment]]) {
             const path = join(work, `${name}.json`); await json(path, dump);
             files.push({ name: `databases/${name}.json`, path, size: (await stat(path)).size });
         }
-        for (const folder of PUBLIC_FOLDERS) files.push(...await walk(join(publicRoot, folder), `public/${folder}`));
+        for (const name of await exists(publicRoot) ? await readdir(publicRoot) : []) if (!publicProtected(name)) {
+            const path = join(publicRoot, name), info = await lstat(path); safeName(`public/${name}`);
+            if (info.isSymbolicLink()) throw new Error(`无法备份公开目录中的符号链接：${name}`);
+            if (info.isDirectory()) { directories.add(`public/${name}`); files.push(...await walk(path, `public/${name}`, directories)); }
+            else if (info.isFile()) files.push({ name: `public/${name}`, path, size: info.size });
+        }
         for (const name of await readdir(dataRoot)) if (!reservedData(name)) {
             const path = join(dataRoot, name), info = await lstat(path);
             if (info.isSymbolicLink()) throw new Error(`无法备份数据目录中的符号链接：${name}`);
-            if (info.isDirectory()) files.push(...await walk(path, `data/${name}`));
+            if (info.isDirectory()) { directories.add(`data/${name}`); files.push(...await walk(path, `data/${name}`, directories)); }
             else if (info.isFile()) files.push({ name: `data/${name}`, path, size: info.size });
         }
+        const imagePath = join(work, 'activity-images.tar');
+        progress('正在保存活动后端镜像…');
+        const activityImages = activityRuntime ? await activityRuntime.exportBackupImages(imagePath, progress) : [];
+        if (activityImages.length) files.push({ name: 'runtime/activity-images.tar', path: imagePath, size: (await stat(imagePath)).size });
         const names = new Set();
-        for (const file of files) { const name = file.name.toLocaleLowerCase('en-US'); if (names.has(name)) throw new Error('存在仅大小写不同的文件名，无法生成跨平台备份'); names.add(name); }
+        for (const file of [...files, ...[...directories].map(name => ({ name }))]) { const name = file.name.toLocaleLowerCase('en-US'); if (names.has(name)) throw new Error('存在仅大小写不同的文件名，无法生成跨平台备份'); names.add(name); }
         const inventory = [];
         for (let i = 0; i < files.length; i++) {
             progress(`正在校验备份文件 ${i + 1} / ${files.length}…`);
             inventory.push({ name: files[i].name, size: files[i].size, sha256: await digest(files[i].path) });
         }
-        const manifest = { format: 'personal-pages-backup', version: 1, id, created_at, files: inventory };
+        const manifest = { format: 'personal-pages-backup', version: 2, id, created_at, files: inventory, directories: [...directories].sort(), paths: runtimePaths(dataRoot, publicRoot), activityImages };
         if (Buffer.byteLength(JSON.stringify(manifest)) > 16 * 1024 ** 2 || files.reduce((sum, f) => sum + f.size, 0) > 20 * 1024 ** 3) throw new Error('备份内容超过当前备份格式的容量限制');
         const manifestPath = join(work, 'manifest.json'); await json(manifestPath, manifest);
         await mkdir(root, { recursive: true });
@@ -90,7 +102,7 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             await writeArchive(temporary, [{ name: 'manifest.json', path: manifestPath }, ...files], (done, total) => progress(`正在生成压缩包 ${done} / ${total}…`));
             await rename(temporary, target);
             const row = { id, created_at, name: `个人主页备份-${created_at.replace(/[:.]/g, '-')}.zip`, size: (await stat(target)).size,
-                files: files.length, records: Object.values(card.tables).concat(Object.values(comment.tables)).reduce((n, rows) => n + rows.length, 0), reason };
+                files: files.length, images: activityImages.length, formatVersion: 2, records: Object.values(card.tables).concat(Object.values(comment.tables)).reduce((n, rows) => n + rows.length, 0), reason };
             await json(join(root, `${id}.json.tmp`), row); await rename(join(root, `${id}.json.tmp`), join(root, `${id}.json`));
             return row;
         } catch (e) { await rm(temporary, { force: true }); await rm(target, { force: true }); throw e; }
@@ -101,15 +113,17 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         if (!info || info.size > 16 * 1024 ** 2) throw new Error('缺少有效的备份清单');
         let manifest;
         try { manifest = JSON.parse(await readFile(info.path, 'utf8')); } catch { throw new Error('备份清单无法读取'); }
-        if (manifest.format !== 'personal-pages-backup' || manifest.version !== 1 || !Array.isArray(manifest.files) || files.size !== manifest.files.length + 1) throw new Error('这不是本站生成的完整备份包');
+        if (manifest.format !== 'personal-pages-backup' || ![1, 2].includes(manifest.version) || !Array.isArray(manifest.files) || files.size !== manifest.files.length + 1) throw new Error('这不是本站生成的完整备份包');
+        const allowedPath = name => {
+            const parts = name.split('/');
+            return parts[0] === 'public' && parts.length >= (manifest.version === 1 ? 3 : 2) && (manifest.version === 1 ? PUBLIC_FOLDERS.includes(parts[1]) : !publicProtected(parts[1])) || parts[0] === 'data' && !reservedData(parts[1]) && parts.length >= 2;
+        };
         const seen = new Set();
         for (const item of manifest.files) {
             safeName(item.name);
-            const parts = item.name.split('/');
             const allowed = item.name === 'databases/card.json' || item.name === 'databases/comment.json' ||
-                (parts[0] === 'public' && PUBLIC_FOLDERS.includes(parts[1]) && parts.length >= 3) ||
-                (parts[0] === 'data' && !reservedData(parts[1]) && parts.length >= 2);
-            if (!allowed || seen.has(item.name)) throw new Error('备份包含未允许的文件'); seen.add(item.name);
+                allowedPath(item.name) || manifest.version === 2 && item.name === 'runtime/activity-images.tar';
+            if (!allowed || seen.has(item.name) || item.name.startsWith('public/') && PUBLIC_FOLDERS.some(folder => item.name === `public/${folder}`)) throw new Error('备份包含未允许的文件'); seen.add(item.name);
             const file = files.get(item.name);
             if (!file || file.size !== item.size || file.sha256 !== item.sha256) throw new Error(`备份文件损坏：${item.name}`);
         }
@@ -118,7 +132,14 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             const file = files.get(`databases/${name}.json`);
             if (!file || file.size > 512 * 1024 ** 2) throw new Error('备份数据库缺失或过大');
             try { dumps[name] = JSON.parse(await readFile(file.path, 'utf8')); } catch { throw new Error('备份数据库无法读取'); }
-            validateSnapshot(name === 'card' ? cardDb : commentDb, dumps[name]);
+            upgradeSnapshot(name === 'card' ? cardDb : commentDb, dumps[name]);
+        }
+        if (manifest.version === 2) {
+            if (!Array.isArray(manifest.directories) || manifest.directories.length > 60000 || new Set(manifest.directories).size !== manifest.directories.length || !Array.isArray(manifest.activityImages) || new Set(manifest.activityImages).size !== manifest.activityImages.length) throw new Error('备份运行数据清单无效');
+            const names = new Set(manifest.files.map(file => file.name));
+            for (const name of manifest.directories) { safeName(name); if (!allowedPath(name) || names.has(name) || [...names].some(file => name.startsWith(file + '/'))) throw new Error('备份目录清单无效'); }
+            if (!!manifest.activityImages.length !== files.has('runtime/activity-images.tar')) throw new Error('活动镜像文件缺失或清单不一致');
+            for (const id of manifest.activityImages) if (!dumps.card.tables.plaza_versions?.some(row => row.values.id === id && row.values.backend_enabled)) throw new Error('活动镜像版本不存在');
         }
         return { manifest, files, dumps };
     }
@@ -163,9 +184,10 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
     function mappedId(maps, table, id) { return maps?.[table]?.get(JSON.stringify([Number(id)]))?.id ?? Number(id); }
     async function restore(upload, work, mode) {
         const extracted = join(work, 'extracted');
-        const { files, dumps } = await validate(upload, extracted);
+        const { manifest, files, dumps } = await validate(upload, extracted);
+        const relocate = relocatePaths(manifest.paths, runtimePaths(dataRoot, publicRoot));
         neutralizeImportedJobs(dumps.card);
-        const substitutions = new Map(), planned = [], dataConflicts = [];
+        const substitutions = new Map(), planned = [], dataConflicts = [], sessionKeys = new Map();
         // Public/feedback names are shared by incoming rows. Plan collisions before inserting rows.
         for (const [name, file] of files) {
             if (!name.startsWith('public/') && !name.startsWith('data/')) continue;
@@ -181,31 +203,49 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             planned.push({ source: file.path, name: destination, original: name, sha256: file.sha256 });
         }
         let entryMaps;
+        const renameSessionKeys = value => sessionKeys.size ? value.replace(new RegExp([...sessionKeys.keys()].map(key => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g'), key => sessionKeys.get(key)) : value;
         const rewrite = (value, maps, table, column) => {
+            value = relocate(value);
             for (const [from, to] of substitutions) { value = value.replaceAll(from, to).replaceAll(encodeURI(from), encodeURI(to)); }
             value = value.replace(/(\/(?:entry|resource\/(?:collection|gallery))\/)(\d+)(?=[/#?"\s)]|$)/g, (_, prefix, id) => prefix + mappedId(maps, 'entries', id));
             value = value.replace(/(\/activities\/(?:play|collection)\/)(\d+)(?=[/#?"\s)]|$)/g, (_, prefix, id) => prefix + mappedId(maps, 'plaza_items', id));
-            if (table === 'ai_collection_sessions' && (column === 'session_id' || column === 'previous_session_id')) value = value.replace(/learning-collection-(\d+)/g, (_, id) => `learning-collection-${mappedId(maps, 'entries', id)}`);
-            return value;
+            value = value.replace(/(ai[/\\]+collections[/\\]+)(\d+)/g, (_, prefix, id) => prefix + mappedId(maps, 'entries', id));
+            value = value.replace(/learning-collection-(\d+)/g, (_, id) => `learning-collection-${mappedId(maps, 'entries', id)}`);
+            return renameSessionKeys(value);
         };
         progress('正在检查数据库关系并准备还原内容…');
+        if (mode === 'overwrite') for (const dump of Object.values(dumps)) for (const [table, rows] of Object.entries(dump.tables)) for (const row of rows) for (const column of Object.keys(row.values)) if (typeof row.values[column] === 'string') row.values[column] = rewrite(row.values[column], undefined, table, column);
         const card = await prepareDatabase(cardDb, dumps.card, join(work, 'card.sqlite'), mode, rewrite);
         entryMaps = card.result?.maps;
         const comment = await prepareDatabase(commentDb, dumps.comment, join(work, 'comment.sqlite'), mode, rewrite);
         const install = join(work, 'install'); await mkdir(install, { recursive: true });
         let importedFiles = 0, skippedFiles = 0;
+        const sessionPaths = new Map();
+        for (const file of planned) if (file.name.startsWith('data/ai/') && /\.jsonl(?:\.zstd)?$/i.test(file.name)) {
+            const destination = join(work, `session-${randomUUID()}`);
+            const { header, nextHeader } = await migrateSession(file.source, destination, file.name.endsWith('.zstd'), value => {
+                const next = rewrite(value, entryMaps);
+                try { const oldHeader = JSON.parse(value), newHeader = JSON.parse(next); if (oldHeader.type === 'session' && oldHeader.cwd && newHeader.cwd) sessionKeys.set(sessionProjectKey(oldHeader.cwd), sessionProjectKey(newHeader.cwd)); } catch { /* Non-header JSONL. */ }
+                return next;
+            });
+            file.source = destination; file.sha256 = await digest(destination); file.sessionMigrated = true;
+            if (header?.cwd && nextHeader?.cwd) {
+                const parts = file.name.split('/'), index = parts.indexOf(sessionProjectKey(header.cwd));
+                if (index >= 0) sessionPaths.set(parts.slice(0, index + 1).join('/') + '/', [...parts.slice(0, index), sessionProjectKey(nextHeader.cwd)].join('/') + '/');
+            }
+        }
+        const mapFileName = name => {
+            for (const [from, to] of sessionPaths) if (name.startsWith(from)) { name = to + name.slice(from.length); break; }
+            return mode !== 'merge' ? name : name.replace(/^data\/activities\/external-(\d+)\//, (_, id) => `data/activities/external-${mappedId(entryMaps, 'plaza_items', id)}/`).replace(/^(data\/activities\/[^/]+\/storage\/users\/)user-(\d+)\//, (_, prefix, id) => `${prefix}user-${mappedId(entryMaps, 'users', id)}/`).replace(/^data\/ai\/collections\/(\d+)\//, (_, id) => `data/ai/collections/${mappedId(entryMaps, 'entries', id)}/`).replace(/learning-collection-(\d+)/g, (_, id) => `learning-collection-${mappedId(entryMaps, 'entries', id)}`);
+        };
+        for (const name of manifest.directories || []) await mkdir(join(install, mapFileName(name + '/')), { recursive: true });
         for (const file of planned) {
-            let name = file.name;
+            let name = mapFileName(file.name);
             let text;
+            if (!file.sessionMigrated && name.startsWith('data/ai/') && /\.(jsonl?|md|txt)$/i.test(name) && (await stat(file.source)).size < 20 * 1024 ** 2) text = relocate(await readFile(file.source, 'utf8'));
             if (mode === 'merge') {
-                name = name.replace(/^data\/activities\/external-(\d+)\//, (_, id) => `data/activities/external-${mappedId(entryMaps, 'plaza_items', id)}/`);
-                name = name.replace(/^(data\/activities\/[^/]+\/storage\/users\/)user-(\d+)\//, (_, prefix, id) => `${prefix}user-${mappedId(entryMaps, 'users', id)}/`);
-                name = name.replace(/^data\/ai\/collections\/(\d+)\//, (_, id) => `data/ai/collections/${mappedId(entryMaps, 'entries', id)}/`);
-                name = name.replace(/learning-collection-(\d+)/g, (_, id) => `learning-collection-${mappedId(entryMaps, 'entries', id)}`);
-                if (name.startsWith('data/ai/') && /\.(jsonl?|md|txt)$/i.test(name) && (await stat(file.source)).size < 20 * 1024 ** 2) {
-                    text = rewrite(await readFile(file.source, 'utf8'), entryMaps);
-                    text = text.replace(/learning-collection-(\d+)/g, (_, id) => `learning-collection-${mappedId(entryMaps, 'entries', id)}`)
-                        .replace(/(ai(?:\/|\\\\)collections(?:\/|\\\\))(\d+)/g, (_, prefix, id) => prefix + mappedId(entryMaps, 'entries', id));
+                if (!file.sessionMigrated && name.startsWith('data/ai/') && /\.(jsonl?|md|txt)$/i.test(name) && (await stat(file.source)).size < 20 * 1024 ** 2) {
+                    text = rewrite(text ?? await readFile(file.source, 'utf8'), entryMaps);
                 }
                 const target = name.startsWith('public/') ? join(publicRoot, name.slice(7)) : join(dataRoot, name.slice(5));
                 if (await exists(target)) {
@@ -235,11 +275,20 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             const old = join(rollback, String(moves.length));
             moves.push({ target, incoming, old, existed: await exists(target) });
         }
+        let importedImages = [];
         try {
+            if (manifest.activityImages?.length) {
+                if (!activityRuntime) throw new Error('当前运行环境不能还原活动后端镜像');
+                progress('正在还原活动后端镜像…');
+                importedImages = await activityRuntime.importBackupImages(manifest.activityImages.map(id => dumps.card.tables.plaza_versions.find(row => row.values.id === id).values), files.get('runtime/activity-images.tar').path, progress);
+            }
             if (mode === 'overwrite') {
                 // Keep directory inodes: Nginx may bind-mount each public folder in Docker.
-                for (const folder of PUBLIC_FOLDERS) {
+                const publicNames = manifest.version === 1 ? PUBLIC_FOLDERS : [...new Set([...(await exists(publicRoot) ? await readdir(publicRoot) : []).filter(name => !publicProtected(name)), ...(await exists(join(install, 'public')) ? await readdir(join(install, 'public')) : [])])];
+                for (const folder of publicNames) {
                     const live = join(publicRoot, folder), incoming = join(install, 'public', folder);
+                    if (!PUBLIC_FOLDERS.includes(folder) && !await exists(incoming)) { await planTree(live, incoming); continue; }
+                    if (await exists(live) && !(await lstat(live)).isDirectory() || await exists(incoming) && !(await lstat(incoming)).isDirectory()) { await planTree(live, incoming); continue; }
                     await mkdir(live, { recursive: true });
                     const children = new Set([...(await readdir(live)), ...(await exists(incoming) ? await readdir(incoming) : [])]);
                     for (const name of children) await planTree(join(live, name), join(incoming, name));
@@ -252,14 +301,23 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
                     if (await exists(incoming)) { await mkdir(join(target, '..'), { recursive: true }); await rename(incoming, target); }
                 }
             } else {
+                const installDirectories = new Set(); await walk(install, '', installDirectories);
+                for (const name of [...installDirectories].sort((a, b) => a.split('/').length - b.split('/').length)) {
+                    if (name === 'public' || name === 'data') continue;
+                    const target = name.startsWith('public/') ? join(publicRoot, name.slice(7)) : join(dataRoot, name.slice(5));
+                    if (!await exists(target)) additions.push(target);
+                }
                 const installFiles = await walk(install);
+                const fileTargets = [];
                 for (const file of installFiles) {
                     const target = file.name.startsWith('public/') ? join(publicRoot, file.name.slice(7)) : join(dataRoot, file.name.slice(5));
                     if (await exists(target)) throw new Error('导入文件在准备过程中发生冲突，请重试');
                     additions.push(target);
+                    fileTargets.push(target);
                 }
                 await saveJournal();
-                for (let i = 0; i < installFiles.length; i++) { const target = additions[i]; await mkdir(join(target, '..'), { recursive: true }); await rename(installFiles[i].path, target); }
+                for (const target of additions.slice(0, additions.length - installFiles.length)) await mkdir(target, { recursive: true });
+                for (let i = 0; i < installFiles.length; i++) { const target = fileTargets[i]; await mkdir(join(target, '..'), { recursive: true }); await rename(installFiles[i].path, target); }
             }
             // SQLite's rollback journal commits both databases together through ATTACH.
             cardDb.prepare('ATTACH DATABASE ? AS backup_comments').run(join(dataRoot, 'comment.sqlite'));
@@ -274,7 +332,7 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             await rm(journalPath, { force: true });
         } catch (cause) {
             // If COMMIT succeeded, do not roll the files back merely because DETACH/cleanup failed.
-            if (cardDb.prepare("SELECT value FROM backup_state WHERE key='restore'").get()?.value !== journal.id) await rollbackJournal(journal, dataRoot, publicRoot);
+            if (cardDb.prepare("SELECT value FROM backup_state WHERE key='restore'").get()?.value !== journal.id) { await rollbackJournal(journal, dataRoot, publicRoot); if (importedImages.length) await activityRuntime.discardBackupImages(importedImages); }
             await rm(journalPath, { force: true }); throw cause;
         }
         onRestored();

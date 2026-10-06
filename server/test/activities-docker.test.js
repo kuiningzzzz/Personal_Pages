@@ -66,9 +66,13 @@ http.createServer((req,res)=>{let n=fs.existsSync(file)?JSON.parse(fs.readFileSy
         await success(service.activate(first.itemId, 'published', second.versionId)); assert.equal((await docker.inspect(current)).State.Running, false);
         const next = (await request(`/api/plaza/${first.itemId}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).data;
         assert.equal((await request(`/api/plaza/${first.itemId}/backend/${next.runtime.backendPort}/counter`, { headers: { 'x-activity-ticket': next.runtime.ticket } })).count, 1);
+        const imageArchive = join(root, 'activity-images.tar');
+        const savedImages = await docker.exportImages(versions, imageArchive); assert.deepEqual(savedImages, versions.map(v => v.id));
         await success(service.remove(first.itemId));
         for (const v of versions) { assert.equal(await docker.inspect(v), null); assert.equal(await docker.imageReady(v), false); }
         await assert.rejects(access(join(root, 'data/activities/real-check')));
+        const loadedImages = await docker.loadImages(versions, imageArchive); assert.equal(loadedImages.length, 2);
+        for (const v of versions) assert.equal(await docker.imageReady(v), true, '新服务器可以从备份恢复活动镜像，无需构建');
         console.log('真实 Docker 验证完成：' + (process.env.ACTIVITIES_IN_DOCKER === '1' ? '主站容器 + 共享网络 + 宿主映射' : '主站原生进程 + 宿主映射'));
     } finally {
         await service.stop();
