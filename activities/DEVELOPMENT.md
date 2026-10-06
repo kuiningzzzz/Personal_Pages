@@ -176,7 +176,7 @@ WebSocket 单个活动最多同时 8 个连接；单条 SDK 发送消息最多 1
 
 ```sh
 npm --prefix server ci
-node activities/release.js wordle
+node activities/release.js <活动标识符>
 ```
 
 Vue 工程先安装该工程自身依赖，脚本自动执行 `npm run build`。静态工程直接复制前端；开启后端时一并打包 `backend`。输出 `activities/release/<id>-<时间>-<版本>.zip`。
