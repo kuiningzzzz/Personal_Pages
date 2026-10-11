@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import MarkdownContent from './MarkdownContent.vue'
 import PaginationNav from './PaginationNav.vue'
+import { tagColorStyle } from '../lib/tag-colors.js'
 
 const announcements = ref([]), pinned = ref([]), total = ref(0), page = ref(1), totalPages = ref(1)
 const expanded = ref(false), loading = ref(false), error = ref(''), heading = ref(null)
@@ -37,7 +38,7 @@ onUnmounted(() => { revision++ })
     <p v-else-if="!items.length" class="announcement-state">{{ loading ? '正在读取公告…' : '暂时没有公告' }}</p>
     <div class="announcement-list">
       <article v-for="item in items" :key="item.id" class="announcement" :class="{ pinned: item.pinned }">
-        <div class="announcement-title"><span v-if="item.pinned" class="pin-label">置顶</span><span v-for="tag in item.tags" :key="tag.id" class="announcement-tag">{{ tag.name }}</span><h3>{{ item.title }}</h3></div>
+        <div class="announcement-title"><span v-if="item.pinned" class="pin-label">置顶</span><span v-for="tag in item.tags" :key="tag.id" class="announcement-tag" :style="tagColorStyle(tag.color)">{{ tag.name }}</span><h3>{{ item.title }}</h3></div>
         <MarkdownContent v-if="item.body" class="announcement-body" :source="item.body" :heading-prefix="`announcement-${item.id}`" />
         <time :datetime="item.published_at">{{ date(item.published_at) }}</time>
       </article>

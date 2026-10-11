@@ -9,7 +9,10 @@ export function migrateAnnouncements(db) {
         CHECK(pinned=0 OR status='published')
     );
     CREATE INDEX IF NOT EXISTS announcements_published ON announcements(status,pinned,published_at DESC,id DESC);
-    CREATE TABLE IF NOT EXISTS announcement_tags (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE);
+    CREATE TABLE IF NOT EXISTS announcement_tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE,
+        color TEXT NOT NULL DEFAULT '#d8e5e8'
+    );
     CREATE TABLE IF NOT EXISTS announcement_tag_links (
         announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
         tag_id INTEGER NOT NULL REFERENCES announcement_tags(id) ON DELETE CASCADE,
@@ -21,9 +24,12 @@ export function migrateAnnouncements(db) {
     CREATE TRIGGER IF NOT EXISTS announcements_pin_update BEFORE UPDATE OF pinned ON announcements
     WHEN NEW.pinned=1 AND (SELECT count(*) FROM announcements WHERE pinned=1 AND id<>NEW.id)>=2
     BEGIN SELECT RAISE(ABORT,'最多置顶 2 条公告'); END;`);
+    if (!db.prepare('PRAGMA table_info(announcement_tags)').all().some(column => column.name === 'color')) {
+        db.exec("ALTER TABLE announcement_tags ADD COLUMN color TEXT NOT NULL DEFAULT '#d8e5e8'");
+    }
 }
 
-const tagsFor = (db, id) => db.prepare(`SELECT t.id,t.name FROM announcement_tags t
+const tagsFor = (db, id) => db.prepare(`SELECT t.id,t.name,t.color FROM announcement_tags t
     JOIN announcement_tag_links l ON l.tag_id=t.id WHERE l.announcement_id=? ORDER BY t.id`).all(id);
 const view = (db, row) => ({ ...row, pinned: Boolean(row.pinned), tags: tagsFor(db, row.id) });
 const order = 'ORDER BY julianday(published_at) DESC,id DESC';
@@ -86,10 +92,13 @@ export function createAnnouncementAdminRoutes({ db, cleanup = () => ({}) }) {
             const name = String(req.body?.name ?? '').trim();
             if (!name || name.length > 30) reject('标签名称不能为空，且不能超过 30 字');
             const id = req.params.id ? Number(req.params.id) : null;
-            if (id !== null && !db.prepare('SELECT id FROM announcement_tags WHERE id=?').get(id)) reject('标签不存在', 404);
+            const old = id === null ? null : db.prepare('SELECT color FROM announcement_tags WHERE id=?').get(id);
+            if (id !== null && !old) reject('标签不存在', 404);
+            const color = req.body?.color === undefined ? (old?.color || '#d8e5e8') : req.body.color;
+            if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) reject('请选择有效的标签颜色');
             if (db.prepare('SELECT id FROM announcement_tags WHERE name=? AND id<>?').get(name, id || 0)) reject('标签名称不能重复');
-            if (id === null) db.prepare('INSERT INTO announcement_tags(name) VALUES(?)').run(name);
-            else db.prepare('UPDATE announcement_tags SET name=? WHERE id=?').run(name, id);
+            if (id === null) db.prepare('INSERT INTO announcement_tags(name,color) VALUES(?,?)').run(name, color.toLowerCase());
+            else db.prepare('UPDATE announcement_tags SET name=?,color=? WHERE id=?').run(name, color.toLowerCase(), id);
             res.json({ success: true });
         } catch (error) { next(error); }
     };

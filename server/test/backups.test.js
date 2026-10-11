@@ -63,7 +63,7 @@ async function seed(f) {
     db.prepare('INSERT INTO home_tracks(title,artist,url) VALUES(?,?,?)').run('音乐', '歌手', '/source/song.mp3');
     db.prepare("UPDATE profile SET name='测试小站',avatar='/picture/course.png' WHERE id=1").run();
     db.prepare("INSERT INTO announcements(title,body,status,pinned,published_at,created_at,updated_at) VALUES('公告','公告正文','published',1,'2026-10-01','2026-10-01','2026-10-01')").run();
-    const tag = Number(db.prepare("INSERT INTO announcement_tags(name) VALUES('更新日志')").run().lastInsertRowid);
+    const tag = Number(db.prepare("INSERT INTO announcement_tags(name,color) VALUES('更新日志','#a34f3d')").run().lastInsertRowid);
     db.prepare('INSERT INTO announcement_tag_links VALUES(1,?)').run(tag);
     db.prepare("INSERT INTO ai_tasks(id,title,prompt,collection_id,settings,status,result_entry_id,created_at,updated_at) VALUES('task-a','课程学习','解释课程',?,'{}','queued',?,'2026-10-03','2026-10-03')").run(collection, article);
     db.prepare("INSERT INTO ai_task_files(task_id,url,name,kind) VALUES('task-a','/source/course.pdf','course.pdf','pdf')").run();
@@ -125,6 +125,7 @@ test('增量还原处理编号、用户名和文件冲突；保留当前修改�
     const result = await target.successful(target.store.restore(archive, 'merge'));
     assert.ok(result.importedRecords > 0);
     const imported = target.card.prepare("SELECT * FROM entries WHERE title='第一课'").get(), parent = target.card.prepare("SELECT * FROM entries WHERE title='课程合集'").get();
+    assert.equal(target.card.prepare("SELECT color FROM announcement_tags WHERE name='更新日志'").get().color, '#a34f3d');
     assert.notEqual(parent.id, ids.collection); assert.equal(imported.parent_id, parent.id);
     assert.notEqual(parent.resource_type_id, type);
     const owner = target.card.prepare("SELECT * FROM users WHERE email='one@example.com'").get();

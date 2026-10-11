@@ -82,9 +82,10 @@ test('公告接口可以管理标签、发布、编辑、删除，错误返回�
         const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, { method, ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) });
         return { status: response.status, body: await response.json() };
     };
-    assert.equal((await request('/admin/tags', 'POST', { name: '更新日志' })).status, 200);
+    assert.equal((await request('/admin/tags', 'POST', { name: '更新日志', color: '#A34F3D' })).status, 200);
     assert.equal((await request('/admin/tags', 'POST', { name: '更新日志' })).status, 400);
     const tags = (await request('/admin/tags')).body.data;
+    assert.equal(tags[0].color, '#a34f3d');
     const created = await request('/admin', 'POST', f.input(1, { tag_ids: [tags[0].id] }));
     assert.equal(created.status, 200);
     const id = created.body.data.id;
@@ -94,6 +95,14 @@ test('公告接口可以管理标签、发布、编辑、删除，错误返回�
     assert.equal((await request('/admin')).body.total, 2);
     assert.equal((await request(`/admin/tags/${tags[0].id}`, 'PUT', { name: '重要提醒' })).status, 200);
     assert.equal((await request('/public')).body.data[0].tags[0].name, '重要提醒');
+    assert.equal((await request('/public')).body.data[0].tags[0].color, '#a34f3d');
+    assert.equal((await request(`/admin/tags/${tags[0].id}`, 'PUT', { name: '重要提醒', color: '#23567a' })).status, 200);
+    assert.equal((await request('/public')).body.data[0].tags[0].color, '#23567a');
+    for (const color of ['red', '#123', '#123456;display:none', null, 123]) {
+        assert.equal((await request(`/admin/tags/${tags[0].id}`, 'PUT', { name: '不应保存', color })).status, 400);
+    }
+    assert.equal((await request('/public')).body.data[0].tags[0].name, '重要提醒');
+    assert.equal((await request('/public')).body.data[0].tags[0].color, '#23567a');
     assert.equal((await request(`/admin/${id}`, 'PUT', f.input(1, { pinned: true }))).status, 200);
     assert.equal((await request(`/admin/${draft.body.data.id}`, 'PUT', f.input(2, { pinned: true }))).status, 200);
     assert.equal((await request('/admin', 'POST', f.input(3, { pinned: true }))).status, 409);
@@ -102,4 +111,16 @@ test('公告接口可以管理标签、发布、编辑、删除，错误返回�
     assert.equal((await request(`/admin/${id}`, 'DELETE')).status, 404);
     assert.equal((await request(`/admin/tags/${tags[0].id}`, 'DELETE')).status, 200);
     assert.equal((await request('/public')).body.pinned.length, 1);
+});
+
+test('已有公告标签自动补充默认颜色，迁移重复执行保留自定义颜色与公告关联', t => {
+    const db = new Database(':memory:');
+    t.after(() => db.close());
+    db.exec("CREATE TABLE announcement_tags (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE); INSERT INTO announcement_tags(name) VALUES('旧标签');");
+    migrateAnnouncements(db);
+    assert.equal(db.prepare('SELECT color FROM announcement_tags WHERE id=1').get().color, '#d8e5e8');
+    saveAnnouncement(db, { title: '旧公告', body: '', status: 'published', pinned: false, tag_ids: [1] });
+    db.prepare('UPDATE announcement_tags SET color=? WHERE id=1').run('#123456');
+    migrateAnnouncements(db);
+    assert.deepEqual(listAnnouncements(db).data[0].tags.map(tag => ({ ...tag })), [{ id: 1, name: '旧标签', color: '#123456' }]);
 });
