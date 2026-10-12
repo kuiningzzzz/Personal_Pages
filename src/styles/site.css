@@ -201,6 +201,10 @@ html.theme-transition::view-transition-new(theme-page) {
   width: var(--theme-image-width);
   height: var(--theme-image-height);
   max-width: none;
+  /* Mobile snapshots may include browser UI beyond innerHeight. Preserve the
+     captured pixels instead of stretching them into the viewport-sized box. */
+  object-fit: none;
+  object-position: left top;
   opacity: 1;
   mix-blend-mode: normal;
   transform-origin: var(--theme-image-origin);
