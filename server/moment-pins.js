@@ -47,6 +47,7 @@ export function publicEntryComparator({ sort, search = false, pinnedFirst = fals
         if (!search && pinnedFirst && Boolean(a.pinned) !== Boolean(b.pinned)) return Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
         if (search && sort === 'relevance' && a.score !== b.score) return b.score - a.score;
         const field = sort === 'updated' ? 'updated_at' : 'published_at';
-        return Date.parse(b[field]) - Date.parse(a[field]) || b.id - a.id;
+        const direction = sort === 'oldest' ? 1 : -1;
+        return direction * (Date.parse(a[field]) - Date.parse(b[field]) || a.id - b.id);
     };
 }

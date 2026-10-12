@@ -6,15 +6,15 @@ import { articleNavigation } from '../article-navigation.js';
 function fixture(t) {
     const db = new Database(':memory:');
     db.exec(`CREATE TABLE entries(id INTEGER PRIMARY KEY,kind TEXT,resource_kind TEXT,parent_id INTEGER,
-        format TEXT,status TEXT,title TEXT,published_at TEXT,resource_type_id INTEGER,updated_at TEXT)`);
+        format TEXT,status TEXT,title TEXT,published_at TEXT,resource_type_id INTEGER,updated_at TEXT,pinned INTEGER DEFAULT 0)`);
     const insert = (id, overrides = {}) => {
         const row = { id, kind: 'resource', resource_kind: 'document', parent_id: null, format: 'article', status: 'published',
-            title: `文章 ${id}`, published_at: `2026-10-${String(id).padStart(2, '0')}T00:00:00Z`, resource_type_id: 1, updated_at: '2026-10-30', ...overrides };
-        db.prepare('INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?)').run(...Object.values(row));
+            title: `文章 ${id}`, published_at: `2026-10-${String(id).padStart(2, '0')}T00:00:00Z`, resource_type_id: 1, updated_at: '2026-10-30', pinned: 0, ...overrides };
+        db.prepare('INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(row));
         return row;
     };
     t.after(() => db.close());
-    return { db, insert, nav: id => articleNavigation(db, db.prepare('SELECT * FROM entries WHERE id=?').get(id)) };
+    return { db, insert, nav: (id, sort = 'latest') => articleNavigation(db, db.prepare('SELECT * FROM entries WHERE id=?').get(id), { sort }) };
 }
 
 test('单篇不显示，两篇两侧指向同一篇，多篇首尾循环且保留完整标题', t => {
@@ -27,6 +27,33 @@ test('单篇不显示，两篇两侧指向同一篇，多篇首尾循环且保�
     assert.deepEqual([f.nav(3).previous.id, f.nav(3).next.id], [1, 2]);
     assert.deepEqual([f.nav(2).previous.id, f.nav(2).next.id], [3, 1]);
     assert.deepEqual([f.nav(1).previous.id, f.nav(1).next.id], [2, 3]);
+});
+
+test('阅读队列沿用最早发布、最新修改排序，发布时间相同时也完整逆序', t => {
+    const f = fixture(t);
+    f.insert(1, { published_at: '2026-10-01', updated_at: '2026-10-31' });
+    f.insert(2, { published_at: '2026-10-02', updated_at: '2026-10-29' });
+    f.insert(3, { published_at: '2026-10-02', updated_at: '2026-10-30' });
+    for (const id of [1, 2, 3]) {
+        const latest = f.nav(id), oldest = f.nav(id, 'oldest');
+        assert.deepEqual(oldest.previous, latest.next);
+        assert.deepEqual(oldest.next, latest.previous);
+    }
+    assert.deepEqual([f.nav(1, 'oldest').previous.id, f.nav(1, 'oldest').next.id], [3, 2]);
+    assert.deepEqual([f.nav(1, 'updated').previous.id, f.nav(1, 'updated').next.id], [2, 3]);
+    assert.deepEqual([f.nav(2, 'updated').previous.id, f.nav(2, 'updated').next.id], [3, 1]);
+});
+
+test('动态长文阅读顺序与目录一致，置顶仍优先且不包含短帖', t => {
+    const f = fixture(t);
+    f.insert(1, { kind: 'moment', pinned: 1 });
+    f.insert(2, { kind: 'moment', pinned: 1 });
+    f.insert(3, { kind: 'moment' });
+    f.insert(4, { kind: 'moment' });
+    f.insert(5, { kind: 'moment', format: 'short', pinned: 1 });
+    assert.deepEqual([f.nav(2).previous.id, f.nav(2).next.id], [3, 1]);
+    assert.deepEqual([f.nav(1, 'oldest').previous.id, f.nav(1, 'oldest').next.id], [4, 2]);
+    assert.deepEqual([f.nav(2, 'oldest').previous.id, f.nav(2, 'oldest').next.id], [1, 3]);
 });
 
 test('限定直属同级，跳过草稿、合集、图集、短帖以及其他栏目', t => {

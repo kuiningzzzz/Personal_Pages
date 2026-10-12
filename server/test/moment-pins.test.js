@@ -67,9 +67,11 @@ test('浏览时置顶优先，两组各沿用时间排序；搜索和首页最�
     ];
     const sorted = options => [...rows].sort(publicEntryComparator(options)).map(row => row.id);
     assert.deepEqual(sorted({ sort: 'latest', pinnedFirst: true }), [3, 1, 4, 2]);
+    assert.deepEqual(sorted({ sort: 'oldest', pinnedFirst: true }), [1, 3, 2, 4]);
     assert.deepEqual(sorted({ sort: 'updated', pinnedFirst: true }), [1, 3, 4, 2]);
     assert.deepEqual(sorted({ sort: 'relevance', search: true, pinnedFirst: true }), [4, 2, 3, 1]);
     assert.deepEqual(sorted({ sort: 'latest', search: true, pinnedFirst: true }), [4, 2, 3, 1]);
+    assert.deepEqual(sorted({ sort: 'oldest', search: true, pinnedFirst: true }), [1, 3, 2, 4]);
     assert.deepEqual(sorted({ sort: 'latest', pinnedFirst: false }), [4, 2, 3, 1]);
 });
 

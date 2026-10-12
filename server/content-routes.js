@@ -40,7 +40,7 @@ router.get('/entries', (req, res) => {
     const terms = query.split(/\s+/u).filter(Boolean);
     const type = Number(req.query.type) || null;
     const format = kind === 'moment' && ['short', 'article'].includes(req.query.format) ? req.query.format : null;
-    const sort = ['latest', 'updated'].includes(req.query.sort) ? req.query.sort : 'relevance';
+    const sort = ['latest', 'oldest', 'updated'].includes(req.query.sort) ? req.query.sort : 'relevance';
     let page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(48, Math.max(1, Number.parseInt(req.query.limit, 10) || 15));
     const parentId = kind === 'resource' && req.query.parent ? Number(req.query.parent) : null;
@@ -98,7 +98,8 @@ router.get('/entries/:id', (req, res) => {
     if (!row) return res.status(404).json({ success: false, message: '内容不存在' });
     const ancestors = publicAncestors(row);
     if (ancestors === null) return res.status(404).json({ success: false, message: '内容不存在' });
-    res.json({ success: true, data: { ...entry(row), ancestors, images: row.resource_kind === 'gallery' ? imagesFor(row.id) : [], article_navigation: articleNavigation(cardDb, row) } });
+    const sort = ['latest', 'oldest', 'updated'].includes(req.query.sort) ? req.query.sort : 'latest';
+    res.json({ success: true, data: { ...entry(row), ancestors, images: row.resource_kind === 'gallery' ? imagesFor(row.id) : [], article_navigation: articleNavigation(cardDb, row, { sort }) } });
 });
 
 export default router;

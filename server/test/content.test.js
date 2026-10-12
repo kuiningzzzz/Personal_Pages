@@ -408,6 +408,8 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal((await request(`/api/admin/entries/${momentIds[0]}`, write('PUT', { ...moment, format: 'short',
             title: '分页短帖 0', body: '分页验收数据已更新', tags: ['分页验收动态'], published_at: '2030-01-01T00:00:00.000Z' }))).status, 200);
         assert.equal((await request(`${momentQuery}&sort=latest`)).body.data[0].id, momentIds.at(-1), '最新发布只按发布时间');
+        const earliestPages = await Promise.all([1, 2, 3].map(n => request(`${momentQuery}&sort=oldest&page=${n}`)));
+        assert.deepEqual(earliestPages.flatMap(p => p.body.data.map(row => row.id)), momentIds, '最早发布按完整逆序排列，跨分页不重复或遗漏');
         assert.equal((await request(`${momentQuery}&sort=updated`)).body.data[0].id, momentIds[0], '最新修改把旧帖的新修改排在前面');
         assert.equal((await request('/api/content/entries?kind=moment&sort=updated')).body.data[0].id, momentIds[0]);
         const resourceIds = [];
@@ -425,6 +427,14 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
             assert.equal(result.status, 201); childIds.push(result.body.id);
         }
         const resourceQuery = '/api/content/entries?kind=resource&q=' + encodeURIComponent('分页验收资源');
+        assert.equal((await request(`${resourceQuery}&sort=oldest`)).body.data[0].id, pagedCollection);
+        const earlyMembers = (await request(`/api/content/entries?kind=resource&parent=${pagedCollection}&sort=oldest`)).body.data;
+        assert.deepEqual(earlyMembers.map(row => row.id), childIds.slice(0, 15));
+        const sampleId = childIds[4];
+        const latestNeighbors = (await request(`/api/content/entries/${sampleId}?sort=latest`)).body.data.article_navigation;
+        const earlyNeighbors = (await request(`/api/content/entries/${sampleId}?sort=oldest`)).body.data.article_navigation;
+        assert.deepEqual(earlyNeighbors.previous, latestNeighbors.next);
+        assert.deepEqual(earlyNeighbors.next, latestNeighbors.previous);
         assert.equal((await request(`${resourceQuery}&sort=latest`)).body.data[0].id, resourceIds[14]);
         assert.equal((await request('/api/content/entries?kind=resource&sort=updated')).body.data[0].id, pagedCollection, '子内容更新使旧合集在普通列表的最新修改排序中优先');
         for (const [parent, ids] of [[null, [...resourceIds, ...childIds]], [pagedCollection, childIds]]) {

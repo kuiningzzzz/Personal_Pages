@@ -6,12 +6,15 @@ import GalleryViewer from '../components/GalleryViewer.vue'
 import ResourceBreadcrumbs from '../components/ResourceBreadcrumbs.vue'
 import CommentsPanel from '../components/CommentsPanel.vue'
 import { lockPageScroll, trapFocus } from '../lib/layers'
-import { entryPath, resourceLabel } from '../lib/resources'
+import { resourceLabel } from '../lib/resources'
 import { followActiveOutline } from '../lib/reading-outline'
 import { readingNavigation } from '../lib/navigation'
+import { normalizeEntrySort, sortedEntryLocation } from '../lib/entry-sort'
 
 const route = useRoute()
 const router = useRouter()
+const readingSort = normalizeEntrySort(route.query.sort)
+const neighborLink = row => sortedEntryLocation({ ...row, kind: entry.value.kind, format: 'article', resource_kind: 'document' }, readingSort)
 const entry = ref(null)
 const error = ref('')
 const downloading = ref(false)
@@ -88,12 +91,12 @@ onMounted(async () => {
   window.addEventListener('resize', scheduleTracking, { passive: true })
   try {
     const id = route.params.id
-    const result = await (await fetch(`/api/content/entries/${id}`)).json()
+    const result = await (await fetch(`/api/content/entries/${id}?sort=${readingSort}`)).json()
     if (!readerActive || String(route.params.id) !== String(id)) return
     if (!result.success) throw new Error(result.message)
     readingNavigation.value = { id: result.data.id, kind: result.data.kind }
-    if (result.data.kind === 'moment' && result.data.format === 'short') { router.replace('/moments'); return }
-    if (result.data.kind === 'resource' && result.data.resource_kind === 'collection') { router.replace(entryPath(result.data)); return }
+    if (result.data.kind === 'moment' && result.data.format === 'short') { router.replace(sortedEntryLocation(result.data, readingSort)); return }
+    if (result.data.kind === 'resource' && result.data.resource_kind === 'collection') { router.replace(sortedEntryLocation(result.data, readingSort)); return }
     entry.value = result.data
     await nextTick()
     if (window.ResizeObserver && readingPane.value) { resizeObserver = new ResizeObserver(scheduleTracking); resizeObserver.observe(readingPane.value) }
@@ -118,7 +121,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
     <div v-else-if="!entry" class="surface state">加载中…</div>
     <template v-else>
       <ResourceBreadcrumbs v-if="entry.kind === 'resource'" :ancestors="entry.ancestors" :current="entry.title" />
-      <router-link v-else class="back-link" to="/moments">← 返回动态</router-link>
+      <router-link v-else class="back-link" :to="{ path: '/moments', query: { sort: readingSort } }">← 返回动态</router-link>
       <div class="reading-layout">
         <Teleport to="body" :disabled="!mobile">
           <aside :id="`reading-sidebar-${entry.id}`" ref="sidebar" class="reading-sidebar" :class="{ 'drawer-open': drawerOpen, 'mobile-sidebar': mobile }" :role="mobile ? 'dialog' : 'complementary'" :aria-modal="mobile && drawerOpen ? true : undefined" :aria-hidden="mobile && !drawerOpen ? true : undefined" aria-label="目录与评论" @keydown="drawerKeys">
@@ -137,10 +140,10 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <MarkdownContent :source="entry.body" :heading-prefix="`entry-${entry.id}-section-`" @outline="headings = $event" />
         <div v-if="entry.actions.length" class="actions"><a v-for="action in entry.actions" :key="action.label + action.url" class="ghost-button" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
         <nav v-if="entry.article_navigation" class="article-navigation" aria-label="同级文章导航">
-          <router-link :to="`/entry/${entry.article_navigation.previous.id}`" class="article-neighbor previous" rel="prev">
+          <router-link :to="neighborLink(entry.article_navigation.previous)" class="article-neighbor previous" rel="prev">
             <span>← 上一篇</span><strong>{{ entry.article_navigation.previous.title }}</strong>
           </router-link>
-          <router-link :to="`/entry/${entry.article_navigation.next.id}`" class="article-neighbor next" rel="next">
+          <router-link :to="neighborLink(entry.article_navigation.next)" class="article-neighbor next" rel="next">
             <span>下一篇 →</span><strong>{{ entry.article_navigation.next.title }}</strong>
           </router-link>
         </nav>

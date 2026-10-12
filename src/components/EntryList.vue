@@ -9,7 +9,8 @@ import SubscribeButton from './SubscribeButton.vue'
 import SubscriptionControls from './SubscriptionControls.vue'
 import PaginationNav from './PaginationNav.vue'
 import { CONTENT_PAGE_SIZE } from '../lib/pagination'
-import { entryPath, resourceLabel } from '../lib/resources'
+import { resourceLabel } from '../lib/resources'
+import { directorySort, normalizeEntrySort, rememberDirectorySort, sortedEntryLocation } from '../lib/entry-sort'
 import { loadSubscriptions } from '../lib/subscriptions'
 
 const props = defineProps({ kind: { type: String, required: true }, collectionId: { type: [String, Number], default: null } })
@@ -24,7 +25,7 @@ const selectedFormat = ref(null)
 const momentFormats = [{ id: null, name: '全部' }, { id: 'short', name: '短帖' }, { id: 'article', name: '长文' }]
 const input = ref('')
 const query = ref('')
-const sort = ref('latest')
+const sort = ref(directorySort(props.kind, props.collectionId, route.query.sort))
 const page = ref(1)
 const rows = ref([])
 const total = ref(0)
@@ -41,11 +42,12 @@ watch(input, value => {
 })
 watch(query, (value, previous) => {
   if (value && !previous) sort.value = 'relevance'
-  else if (!value && sort.value === 'relevance') sort.value = 'latest'
+  else if (!value && sort.value === 'relevance') sort.value = directorySort(props.kind, props.collectionId)
   page.value = 1
 }, { flush: 'sync' })
-watch(sort, () => { page.value = 1 }, { flush: 'sync' })
+watch(sort, value => { page.value = 1; rememberDirectorySort(props.kind, props.collectionId, value) }, { flush: 'sync', immediate: true })
 watch([query, selectedType, selectedFormat, sort, page], load)
+const entryLink = row => sortedEntryLocation(row, normalizeEntrySort(sort.value, directorySort(props.kind, props.collectionId)))
 
 async function load() {
   const id = ++requestId
@@ -130,7 +132,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 
     <div class="list-toolbar">
       <label class="search-box"><span>搜索</span><input v-model="input" type="search" :placeholder="collection ? '搜索当前合集及所有子合集' : kind === 'resource' ? selectedType ? '搜索当前大类及所有子合集' : '搜索全部资源的标题、标签或正文' : '标题、标签或正文'" aria-label="搜索标题、标签或正文" /><span class="search-arrow" aria-hidden="true">↗</span></label>
-      <label class="sort-box"><span>排序</span><select v-model="sort"><option v-if="query" value="relevance">匹配程度</option><option value="latest">最新发布</option><option value="updated">最新修改</option></select></label>
+      <label class="sort-box"><span>排序</span><select v-model="sort"><option v-if="query" value="relevance">匹配程度</option><option value="latest">最新发布</option><option value="oldest">最早发布</option><option value="updated">最新修改</option></select></label>
     </div>
 
     <div class="list-meta"><span>{{ query ? `“${query}” 的搜索结果` : collection ? '合集内容' : selectedFormat === 'short' ? '短帖' : selectedFormat === 'article' ? '长文' : '全部内容' }}</span><span>{{ pending && loaded ? '正在翻页…' : `共 ${total} 条` }}</span></div>
@@ -142,7 +144,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <div v-else :key="resultVersion" class="entry-list">
           <article v-for="(row, index) in rows" :id="`entry-${row.id}`" :key="row.id" class="entry" :class="{ 'short-entry': isShort(row), 'without-cover': isShort(row) && !row.cover_image }">
             <span class="entry-index" aria-hidden="true">{{ String((page - 1) * CONTENT_PAGE_SIZE + index + 1).padStart(2, '0') }}</span>
-            <component :is="isShort(row) ? 'div' : RouterLink" v-if="!isShort(row) || row.cover_image" class="entry-visual" :class="{ 'collection-visual': row.resource_kind === 'collection', 'gallery-visual': row.resource_kind === 'gallery' }" :to="isShort(row) ? undefined : entryPath(row)" :aria-label="isShort(row) ? undefined : `查看${row.title || '这条动态'}`">
+            <component :is="isShort(row) ? 'div' : RouterLink" v-if="!isShort(row) || row.cover_image" class="entry-visual" :class="{ 'collection-visual': row.resource_kind === 'collection', 'gallery-visual': row.resource_kind === 'gallery' }" :to="isShort(row) ? undefined : entryLink(row)" :aria-label="isShort(row) ? undefined : `查看${row.title || '这条动态'}`">
               <img v-if="row.cover_image" :src="row.cover_image" :alt="`${row.title || '动态'}的封面`" loading="lazy" />
               <span v-else-if="row.resource_kind === 'collection'" class="collection-art" aria-hidden="true"><span></span><span></span><strong>合集</strong></span>
               <span v-else class="entry-art" aria-hidden="true"><strong>{{ (row.title || row.resource_type_name || '随记').slice(0, 2) }}</strong></span>
@@ -151,10 +153,10 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
               <div class="entry-top"><span v-if="kind === 'moment' && row.pinned" class="moment-pin-label">置顶</span><span>{{ kind === 'resource' ? resourceLabel(row) : row.format === 'short' ? '短帖' : '长文' }}</span><span v-if="!collectionId && row.resource_type_name">{{ row.resource_type_name }}</span><small v-if="row.resource_kind === 'collection'">{{ row.child_count }} 项内容</small><small v-else-if="row.resource_kind === 'gallery'">{{ row.image_count }} 张图片</small><time :datetime="row.published_at">{{ date(row.published_at) }}</time></div>
               <ResourceBreadcrumbs v-if="kind === 'resource' && query && row.ancestors?.length" class="search-result-location" :ancestors="row.ancestors" />
               <h2 v-if="isShort(row) && row.title" class="entry-title">{{ row.title }}</h2>
-              <router-link v-else-if="row.title" class="entry-title" :to="entryPath(row)">{{ row.title }}<span aria-hidden="true">↗</span></router-link>
+              <router-link v-else-if="row.title" class="entry-title" :to="entryLink(row)">{{ row.title }}<span aria-hidden="true">↗</span></router-link>
               <ShortPostBody v-if="isShort(row)" :source="row.body" />
               <p v-else-if="row.summary" class="summary">{{ row.summary }}</p>
-              <div v-if="!isShort(row) || row.tags.length" class="entry-bottom"><div class="tags"><span v-for="tag in row.tags" :key="tag">#{{ tag }}</span></div><router-link v-if="!isShort(row)" :to="entryPath(row)">{{ row.resource_kind === 'collection' ? '进入合集' : row.resource_kind === 'gallery' ? '浏览图集' : '打开这页' }} <span aria-hidden="true">→</span></router-link></div>
+              <div v-if="!isShort(row) || row.tags.length" class="entry-bottom"><div class="tags"><span v-for="tag in row.tags" :key="tag">#{{ tag }}</span></div><router-link v-if="!isShort(row)" :to="entryLink(row)">{{ row.resource_kind === 'collection' ? '进入合集' : row.resource_kind === 'gallery' ? '浏览图集' : '打开这页' }} <span aria-hidden="true">→</span></router-link></div>
               <div v-if="kind === 'resource' && row.actions?.length" class="entry-actions"><a v-for="action in row.actions" :key="action.label + action.url" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
               <div v-if="kind === 'resource' && row.resource_kind === 'collection'" class="collection-subscribe"><SubscribeButton scope="collection" :target-id="row.id" :label="row.title" /></div>
             </div>
