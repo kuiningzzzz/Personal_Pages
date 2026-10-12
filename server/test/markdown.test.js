@@ -25,15 +25,35 @@ test('中文加粗内部的斜体、划去、代码和链接继续按 Markdown �
     assert.equal(parseMarkdownHtml('![说明 **注意：**内容](/picture/example.png)'), '<p><img src="/picture/example.png" alt="说明 注意：内容"></p>\n');
 });
 
-test('代码块、行内代码、转义星号和不完整或带边界空格的标记保持字面含义', () => {
+test('截图中的英文术语和双星号内的意外空格也能加粗', () => {
+    const cases = [
+        ['与「** inflationary**（输出不小于输入）', '与「<strong>inflationary</strong>（输出不小于输入）'],
+        ['与「**inflationary**（输出不小于输入）', '与「<strong>inflationary</strong>（输出不小于输入）'],
+        ['** 单调框架**：半格三公理', '<strong>单调框架</strong>：半格三公理'],
+        ['**注意： **内容', '<strong>注意：</strong>内容'],
+        ['**  关键概念  **解释', '<strong>关键概念</strong>解释'],
+        ['**\u00a0inflationary\u00a0**', '<strong>inflationary</strong>'],
+        ['** padded *emphasis* **', '<strong>padded <em>emphasis</em></strong>'],
+        ['** 甲 **和** 乙 **', '<strong>甲</strong>和<strong>乙</strong>'],
+        ['** 甲 `**原样**`： **正文', '<strong>甲 <code>**原样**</code>：</strong>正文'],
+        ['基于课件的完整学习报告。上半部分抽象为**单调框架**：半格三公理。', '基于课件的完整学习报告。上半部分抽象为<strong>单调框架</strong>：半格三公理。']
+    ];
+    for (const [source, expected] of cases) assert.equal(parseMarkdownHtml(source), `<p>${expected}</p>\n`, source);
+});
+
+test('代码块、行内代码、转义星号、不完整标记及空白加粗保持字面含义', () => {
     const cases = [
         '```markdown\n**注意：**内容\n```',
         '    **注意：**内容',
         '`**（重要）**`',
         String.raw`\*\*（字面量）\*\*`,
         String.raw`**注意：\*\*后面的文字`,
-        '** 注意：**内容',
-        '**注意： **内容',
+        '`** inflationary**`',
+        '```markdown\n** inflationary**\n```',
+        String.raw`\*\* inflationary\*\*`,
+        '** **',
+        '**\t**',
+        '**\n词语**',
         '**注意：内容',
         '[资料](/source/**资料**.pdf)'
     ];

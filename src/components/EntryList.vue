@@ -115,7 +115,8 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
       <h1 class="page-heading">{{ collection ? collection.title : kind === 'moment' ? '动态' : '资源库' }}<span class="heading-mark">。</span></h1>
       <div v-if="collection" class="collection-subscribe"><SubscribeButton scope="collection" :target-id="collection.id" :label="collection.title" /></div>
       <SubscriptionControls v-else-if="!collectionId" :kind="kind" :types="types" />
-      <p class="page-description">{{ collection ? collection.summary : kind === 'moment' ? settings.momentsDescription : settings.resourceDescription }}</p>
+      <MarkdownContent v-if="collection?.summary" class="page-description" :source="collection.summary" />
+      <p v-else-if="!collection" class="page-description">{{ kind === 'moment' ? settings.momentsDescription : settings.resourceDescription }}</p>
       <MarkdownContent v-if="collection?.body" class="collection-description" :source="collection.body" />
       <div v-if="collection?.tags.length" class="tags"><span v-for="tag in collection.tags" :key="tag">#{{ tag }}</span></div>
       <div v-if="collection?.actions.length" class="entry-actions"><a v-for="action in collection.actions" :key="action.label + action.url" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
@@ -155,7 +156,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
               <h2 v-if="isShort(row) && row.title" class="entry-title">{{ row.title }}</h2>
               <router-link v-else-if="row.title" class="entry-title" :to="entryLink(row)">{{ row.title }}<span aria-hidden="true">↗</span></router-link>
               <ShortPostBody v-if="isShort(row)" :source="row.body" />
-              <p v-else-if="row.summary" class="summary">{{ row.summary }}</p>
+              <MarkdownContent v-else-if="row.summary" class="summary" :source="row.summary" />
               <div v-if="!isShort(row) || row.tags.length" class="entry-bottom"><div class="tags"><span v-for="tag in row.tags" :key="tag">#{{ tag }}</span></div><router-link v-if="!isShort(row)" :to="entryLink(row)">{{ row.resource_kind === 'collection' ? '进入合集' : row.resource_kind === 'gallery' ? '浏览图集' : '打开这页' }} <span aria-hidden="true">→</span></router-link></div>
               <div v-if="kind === 'resource' && row.actions?.length" class="entry-actions"><a v-for="action in row.actions" :key="action.label + action.url" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
               <div v-if="kind === 'resource' && row.resource_kind === 'collection'" class="collection-subscribe"><SubscribeButton scope="collection" :target-id="row.id" :label="row.title" /></div>

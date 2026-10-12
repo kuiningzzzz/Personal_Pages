@@ -135,7 +135,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time></div>
         <h1 v-if="entry.title">{{ entry.title }}</h1>
         <img v-if="entry.cover_image && entry.resource_kind !== 'gallery'" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
-        <p v-if="entry.summary" class="lead">{{ entry.summary }}</p>
+        <MarkdownContent v-if="entry.summary" class="lead" :source="entry.summary" />
         <div v-if="entry.tags.length" class="tags"><span v-for="tag in entry.tags" :key="tag">#{{ tag }}</span></div>
         <MarkdownContent :source="entry.body" :heading-prefix="`entry-${entry.id}-section-`" @outline="headings = $event" />
         <div v-if="entry.actions.length" class="actions"><a v-for="action in entry.actions" :key="action.label + action.url" class="ghost-button" :href="action.url" target="_blank" rel="noopener noreferrer">{{ action.label }} ↗</a></div>
@@ -185,7 +185,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 .article-meta span { padding: 2px 9px; color: var(--ink); background: var(--accent-soft); font-weight: 800; }
 h1 { margin: 28px 0 18px; font-family: var(--heading-font); font-size: clamp(34px, 5vw, 58px); font-weight: 900; letter-spacing: -.055em; line-height: 1.2; overflow-wrap: anywhere; }
 .article-cover { display: block; width: 100%; max-height: 420px; margin: 22px 0 29px; border-radius: 6px; box-shadow: 7px 7px 0 var(--accent-soft); object-fit: cover; }
-.lead { margin: 0 0 20px; color: var(--muted); font-size: 17px; line-height: 1.8; }
+.article > .lead { margin: 0 0 20px; color: var(--muted); font-size: 17px; line-height: 1.8; }
 .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 34px; }
 .tags span { padding: 3px 8px; border-radius: 3px; color: var(--ink); background: var(--accent-soft); font-size: 12px; font-weight: 700; }
 .article :deep(.markdown) { color: var(--ink); font-size: 15px; line-height: 1.9; }
