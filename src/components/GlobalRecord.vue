@@ -61,7 +61,7 @@ onUnmounted(() => {
 </script>
 <template>
   <div v-show="visible" class="global-record" :class="{ docked: music.surface === 'dock', 'returning-home': returningHome, 'record-intro': !music.entered || music.entering }" :style="style" @transitionend="finishReturn">
-    <div class="vinyl" :class="{ spinning: music.playing }"><div class="vinyl-grooves"></div><img v-if="music.profile?.avatar" :src="music.profile.avatar" :alt="`${music.profile.name}的头像唱片`" /></div>
+    <div class="vinyl-base"><div class="vinyl" :class="{ spinning: music.playing }"><div class="vinyl-grooves"></div><img v-if="music.profile?.avatar" :src="music.profile.avatar" :alt="`${music.profile.name}的头像唱片`" /></div></div>
     <button type="button" class="record-toggle" :aria-label="label" :title="label" :aria-pressed="music.playing" :disabled="music.entering || (music.entered && !music.tracks.length)" @click="togglePlayback"><span class="record-action" :class="{ hidden: music.playing && music.entered }"><PlayerIcon :name="music.playing ? 'pause' : 'play'" /></span></button>
   </div>
 </template>
@@ -71,9 +71,11 @@ onUnmounted(() => {
 .global-record { position: fixed; z-index: 75; top: 0; left: 0; width: 360px; height: 360px; transform-origin: top left; transition: transform .9s cubic-bezier(.22,.75,.14,1); will-change: transform; }
 .global-record.docked, .global-record.returning-home { z-index: 81; }
 .global-record.record-intro { z-index: 90; }
-.vinyl { position: absolute; inset: 0; padding: 17%; border-radius: 50%; background: #141518; box-shadow: 0 12px 0 #101115, 12px 18px 0 var(--accent-soft); animation: vinyl-spin 18s linear infinite; animation-play-state: paused; }
+/* Keep the offset backing fixed while only the record face rotates. */
+.vinyl-base { position: absolute; inset: 0; border-radius: 50%; background: #141518; box-shadow: 0 12px 0 #101115, 12px 18px 0 var(--accent-soft); }
+.vinyl { position: absolute; inset: 0; padding: 17%; border-radius: 50%; background: #141518; animation: vinyl-spin 18s linear infinite; animation-play-state: paused; }
 .vinyl.spinning { animation-play-state: running; }
-.record-intro .vinyl { box-shadow: 0 12px 0 #101115, 12px 18px 0 var(--welcome-record-stack); }
+.record-intro .vinyl-base { box-shadow: 0 12px 0 #101115, 12px 18px 0 var(--welcome-record-stack); }
 .vinyl-grooves { position: absolute; inset: 8%; border-radius: 50%; box-shadow: 0 0 0 1px #ffffff15, 0 0 0 5px #141518, 0 0 0 6px #ffffff12, 0 0 0 12px #141518, 0 0 0 13px #ffffff12, 0 0 0 19px #141518, 0 0 0 20px #ffffff12; }
 .vinyl img { position: relative; display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--sun); box-shadow: 0 0 0 6px #0c0d0f; }
 .record-toggle { position: absolute; inset: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #fffdf8; }
@@ -82,7 +84,7 @@ onUnmounted(() => {
 .record-action svg { width: 100%; height: 100%; opacity: .8; }
 .record-action.hidden { opacity: 0; transform: scale(.85); }
 .record-toggle:hover .record-action, .record-toggle:focus-visible .record-action { opacity: 1; transform: scale(1); }
-.docked .vinyl { box-shadow: 0 6px 0 #101115; }
+.docked .vinyl-base { box-shadow: 0 6px 0 #101115; }
 .docked .record-action { inset: 21%; padding: 25px; }
 @keyframes vinyl-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .global-record, .record-action { transition: none; } .vinyl { animation: none; } }
