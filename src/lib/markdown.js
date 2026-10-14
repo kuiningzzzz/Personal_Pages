@@ -70,6 +70,17 @@ export function renderMarkdownDocument(source, { headingPrefix = '' } = {}) {
     }
   }
   walk(doc.body)
+  // Add scroll containers after sanitizing, so authored HTML cannot inject
+  // arbitrary classes or attributes. Keep the table's native layout intact.
+  doc.body.querySelectorAll('table').forEach(table => {
+    const container = doc.createElement('div')
+    container.className = 'markdown-table-scroll'
+    container.tabIndex = 0
+    container.setAttribute('role', 'region')
+    container.setAttribute('aria-label', '表格，可横向滚动')
+    table.before(container)
+    container.append(table)
+  })
   const outline = []
   if (headingPrefix) {
     const prefix = headingPrefix.replace(/[^a-zA-Z0-9_-]/g, '-')
