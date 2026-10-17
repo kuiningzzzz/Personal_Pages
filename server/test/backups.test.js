@@ -14,6 +14,7 @@ import { createBackupRoutes } from '../backups/routes.js';
 import { relocatePaths } from '../backups/paths.js';
 import { sessionProjectKey, decodedSessionFrames } from '../backups/ai-sessions.js';
 import { zstdCompressSync } from 'node:zlib';
+import { savePlaylists, homePlaylists } from '../home-music.js';
 import express from 'express';
 
 async function fixture(t, options = {}) {
@@ -64,7 +65,8 @@ async function seed(f) {
     db.prepare("INSERT INTO subscriptions(user_id,scope,target_id,enabled) VALUES(?,'collection',?,1)").run(user, collection);
     const feedback = Number(db.prepare("INSERT INTO visitor_feedback(user_id,username,email,category,body,created_at) VALUES(?,?,?,'bug','测试反馈',12345)").run(user, '站主', 'one@example.com').lastInsertRowid);
     db.prepare('INSERT INTO feedback_images(feedback_id,filename,name,mime_type,size) VALUES(?,?,?,?,?)').run(feedback, 'screen.png', '截图.png', 'image/png', 7);
-    db.prepare('INSERT INTO home_tracks(title,artist,url) VALUES(?,?,?)').run('音乐', '歌手', '/source/song.mp3');
+    db.transaction(() => savePlaylists(db, [{ title: '日常', tracks: [{ title: '音乐', artist: '歌手', url: '/source/song.mp3' }] },
+        { title: '游戏', tracks: [{ title: '游戏音乐', artist: '歌手', url: '/source/song.mp3' }] }]))();
     db.prepare("UPDATE profile SET name='测试小站',avatar='/picture/course.png' WHERE id=1").run();
     db.prepare("INSERT INTO announcements(title,body,status,pinned,published_at,created_at,updated_at) VALUES('公告','公告正文','published',1,'2026-10-01','2026-10-01','2026-10-01')").run();
     const tag = Number(db.prepare("INSERT INTO announcement_tags(name,color) VALUES('更新日志','#a34f3d')").run().lastInsertRowid);
@@ -107,6 +109,7 @@ test('完整备份、覆盖还原和历史下载删除：保留所有内容关�
     assert.equal(f.card.prepare('SELECT COUNT(*) AS n FROM comment_likes').get().n, 1);
     assert.equal(f.comment.prepare('SELECT content FROM comments').get().content, '旧评论');
     assert.equal(await readFile(join(f.publicRoot, 'source/course.pdf'), 'utf8'), 'PDF source');
+    assert.deepEqual(homePlaylists(f.card).map(list => [list.title, list.tracks[0].title]), [['日常', '音乐'], ['游戏', '游戏音乐']]);
     assert.equal(f.card.prepare('SELECT video_url FROM entries WHERE id=?').get(ids.video).video_url, '/source/course.mp4');
     assert.equal(await readFile(join(f.publicRoot, 'source/course.mp4'), 'utf8'), 'MP4 video');
     assert.deepEqual(await readdir(join(f.publicRoot, 'picture')), ['course.png']);
@@ -130,8 +133,16 @@ test('增量还原处理编号、用户名和文件冲突；保留当前修改�
     target.card.prepare("INSERT INTO entries(kind,resource_kind,title,resource_type_id,published_at,created_at,updated_at) VALUES('resource','collection','已有合集',?,'2026-10-04','2026-10-04','2026-10-04')").run(type);
     await target.file('public/source/course.pdf', 'current PDF'); await target.file('public/picture/course.png', 'current picture');
     await target.file('public/source/course.mp4', 'current video');
+    target.card.transaction(() => savePlaylists(target.card, [{ title: '已有歌单', tracks: [{ title: '现有歌曲', url: '/source/song.mp3' }] }]))();
+    await target.file('public/source/song.mp3', 'current song');
     const result = await target.successful(target.store.restore(archive, 'merge'));
     assert.ok(result.importedRecords > 0);
+    const library = homePlaylists(target.card);
+    assert.equal(library.find(list => list.title === '已有歌单').tracks[0].title, '现有歌曲');
+    const importedMusic = library.find(list => list.title === '日常');
+    assert.equal(importedMusic.tracks[0].title, '音乐');
+    assert.match(importedMusic.tracks[0].url, /song-import-[a-f0-9]+\.mp3/);
+    assert.equal(await readFile(join(target.publicRoot, importedMusic.tracks[0].url.slice(1)), 'utf8'), 'MP3 track');
     const imported = target.card.prepare("SELECT * FROM entries WHERE title='第一课'").get(), parent = target.card.prepare("SELECT * FROM entries WHERE title='课程合集'").get();
     assert.equal(target.card.prepare("SELECT color FROM announcement_tags WHERE name='更新日志'").get().color, '#a34f3d');
     const importedVideo = target.card.prepare("SELECT id,video_url,parent_id,body FROM entries WHERE title='课堂视频'").get();
@@ -294,6 +305,10 @@ test('旧版备份可在新服务器导入，且不会清除旧格式未覆盖�
     manifest.version = 1; delete manifest.directories; delete manifest.paths; delete manifest.activityImages;
     const oldDatabase = JSON.parse(strFromU8(zip['databases/card.json']));
     for (const table of ['plaza_items', 'plaza_versions', 'plaza_tags']) { delete oldDatabase.schema[table]; delete oldDatabase.tables[table]; }
+    delete oldDatabase.schema.home_playlists; delete oldDatabase.tables.home_playlists;
+    oldDatabase.schema.home_tracks.columns = oldDatabase.schema.home_tracks.columns.filter(column => column.name !== 'playlist_id');
+    oldDatabase.schema.home_tracks.foreign = [];
+    for (const row of oldDatabase.tables.home_tracks) delete row.values.playlist_id;
     for (const column of ['is_owner', 'reply_notifications']) {
         oldDatabase.schema.users.columns = oldDatabase.schema.users.columns.filter(c => c.name !== column);
         for (const row of oldDatabase.tables.users) delete row.values[column];
@@ -308,6 +323,11 @@ test('旧版备份可在新服务器导入，且不会清除旧格式未覆盖�
     assert.equal(target.card.prepare('SELECT name FROM profile').get().name, '测试小站');
     assert.equal(target.card.prepare('SELECT reply_notifications FROM users LIMIT 1').get().reply_notifications, 1);
     assert.equal(target.card.prepare('SELECT COUNT(*) AS n FROM plaza_items').get().n, 0);
+    assert.equal(homePlaylists(target.card)[0].title, '我的歌单');
+    assert.equal(homePlaylists(target.card)[0].tracks.length, 2, '旧版备份中的歌曲自动放入默认歌单');
+    await target.successful(target.store.restore(old, 'merge'));
+    assert.equal(homePlaylists(target.card).length, 1, '重复增量导入旧备份不会重复创建迁移歌单');
+    assert.equal(homePlaylists(target.card)[0].tracks.length, 2);
     assert.equal(await readFile(join(target.publicRoot, 'root-avatar.webp'), 'utf8'), 'current root asset');
 });
 

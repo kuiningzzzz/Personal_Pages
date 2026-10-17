@@ -2,6 +2,44 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} 应接近 ${expected}`);
 
+test('多歌单默认播放第一首，切换清除预取队列，保存排序和跨歌单移动不会打断播放', async t => {
+    const originals = new Map(), audios = [], messages = [];
+    const replace = (key, value) => { originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
+    class FakeAudio extends EventTarget {
+        constructor() { super(); this.paused = true; this.currentTime = 0; this.duration = 100; audios.push(this); }
+        play() { this.paused = false; this.dispatchEvent(new Event('playing')); return Promise.resolve(); }
+        pause() { this.paused = true; this.dispatchEvent(new Event('pause')); }
+        removeAttribute() { this.src = ''; }
+        load() {}
+    }
+    replace('window', new EventTarget()); replace('Audio', FakeAudio);
+    replace('navigator', { serviceWorker: { controller: { postMessage: message => messages.push(message) } } });
+    t.after(() => { for (const [key, descriptor] of originals) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; });
+    const player = await import('../../src/lib/music.js?multi-playlist-test');
+    const song = id => ({ id, title: '歌曲 ' + id, url: `/source/song-${id}.mp3` });
+    const data = { playlists: [{ id: 10, title: '日常', tracks: [song(1), song(2), song(3)] }, { id: 20, title: '游戏', tracks: [song(4), song(5)] }, { id: 30, title: '空歌单', tracks: [] }] };
+    player.applyStation(data); assert.equal(audios.length, 0);
+    assert.deepEqual(messages[0].urls, [1, 2, 3, 4, 5].map(id => song(id).url), '缓存保留所有歌单的歌曲');
+    player.enterHome(); const audio = audios[0];
+    assert.equal(audio.src, song(1).url); assert.equal(player.music.playlistId, 10);
+    audio.dispatchEvent(new Event('durationchange')); audio.currentTime = 80; audio.dispatchEvent(new Event('timeupdate')); player.cyclePlayMode();
+    assert.equal(messages.at(-1).url, song(2).url);
+    player.selectTrack(1, 20); assert.equal(audio.src, song(5).url); assert.equal(player.currentPlaylist.value.title, '游戏');
+    player.nextTrack(); assert.equal(audio.src, song(4).url, '跨歌单切换丢弃前一歌单的预取位置');
+    audio.currentTime = 42; audio.dispatchEvent(new Event('timeupdate'));
+    const reordered = { playlists: [{ ...data.playlists[1], tracks: [song(5)] }, { ...data.playlists[0], tracks: [song(3), song(4), song(2), song(1)] }, data.playlists[2]] };
+    player.applyStation(reordered);
+    assert.equal(player.music.playlistId, 10); assert.equal(player.music.currentIndex, 1);
+    assert.equal(player.currentTrack.value.id, 4); assert.equal(audio.paused, false); assert.equal(player.music.time, 42); assert.equal(audios.length, 1);
+    reordered.playlists[1].tracks[1].title = '未保存修改';
+    assert.equal(player.currentTrack.value.title, '歌曲 4', '后台未保存的编辑不修改播放器');
+    player.selectPlaylist(30); assert.equal(audio.paused, true); assert.equal(audio.src, ''); assert.equal(player.music.time, 0);
+    player.togglePlayback(); assert.equal(audio.paused, true);
+    player.selectPlaylist(20); assert.equal(audio.src, song(5).url);
+    player.nextTrack(); assert.equal(audio.src, song(5).url, '循环只在当前歌单内');
+    player.applyStation({ playlists: [] }); assert.equal(audio.paused, true); assert.equal(player.currentTrack.value, null);
+});
+
 test('播放由用户手势启动，同一 Audio 跨页面保留；单曲不预取，其他模式最后 30 秒只预取一次', async t => {
     const descriptors = new Map();
     const replace = (key, value) => { descriptors.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };

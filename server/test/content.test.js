@@ -416,15 +416,26 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         // Saved songs join the same upload-reference protection as Markdown.
         const songUrl = await uploadText('song.mp3');
         const home = (await request('/api/admin/profile')).body.data;
-        const homeWithMusic = { ...home, playlist: [{ title: '测试歌曲', artist: '测试作者', url: songUrl }] };
+        const homeWithMusic = { ...home, playlists: [{ title: '日常', tracks: [{ title: '测试歌曲', artist: '测试作者', url: songUrl }] }, { title: '游戏', tracks: [] }] };
         assert.equal((await request('/api/admin/profile', write('PUT', homeWithMusic))).status, 200);
         assert.ok(existsSync(filePath(songUrl)));
         assert.equal((await request('/api/content/profile')).body.data.playlist[0].url, songUrl);
-        assert.equal((await request('/api/admin/profile', write('PUT', { ...homeWithMusic, playlist: [{ title: '无效', url: 'https://example.com/song.mp3' }] }))).status, 400);
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...homeWithMusic, playlists: [{ title: '无效', tracks: [{ title: '无效', url: 'https://example.com/song.mp3' }] }] }))).status, 400);
         assert.equal((await request('/api/admin/profile', write('PUT', { profile: home.profile, cards: home.cards }))).status, 200);
         assert.equal((await request('/api/content/profile')).body.data.playlist.length, 1, '不传歌单的旧保存请求保留歌曲');
         assert.ok(existsSync(filePath(songUrl)));
-        assert.equal((await request('/api/admin/profile', write('PUT', { ...home, playlist: [] }))).status, 200);
+        const library = (await request('/api/admin/profile')).body.data.playlists;
+        assert.deepEqual(library.map(list => list.title), ['日常', '游戏']);
+        const moved = [{ ...library[1], tracks: library[0].tracks }, { ...library[0], tracks: [] }];
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...home, playlists: moved }))).status, 200);
+        assert.deepEqual((await request('/api/content/profile')).body.data.playlists, moved, '歌单及歌曲的新顺序持久化');
+        const duplicate = [moved[0], { ...moved[1], tracks: moved[0].tracks }];
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...home, playlists: duplicate }))).status, 400);
+        assert.deepEqual((await request('/api/content/profile')).body.data.playlists, moved, '无效保存不改变原歌单');
+        const onlySecond = [{ ...moved[1], tracks: [] }, { ...moved[0] }];
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...home, playlists: onlySecond }))).status, 200);
+        assert.ok(existsSync(filePath(songUrl)), '非默认歌单中的歌曲仍受文件清理保护');
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...home, playlists: [] }))).status, 200);
         assert.ok(!existsSync(filePath(songUrl)), '歌单移除后不再引用的 MP3 按规则清理');
 
         // Public search pages stay complete and distinct. Short-post mail links

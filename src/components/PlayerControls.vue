@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { music, currentTrack, togglePlayback, previousTrack, nextTrack, cyclePlayMode, selectTrack, seekMusic, volumeIcon, setVolume, toggleMute } from '../lib/music'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { music, currentTrack, currentPlaylist, togglePlayback, previousTrack, nextTrack, cyclePlayMode, selectTrack, selectPlaylist, seekMusic, volumeIcon, setVolume, toggleMute } from '../lib/music'
+import { searchSongs } from '../lib/music-library'
 import { musicTime } from '../lib/music-queue'
 import PlayerIcon from './PlayerIcon.vue'
 import FeedbackEntry from './FeedbackEntry.vue'
@@ -9,11 +10,16 @@ const playlistOpen = ref(false)
 const volumeOpen = ref(false)
 const volumePercent = computed(() => Math.round(music.volume * 100))
 const container = ref(null)
+const search = ref('')
+const searchInput = ref(null)
+const searching = computed(() => Boolean(search.value.trim()))
+const songs = computed(() => searching.value ? searchSongs(music.playlists, search.value) : music.tracks.map((track, index) => ({ track, index, playlistId: music.playlistId, playlistTitle: currentPlaylist.value?.title })))
+const selected = song => song.playlistId === music.playlistId && song.index === music.currentIndex
 const modeNames = { single: '单曲循环', list: '列表循环', shuffle: '随机播放' }
 function close(event) { if (!container.value?.contains(event.target)) { playlistOpen.value = false; volumeOpen.value = false } }
 function keys(event) { if (event.key === 'Escape') { playlistOpen.value = false; volumeOpen.value = false } }
 function openVolume() { volumeOpen.value = !volumeOpen.value; playlistOpen.value = false }
-function openPlaylist() { playlistOpen.value = !playlistOpen.value; volumeOpen.value = false }
+function openPlaylist() { playlistOpen.value = !playlistOpen.value; volumeOpen.value = false; if (playlistOpen.value) { search.value = ''; nextTick(() => searchInput.value?.focus({ preventScroll: true })) } }
 onMounted(() => { window.addEventListener('pointerdown', close); window.addEventListener('keydown', keys) })
 onUnmounted(() => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', keys) })
 </script>
@@ -29,7 +35,15 @@ onUnmounted(() => { window.removeEventListener('pointerdown', close); window.rem
     </div>
     <Transition name="playlist-pop"><div v-if="volumeOpen" id="player-volume" class="volume-popover"><header><strong>音量</strong><span>{{ volumePercent }}%</span></header><div class="volume-adjust"><button type="button" :aria-label="music.volume === 0 ? '恢复音量' : '静音'" :title="music.volume === 0 ? '恢复音量' : '静音'" @click="toggleMute"><PlayerIcon :name="volumeIcon" /></button><input type="range" min="0" max="100" step="1" :value="volumePercent" aria-label="音量" :aria-valuetext="volumePercent + '%'" @input="setVolume(Number($event.target.value) / 100)" /></div></div></Transition>
     <p v-if="music.error" class="player-error" role="alert">{{ music.error }}</p>
-    <Transition name="playlist-pop"><div v-if="playlistOpen" id="home-playlist" class="playlist-popover"><header><strong>歌单</strong><span>{{ music.tracks.length }} 首</span></header><p v-if="!music.tracks.length">暂时没有歌曲</p><div v-else class="playlist-rows"><button v-for="(track, index) in music.tracks" :key="track.id || track.url" type="button" :class="{ selected: index === music.currentIndex }" :aria-pressed="index === music.currentIndex" @click="selectTrack(index); playlistOpen = false"><span>{{ String(index + 1).padStart(2, '0') }}</span><div><strong>{{ track.title }}</strong><small v-if="track.artist">{{ track.artist }}</small></div><PlayerIcon v-if="index === music.currentIndex" :name="music.playing ? 'pause' : 'play'" /></button></div></div></Transition>
+    <Transition name="playlist-pop">
+      <div v-if="playlistOpen" id="home-playlist" class="playlist-popover">
+        <header><strong>{{ searching ? '搜索歌曲' : currentPlaylist?.title || '歌单' }}</strong><span>{{ searching ? songs.length + ' 个结果' : music.playlists.length + ' 个歌单' }}</span></header>
+        <label class="playlist-search"><span class="sr-only">搜索所有歌单中的歌曲、歌手</span><input ref="searchInput" v-model="search" type="search" placeholder="搜索所有歌单的歌曲、歌手…" autocomplete="off" /></label>
+        <nav v-if="!searching && music.playlists.length" class="playlist-selector" aria-label="切换歌单"><button v-for="playlist in music.playlists" :key="playlist.id" type="button" :class="{ selected: playlist.id === music.playlistId }" :aria-pressed="playlist.id === music.playlistId" @click="selectPlaylist(playlist.id)">{{ playlist.title }}<span>{{ playlist.tracks.length }}</span></button></nav>
+        <p v-if="!songs.length" role="status">{{ searching ? '没有找到匹配的歌曲' : '这个歌单还没有歌曲' }}</p>
+        <div v-else class="playlist-rows"><button v-for="song in songs" :key="`${song.playlistId}-${song.track.id || song.index}`" type="button" :class="{ selected: selected(song) }" :aria-pressed="selected(song)" @click="selectTrack(song.index, song.playlistId); playlistOpen = false"><span>{{ String(song.index + 1).padStart(2, '0') }}</span><div><strong>{{ song.track.title }}</strong><small v-if="song.track.artist || searching">{{ [song.track.artist, searching ? song.playlistTitle : ''].filter(Boolean).join(' · ') }}</small></div><PlayerIcon v-if="selected(song)" :name="music.playing ? 'pause' : 'play'" /></button></div>
+      </div>
+    </Transition>
   </section>
 </template>
 <style scoped>
@@ -53,12 +67,13 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 button svg { width: 21px; height: 21px; }
 .console-tools { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 14px; }
 .player-error { margin: 10px 0 0; color: var(--danger); font-size: 12px; line-height: 1.6; }
-.playlist-popover { position: absolute; z-index: 90; right: 0; bottom: 48px; width: min(100%, 340px); padding: 16px; border-radius: 7px; background: var(--paper); box-shadow: 6px 7px 0 var(--denim); }
+.playlist-popover { position: absolute; z-index: 90; right: 0; bottom: 48px; width: min(100%, 360px); max-height: min(460px, calc(100dvh - 220px)); display: flex; flex-direction: column; padding: 16px; border-radius: 7px; background: var(--paper); box-shadow: 6px 7px 0 var(--denim); }
 .volume-popover { position: absolute; z-index: 90; right: 0; bottom: 48px; width: min(260px, calc(100vw - 40px)); padding: 15px; border-radius: 7px; background: var(--paper); box-shadow: 5px 6px 0 var(--denim); }
 .volume-popover header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 9px; font-size: 13px; }.volume-popover header span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .volume-adjust { display: flex; align-items: center; gap: 12px; }.volume-adjust button { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 6px; border: 0; border-radius: 4px; color: var(--ink); background: var(--accent-soft); }.volume-adjust input { flex: 1; min-width: 0; width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .playlist-popover header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 12px; font-size: 14px; }.playlist-popover header span, .playlist-popover p { color: var(--muted); font-size: 12px; }
-.playlist-rows { max-height: 170px; overflow-y: auto; }
+.playlist-search { display: block; margin-bottom: 10px; }.playlist-search input { width: 100%; padding: 10px; border: 0; border-radius: 4px; background: var(--field-bg); color: var(--ink); box-shadow: inset 0 0 0 1px var(--field-line); font-size: 12px; }.playlist-search input:focus { outline: 2px solid var(--accent); }.playlist-selector { display: flex; gap: 6px; overflow-x: auto; flex: none; padding: 2px 1px 10px; margin-bottom: 4px; }.playlist-selector button { display: flex; align-items: center; gap: 7px; flex: none; max-width: 220px; padding: 7px 10px; border: 0; border-radius: 3px; color: var(--ink); background: var(--paper-deep); font-size: 11px; text-align: left; }.playlist-selector button.selected { background: var(--accent-soft); box-shadow: inset 0 -2px var(--accent); }.playlist-selector button > span { color: var(--muted); font-size: 10px; }
+.playlist-rows { max-height: 220px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .playlist-rows button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); text-align: left; }
 .playlist-rows button:hover, .playlist-rows button.selected { background: var(--accent-soft); }.playlist-rows button > span { color: var(--soft); font-size: 11px; }.playlist-rows button > div { flex: 1; min-width: 0; }.playlist-rows strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }.playlist-rows small { display: block; margin-top: 3px; font-size: 10px; color: var(--muted); }
 .playlist-pop-enter-active, .playlist-pop-leave-active { transition: opacity .2s ease, transform .2s ease; }.playlist-pop-enter-from, .playlist-pop-leave-to { opacity: 0; transform: translateY(-8px); }

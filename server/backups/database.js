@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 
 export const quote = name => `"${String(name).replaceAll('"', '""')}"`;
 const internal = new Set(['backup_records', 'backup_aliases', 'backup_state']);
@@ -55,6 +55,7 @@ export function validateSnapshot(db, dump) {
 export function upgradeSnapshot(db, dump) {
     const layout = schema(db);
     if (!dump?.schema || !dump?.tables || JSON.stringify(Object.keys(dump.schema).sort()) !== JSON.stringify(Object.keys(dump.tables).sort()) || Object.keys(dump.schema).some(table => !layout[table])) throw new Error('备份的数据结构与当前网站版本不兼容');
+    const legacyMusic = !dump.schema.home_playlists && dump.tables.home_tracks?.length;
     const defaults = new Map();
     for (const [table, info] of Object.entries(layout)) {
         const previous = dump.schema[table];
@@ -81,6 +82,13 @@ export function upgradeSnapshot(db, dump) {
             if (!row?.values || JSON.stringify(Object.keys(row.values).sort()) !== JSON.stringify(expected)) throw new Error('备份数据库字段无效');
             for (const [key, value] of defaults) if (key.startsWith(table + '.')) row.values[key.slice(table.length + 1)] = value;
         }
+    }
+    if (legacyMusic) {
+        // Keep the synthesized playlist stable across repeated imports of an old backup.
+        const hash = createHash('sha256').update('legacy-home-playlist:' + dump.tables.home_tracks[0].identity).digest('hex');
+        const identity = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+        dump.tables.home_playlists = [{ identity, values: { id: 1, title: '我的歌单', display_order: 0 } }];
+        for (const track of dump.tables.home_tracks) track.values.playlist_id = 1;
     }
     dump.schema = layout; validateSnapshot(db, dump); return dump;
 }

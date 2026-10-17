@@ -5,11 +5,12 @@ const DEFAULT_VOLUME = .5
 const OUTPUT_VOLUME_SCALE = .8
 
 export const music = reactive({
-  profile: null, cards: [], tracks: [], welcome: [], ready: false, entered: false, entering: false,
+  profile: null, cards: [], playlists: [], playlistId: null, tracks: [], welcome: [], ready: false, entered: false, entering: false,
   playing: false, buffering: false, currentIndex: 0, time: 0, duration: 0,
   mode: 'single', surface: 'hidden', error: '', volume: DEFAULT_VOLUME,
 })
 export const currentTrack = computed(() => music.tracks[music.currentIndex] || null)
+export const currentPlaylist = computed(() => music.playlists.find(playlist => playlist.id === music.playlistId) || null)
 export const volumeIcon = computed(() => music.volume === 0 ? 'volume-muted' : music.volume <= 1 / 3 ? 'volume-low' : music.volume <= 2 / 3 ? 'volume-medium' : 'volume-high')
 let audio, loading, source = '', prepared = null, history = [], workerReady
 let audioContext, volumeGain, lastVolume = DEFAULT_VOLUME
@@ -78,16 +79,26 @@ function registerMusicCache() {
 }
 
 export function applyStation(data) {
-  const previous = source
-  music.profile = { ...data.profile }; music.cards = (data.cards || []).map(card => ({ ...card })); music.tracks = (data.playlist || []).map(track => ({ ...track }))
+  const previous = source, previousTrack = currentTrack.value, previousPlaylist = music.playlistId
+  music.profile = { ...data.profile }; music.cards = (data.cards || []).map(card => ({ ...card }))
+  const playlists = Array.isArray(data.playlists) ? data.playlists : data.playlist?.length ? [{ id: 'legacy', title: '我的歌单', tracks: data.playlist }] : []
+  music.playlists = playlists.map(playlist => ({ id: playlist.id, title: playlist.title,
+    tracks: playlist.tracks.map(track => ({ id: track.id, title: track.title, artist: track.artist, url: track.url })) }))
   music.welcome = [...(data.welcome || [])]
-  const nextIndex = music.tracks.findIndex(track => track.url === previous)
-  if (previous && nextIndex < 0) {
-    audio?.pause(); audio?.removeAttribute('src'); audio?.load(); source = ''
-    music.currentIndex = 0; music.time = 0; music.duration = 0; music.playing = false
-  } else if (nextIndex >= 0) music.currentIndex = nextIndex
+  // Stable song IDs preserve playback even when admin moves a song to another playlist.
+  const matches = track => previousTrack?.id != null ? track.id === previousTrack.id : previous && track.url === previous
+  const retained = music.playlists.find(playlist => playlist.tracks.some(matches))
+  const active = retained || music.playlists.find(playlist => playlist.id === previousPlaylist) || music.playlists[0]
+  music.playlistId = active?.id ?? null; music.tracks = active?.tracks || []
+  music.currentIndex = retained ? music.tracks.findIndex(matches) : 0
+  if (previous && currentTrack.value?.url !== previous) stopMedia()
   prepared = null; history = []
-  navigator.serviceWorker?.controller?.postMessage({ type: 'MUSIC_PLAYLIST', urls: music.tracks.map(track => track.url) })
+  navigator.serviceWorker?.controller?.postMessage({ type: 'MUSIC_PLAYLIST', urls: music.playlists.flatMap(playlist => playlist.tracks.map(track => track.url)) })
+}
+
+function stopMedia() {
+  audio?.pause(); audio?.removeAttribute('src'); audio?.load(); source = ''
+  music.time = 0; music.duration = 0; music.playing = false; music.buffering = false; music.error = ''
 }
 
 export async function loadStation(force = false) {
@@ -116,11 +127,11 @@ function media() {
 }
 
 function play() {
+  const track = currentTrack.value
+  if (!track) return
   const player = media()
   prepareVolume(player)
   music.error = ''; player.loop = music.mode === 'single'
-  const track = currentTrack.value
-  if (!track) return
   if (source !== track.url) { source = track.url; player.src = source; music.time = 0; music.duration = 0; prepared = null }
   music.buffering = true
   player.play().catch(error => {
@@ -155,11 +166,22 @@ export function togglePlayback() {
   if (!music.tracks.length) return
   if (audio && !audio.paused) audio.pause(); else play()
 }
-export function selectTrack(index) {
+export function selectTrack(index, playlistId = music.playlistId) {
+  const playlist = music.playlists.find(playlist => playlist.id === playlistId)
+  if (!playlist?.tracks[index]) return
   playbackRevision++
-  if (!music.tracks[index]) return
-  if (source && index !== music.currentIndex) history.push(music.currentIndex)
+  if (playlistId !== music.playlistId) {
+    music.playlistId = playlistId; music.tracks = playlist.tracks; music.currentIndex = 0
+    prepared = null; history = []
+  } else if (source && index !== music.currentIndex) history.push(music.currentIndex)
   music.currentIndex = index; music.entered = true; play()
+}
+export function selectPlaylist(id) {
+  const playlist = music.playlists.find(playlist => playlist.id === id)
+  if (!playlist || id === music.playlistId) return
+  if (playlist.tracks.length) { selectTrack(0, id); return }
+  playbackRevision++; stopMedia(); prepared = null; history = []
+  music.playlistId = id; music.tracks = playlist.tracks; music.currentIndex = 0
 }
 export function previousTrack() {
   playbackRevision++

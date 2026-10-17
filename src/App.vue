@@ -1,11 +1,16 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Header from './components/header.vue'
 import Footer from './components/footer.vue'
 import SubscriptionToast from './components/SubscriptionToast.vue'
 import GlobalRecord from './components/GlobalRecord.vue'
-import { music } from './lib/music'
+import { music, togglePlayback } from './lib/music'
+import { handleMusicSpace } from './lib/music-shortcuts'
+
+const musicShortcut = event => handleMusicSpace(event, togglePlayback)
+onMounted(() => window.addEventListener('keydown', musicShortcut))
+onUnmounted(() => window.removeEventListener('keydown', musicShortcut))
 
 const route = useRoute()
 const welcoming = computed(() => route.path === '/' && (!music.entered || music.entering))
