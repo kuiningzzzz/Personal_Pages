@@ -48,6 +48,10 @@ async function seed(f) {
     const collection = add('课程合集', 'collection'), nested = add('子合集', 'collection', collection);
     const article = add('第一课', 'document', collection, '[源资料](/source/course.pdf) ![图](/picture/course.png)');
     const child = add('第二课', 'document', nested), gallery = add('图集', 'gallery', collection);
+    const video = add('课堂视频', 'video', collection);
+    db.prepare('UPDATE entries SET video_url=? WHERE id=?').run('/source/course.mp4', video);
+    db.prepare("UPDATE entries SET body=body || ? WHERE id=?").run(`\n[课程视频](/resource/video/${video})`, article);
+    db.prepare('UPDATE entries SET body=? WHERE id=?').run(`[学习报告](/entry/${article})`, video);
     db.prepare('INSERT INTO gallery_images(entry_id,url,caption) VALUES(?,?,?)').run(gallery, '/picture/course.png', '一张图');
     db.prepare("INSERT INTO entries(kind,format,title,body,pinned,status,published_at,created_at,updated_at) VALUES('moment','short','短帖','测试短帖',1,'published','2026-10-01','2026-10-01','2026-10-01')").run();
     const user = Number(db.prepare('INSERT INTO users(username,username_key,email,password_hash,created_at,is_owner) VALUES(?,?,?,?,?,1)').run('站主', '站主', 'one@example.com', 'stored-password-hash', '2026-10-01').lastInsertRowid);
@@ -68,14 +72,15 @@ async function seed(f) {
     db.prepare("INSERT INTO ai_tasks(id,title,prompt,collection_id,settings,status,result_entry_id,created_at,updated_at) VALUES('task-a','课程学习','解释课程',?,'{}','queued',?,'2026-10-03','2026-10-03')").run(collection, article);
     db.prepare("INSERT INTO ai_task_files(task_id,url,name,kind) VALUES('task-a','/source/course.pdf','course.pdf','pdf')").run();
     db.prepare('INSERT INTO ai_collection_sessions(collection_id,session_id) VALUES(?,?)').run(collection, `learning-collection-${collection}-workspace`);
-    db.prepare("INSERT INTO managed_uploads(url) VALUES('/picture/course.png'),('/source/course.pdf'),('/source/song.mp3')").run();
+    db.prepare("INSERT INTO managed_uploads(url) VALUES('/picture/course.png'),('/source/course.pdf'),('/source/song.mp3'),('/source/course.mp4')").run();
     f.comment.prepare("INSERT INTO comments(page_id,username,email,content) VALUES('home','老访客','old@example.com','旧评论')").run();
     await f.file('public/source/course.pdf', 'PDF source'); await f.file('public/source/song.mp3', 'MP3 track'); await f.file('public/picture/course.png', 'picture');
+    await f.file('public/source/course.mp4', 'MP4 video');
     await f.file('public/favicon.png', 'hardcoded-favicon'); await f.file('public/music-sw.js', 'hardcoded-worker');
     await f.file('data/feedback/images/screen.png', 'private');
     await f.file(`data/ai/collections/${collection}/workspace/reports/notes.md`, '# 学习笔记');
     await f.file(`data/ai/collections/${collection}/harness/session.json`, JSON.stringify({ id: `learning-collection-${collection}-workspace`, messages: ['历史上下文'] }));
-    return { type, collection, nested, article, child, gallery, user, visitor, root, reply };
+    return { type, collection, nested, article, child, gallery, video, user, visitor, root, reply };
 }
 
 test('完整备份、覆盖还原和历史下载删除：保留所有内容关系及文件，自动保存还原前版本', async t => {
@@ -102,6 +107,8 @@ test('完整备份、覆盖还原和历史下载删除：保留所有内容关�
     assert.equal(f.card.prepare('SELECT COUNT(*) AS n FROM comment_likes').get().n, 1);
     assert.equal(f.comment.prepare('SELECT content FROM comments').get().content, '旧评论');
     assert.equal(await readFile(join(f.publicRoot, 'source/course.pdf'), 'utf8'), 'PDF source');
+    assert.equal(f.card.prepare('SELECT video_url FROM entries WHERE id=?').get(ids.video).video_url, '/source/course.mp4');
+    assert.equal(await readFile(join(f.publicRoot, 'source/course.mp4'), 'utf8'), 'MP4 video');
     assert.deepEqual(await readdir(join(f.publicRoot, 'picture')), ['course.png']);
     assert.deepEqual(await readdir(join(f.data, 'feedback/images')), ['screen.png']);
     assert.equal(await readFile(join(f.publicRoot, 'favicon.png'), 'utf8'), 'hardcoded-favicon');
@@ -122,10 +129,18 @@ test('增量还原处理编号、用户名和文件冲突；保留当前修改�
     const type = Number(target.card.prepare("INSERT INTO resource_types(name,slug) VALUES('已有分类','current')").run().lastInsertRowid);
     target.card.prepare("INSERT INTO entries(kind,resource_kind,title,resource_type_id,published_at,created_at,updated_at) VALUES('resource','collection','已有合集',?,'2026-10-04','2026-10-04','2026-10-04')").run(type);
     await target.file('public/source/course.pdf', 'current PDF'); await target.file('public/picture/course.png', 'current picture');
+    await target.file('public/source/course.mp4', 'current video');
     const result = await target.successful(target.store.restore(archive, 'merge'));
     assert.ok(result.importedRecords > 0);
     const imported = target.card.prepare("SELECT * FROM entries WHERE title='第一课'").get(), parent = target.card.prepare("SELECT * FROM entries WHERE title='课程合集'").get();
     assert.equal(target.card.prepare("SELECT color FROM announcement_tags WHERE name='更新日志'").get().color, '#a34f3d');
+    const importedVideo = target.card.prepare("SELECT id,video_url,parent_id,body FROM entries WHERE title='课堂视频'").get();
+    assert.equal(importedVideo.parent_id, parent.id);
+    assert.ok(imported.body.includes(`/resource/video/${importedVideo.id})`), '视频页面链接随增量导入后的编号更新');
+    assert.equal(importedVideo.body, `[学习报告](/entry/${imported.id})`, '互相引用的页面只重写一次编号，不发生二次映射');
+    assert.match(importedVideo.video_url, /course-import-[a-f0-9]+\.mp4/);
+    assert.equal(await readFile(join(target.publicRoot, importedVideo.video_url.slice(1)), 'utf8'), 'MP4 video');
+    assert.equal(await readFile(join(target.publicRoot, 'source/course.mp4'), 'utf8'), 'current video');
     assert.notEqual(parent.id, ids.collection); assert.equal(imported.parent_id, parent.id);
     assert.notEqual(parent.resource_type_id, type);
     const owner = target.card.prepare("SELECT * FROM users WHERE email='one@example.com'").get();

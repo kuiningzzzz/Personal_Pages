@@ -4,6 +4,7 @@ import multer from 'multer';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { extname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { open, unlink } from 'node:fs/promises';
 import { cardDb, commentDb, DATA_DIR } from './db.js';
 import { createBackupStore } from './backups/store.js';
 import { createBackupRoutes } from './backups/routes.js';
@@ -17,6 +18,7 @@ import { createAnnouncementAdminRoutes } from './announcements.js';
 import { validateMomentPin, setMomentPin } from './moment-pins.js';
 import { activities, activityRoutes } from './activities/index.js';
 import { homePlaylist, validatePlaylist, savePlaylist, homeWelcome, validateWelcome, saveWelcome } from './home-music.js';
+import { VIDEO_UPLOAD_LIMIT, validVideoUrl } from './videos.js';
 
 const router = express.Router();
 const password = process.env.ADMIN_PASSWORD || '';
@@ -160,6 +162,10 @@ function validateEntry(input, id = null) {
     const date = input.published_at ? new Date(input.published_at) : new Date();
     if (Number.isNaN(date.getTime())) return { error: '发布时间格式错误' };
     const images = [];
+    const videoUrl = structure.resourceKind === 'video' ? clean(input.video_url, 2048) : '';
+    if (structure.resourceKind === 'video' && ((!videoUrl && input.status !== 'draft') || (videoUrl && !validVideoUrl(videoUrl)))) {
+        return { error: '请上传一个 MP4 视频，或填写有效的 MP4 地址' };
+    }
     if (structure.resourceKind === 'gallery') {
         if (!Array.isArray(input.images) || input.images.length > 500) return { error: '图集图片列表无效，最多 500 张' };
         for (const [index, image] of input.images.entries()) {
@@ -172,15 +178,15 @@ function validateEntry(input, id = null) {
     }
     return { kind, format, title, summary: clean(input.summary, 1000), coverImage, body: clean(input.body, 100000),
         tags: JSON.stringify(normalizeTags(input.tags)), resourceTypeId, actions: JSON.stringify(kind === 'resource' ? normalizeActions(input.actions) : []),
-        status: input.status === 'draft' ? 'draft' : 'published', pinned: pin.pinned, publishedAt: date.toISOString(), ...structure, images };
+        status: input.status === 'draft' ? 'draft' : 'published', pinned: pin.pinned, publishedAt: date.toISOString(), ...structure, images, videoUrl };
 }
 router.post('/entries', (req, res) => {
     const data = validateEntry(req.body);
     if (data.error) return res.status(data.status || 400).json({ success: false, message: data.error });
     const now = new Date().toISOString();
     const id = cardDb.transaction(() => {
-        const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at,resource_kind,parent_id,pinned)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now, data.resourceKind, data.parentId, data.pinned);
+        const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at,resource_kind,parent_id,pinned,video_url)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now, data.resourceKind, data.parentId, data.pinned, data.videoUrl);
         const id = Number(result.lastInsertRowid);
         saveResourceExtras(id, data);
         return id;
@@ -193,8 +199,8 @@ router.put('/entries/:id', (req, res) => {
     const data = validateEntry(req.body, id);
     if (data.error) return res.status(data.status || 400).json({ success: false, message: data.error });
     const result = cardDb.transaction(() => {
-        const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=?,resource_kind=?,parent_id=?,pinned=? WHERE id=?`)
-            .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), data.resourceKind, data.parentId, data.pinned, id);
+        const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=?,resource_kind=?,parent_id=?,pinned=?,video_url=? WHERE id=?`)
+            .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), data.resourceKind, data.parentId, data.pinned, data.videoUrl, id);
         saveResourceExtras(id, data);
         return result;
     })();
@@ -216,7 +222,7 @@ router.delete('/entries/:id', (req, res) => {
     res.status(result.changes ? 200 : 404).json({ success: !!result.changes, ...(result.changes ? auditAndCleanupUploads() : {}) });
 });
 
-const upload = multer({ storage: multer.diskStorage({
+const uploadStorage = multer.diskStorage({
     destination: (req, file, cb) => {
         const subdir = file.mimetype.startsWith('image/') ? 'picture' : 'source';
         const folder = join(publicRoot, subdir);
@@ -224,7 +230,8 @@ const upload = multer({ storage: multer.diskStorage({
         cb(null, folder);
     },
     filename: (_req, file, cb) => cb(null, `${Date.now()}-${randomBytes(8).toString('hex')}${extname(file.originalname).toLowerCase().slice(0, 12)}`)
-}), limits: { fileSize: 200 * 1024 * 1024 }, fileFilter: (_req, file, cb) => {
+});
+const upload = multer({ storage: uploadStorage, limits: { fileSize: 200 * 1024 * 1024 }, fileFilter: (_req, file, cb) => {
     const extension = extname(file.originalname).toLowerCase();
     if (['.html', '.htm', '.svg', '.js', '.mjs', '.css', '.xml'].includes(extension)) return cb(new Error('不支持上传可执行网页文件'));
     if (file.mimetype.startsWith('image/') && !['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif'].includes(extension)) return cb(new Error('图片格式不支持'));
@@ -236,6 +243,35 @@ router.post('/upload', upload.single('file'), (req, res) => {
     const url = `/${dir}/${req.file.filename}`;
     rememberUpload(url);
     res.json({ success: true, url, name: req.file.originalname });
+});
+
+const uploadVideo = multer({ storage: uploadStorage, limits: { fileSize: VIDEO_UPLOAD_LIMIT, files: 1 },
+    fileFilter: (_req, file, cb) => cb(extname(file.originalname).toLowerCase() === '.mp4' && !file.mimetype.startsWith('image/')
+        ? null : new Error('请选择 MP4 视频文件'), true) }).single('file');
+router.post('/upload-video', (req, res, next) => {
+    uploadVideo(req, res, async error => {
+        if (error) return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ success: false,
+            message: error.code === 'LIMIT_FILE_SIZE' ? '视频不能超过 1 GB' : error.message });
+        if (!req.file) return res.status(400).json({ success: false, message: '请选择 MP4 视频文件' });
+        let handle;
+        try {
+            handle = await open(req.file.path, 'r');
+            const header = Buffer.alloc(12);
+            const { bytesRead } = await handle.read(header, 0, header.length, 0);
+            await handle.close(); handle = null;
+            if (bytesRead < 12 || header.toString('ascii', 4, 8) !== 'ftyp') {
+                await unlink(req.file.path);
+                return res.status(400).json({ success: false, message: '文件不是有效的 MP4 视频，请重新选择' });
+            }
+            const url = `/source/${req.file.filename}`;
+            rememberUpload(url);
+            res.json({ success: true, url, name: req.file.originalname });
+        } catch (cause) {
+            await handle?.close().catch(() => {});
+            await unlink(req.file.path).catch(() => {});
+            next(cause);
+        }
+    });
 });
 
 export default router;

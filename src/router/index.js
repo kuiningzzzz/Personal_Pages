@@ -17,6 +17,7 @@ const routes = [
   { path: '/resource', component: Resource },
   { path: '/resource/collection/:collectionId', component: Resource },
   { path: '/resource/gallery/:id', component: Entry },
+  { path: '/resource/video/:id', component: Entry },
   { path: '/activities', component: Activities },
   { path: '/activities/collection/:collectionId', component: Activities },
   { path: '/activities/play/:id', component: ActivityPlayer },

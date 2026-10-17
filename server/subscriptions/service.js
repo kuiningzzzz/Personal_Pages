@@ -13,6 +13,7 @@ export function notificationPath(entry) {
     if (entry.kind === 'moment' && entry.format === 'short') return `/moments?post=${entry.id}`;
     if (entry.kind === 'resource' && entry.resource_kind === 'collection') return `/resource/collection/${entry.id}`;
     if (entry.kind === 'resource' && entry.resource_kind === 'gallery') return `/resource/gallery/${entry.id}`;
+    if (entry.kind === 'resource' && entry.resource_kind === 'video') return `/resource/video/${entry.id}`;
     return `/entry/${entry.id}`;
 }
 
@@ -71,7 +72,7 @@ export function createSubscriptionService({ db, mailer, origin, clock = Date.now
             try {
                 const siteName = db.prepare('SELECT name FROM profile WHERE id = 1').get()?.name || '个人主页';
                 const title = entry.title || '一条新的短帖';
-                const label = entry.kind === 'moment' ? (entry.format === 'short' ? '短帖' : '长文') : ({ collection: '合集', gallery: '图集', document: '资源' }[entry.resource_kind] || '资源');
+                const label = entry.kind === 'moment' ? (entry.format === 'short' ? '短帖' : '长文') : ({ collection: '合集', gallery: '图集', video: '视频', document: '资源' }[entry.resource_kind] || '资源');
                 const summary = (entry.summary || (entry.format === 'short' ? entry.body : '')).slice(0, 400);
                 await mailer.sendNotification({ email: user.email, siteName, title, summary, label, url: origin + notificationPath(entry), manageUrl: origin + (entry.kind === 'moment' ? '/moments' : '/resource') });
                 accepted = true;

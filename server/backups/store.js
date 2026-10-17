@@ -207,7 +207,7 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         const rewrite = (value, maps, table, column) => {
             value = relocate(value);
             for (const [from, to] of substitutions) { value = value.replaceAll(from, to).replaceAll(encodeURI(from), encodeURI(to)); }
-            value = value.replace(/(\/(?:entry|resource\/(?:collection|gallery))\/)(\d+)(?=[/#?"\s)]|$)/g, (_, prefix, id) => prefix + mappedId(maps, 'entries', id));
+            value = value.replace(/(\/(?:entry|resource\/(?:collection|gallery|video))\/)(\d+)(?=[/#?"\s)]|$)/g, (_, prefix, id) => prefix + mappedId(maps, 'entries', id));
             value = value.replace(/(\/activities\/(?:play|collection)\/)(\d+)(?=[/#?"\s)]|$)/g, (_, prefix, id) => prefix + mappedId(maps, 'plaza_items', id));
             value = value.replace(/(ai[/\\]+collections[/\\]+)(\d+)/g, (_, prefix, id) => prefix + mappedId(maps, 'entries', id));
             value = value.replace(/learning-collection-(\d+)/g, (_, id) => `learning-collection-${mappedId(maps, 'entries', id)}`);

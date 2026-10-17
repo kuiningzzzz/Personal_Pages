@@ -20,7 +20,7 @@ export function publicAncestors(row) {
 
 export function validateStructure(input, id = null) {
     const kind = input.kind === 'resource' ? 'resource' : 'moment';
-    const resourceKind = kind === 'resource' && ['collection', 'gallery'].includes(input.resource_kind) ? input.resource_kind : 'document';
+    const resourceKind = kind === 'resource' && ['collection', 'gallery', 'video'].includes(input.resource_kind) ? input.resource_kind : 'document';
     const rows = cardDb.prepare('SELECT id, kind, resource_kind, parent_id FROM entries').all();
     if (resourceKind !== 'collection' && rows.some(row => row.parent_id === id && id !== null)) {
         return { error: '合集还有成员，请先移出成员，再修改资源形态' };
@@ -37,7 +37,7 @@ export function validateStructure(input, id = null) {
         memberIds = [...new Set(input.member_ids.map(Number))];
         for (const memberId of memberIds) {
             if (!Number.isSafeInteger(memberId) || memberId <= 0 || memberId === targetId || nodes.get(memberId)?.kind !== 'resource') {
-                return { error: '合集成员必须是其他资源、图集或合集' };
+                return { error: '合集成员必须是其他资源内容或合集' };
             }
         }
         for (const node of nodes.values()) if (node.parent_id === targetId) node.parent_id = null;

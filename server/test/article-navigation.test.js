@@ -68,10 +68,11 @@ test('限定直属同级，跳过草稿、合集、图集、短帖以及其他�
     f.insert(8, { parent_id: 1, format: 'short' });
     f.insert(9);
     f.insert(10, { parent_id: 1, kind: 'moment' });
+    f.insert(11, { parent_id: 1, resource_kind: 'video' });
     assert.deepEqual([f.nav(2).previous.id, f.nav(2).next.id], [3, 3]);
     assert.equal(f.nav(5), null, '子合集内单独成队列');
     assert.equal(f.nav(9), null, '根目录不会进入合集');
-    for (const id of [1, 4, 6, 7, 8]) assert.equal(f.nav(id), null);
+    for (const id of [1, 4, 6, 7, 8, 11]) assert.equal(f.nav(id), null);
 });
 
 test('根文章跨大类循环，动态长文单独循环；删除或移动即时改变队列', t => {

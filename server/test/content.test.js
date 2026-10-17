@@ -300,6 +300,45 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.deepEqual(galleryDetail.images.map(image => image.caption), ['游戏画面', '外部图片']);
         assert.equal((await request('/api/admin/entries?kind=resource')).body.data.find(row => row.id === galleryId).images.length, 2);
 
+        // MP4 uploads have their own disk streaming path and are owned by the
+        // video field, without requiring an extra Markdown reference.
+        const invalidVideo = new FormData(); invalidVideo.append('file', new Blob(['not a video']), 'bad.mp4');
+        assert.equal((await request('/api/admin/upload-video', { method: 'POST', body: invalidVideo })).status, 400);
+        const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(1024, 7)]);
+        async function videoUpload() {
+            const data = new FormData(); data.append('file', new Blob([mp4], { type: 'video/mp4' }), 'lesson.mp4');
+            const result = await request('/api/admin/upload-video', { method: 'POST', body: data });
+            assert.equal(result.status, 200); return result.body.url;
+        }
+        assert.equal((await request('/api/admin/entries', write('POST', { kind: 'resource', resource_kind: 'video', title: '缺少视频' }))).status, 400);
+        const videoUrl = await videoUpload();
+        const videoInput = { kind: 'resource', resource_kind: 'video', title: '课件录屏', body: '录屏讲解', parent_id: nestedId, video_url: videoUrl, status: 'published' };
+        const videoCreated = await request('/api/admin/entries', write('POST', videoInput)); assert.equal(videoCreated.status, 201);
+        const videoId = videoCreated.body.id;
+        const videoDetail = (await request(`/api/content/entries/${videoId}`)).body.data;
+        assert.equal(videoDetail.resource_kind, 'video'); assert.equal(videoDetail.video_url, videoUrl);
+        assert.equal(videoDetail.article_navigation, null);
+        assert.equal(videoDetail.resource_type_id, types[1].id);
+        assert.deepEqual(videoDetail.ancestors.map(row => row.id), [outerId, nestedId]);
+        assert.ok((await request(`/api/content/entries?kind=resource&parent=${nestedId}`)).body.data.some(row => row.id === videoId));
+        assert.ok(!(await request('/api/content/entries?kind=resource')).body.data.some(row => row.id === videoId));
+        assert.equal((await request(`/api/comments/${videoId}`)).status, 200);
+        const stream = await fetch(base + videoDetail.video_playback_url, { headers: { Range: 'bytes=4-11' } });
+        assert.equal(stream.status, 206); assert.equal(await stream.text(), 'ftypisom');
+        assert.ok(existsSync(filePath(videoUrl)), '视频字段保护源文件，不需要正文引用');
+        await request(`/api/admin/entries/${videoId}`, write('PUT', { ...videoInput, status: 'draft' }));
+        assert.equal((await fetch(base + videoDetail.video_playback_url)).status, 404);
+        assert.ok(existsSync(filePath(videoUrl)), '草稿视频依然保护文件');
+        const nextVideoUrl = await videoUpload();
+        assert.equal((await request(`/api/admin/entries/${videoId}`, write('PUT', { ...videoInput, video_url: nextVideoUrl }))).status, 200);
+        assert.ok(!existsSync(filePath(videoUrl)), '替换视频后清理旧文件');
+        const nextDetail = (await request(`/api/content/entries/${videoId}`)).body.data;
+        assert.notEqual(nextDetail.video_playback_url, videoDetail.video_playback_url, '替换后使用新缓存地址');
+        assert.equal((await fetch(base + videoDetail.video_playback_url)).status, 404);
+        assert.equal((await fetch(base + nextDetail.video_playback_url, { method: 'HEAD' })).status, 200);
+        await request(`/api/admin/entries/${videoId}`, { method: 'DELETE' });
+        assert.ok(!existsSync(filePath(nextVideoUrl)), '删除视频内容后清理源文件');
+
         const recursiveFixtures = [];
         async function searchFixture(input) {
             const result = await request('/api/admin/entries', write('POST', input));

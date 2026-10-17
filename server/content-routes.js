@@ -7,10 +7,12 @@ import { homePlaylist, homeWelcome } from './home-music.js';
 import { articleNavigation } from './article-navigation.js';
 import { createAnnouncementPublicRoutes } from './announcements.js';
 import { publicEntryComparator } from './moment-pins.js';
+import { createVideoRoutes, videoPlaybackUrl } from './videos.js';
 
 const router = express.Router();
 router.use('/announcements', createAnnouncementPublicRoutes({ db: cardDb }));
 router.use(createGalleryArchiveRoutes({ db: cardDb, publicRoot, imagesFor, publicAncestors }));
+router.use(createVideoRoutes({ db: cardDb, publicRoot, publicAncestors }));
 const parse = (value, fallback = []) => { try { return JSON.parse(value); } catch { return fallback; } };
 const entrySelect = `SELECT e.*, rt.name AS resource_type_name,
     (SELECT COUNT(*) FROM entries child WHERE child.parent_id = e.id AND child.status = 'published') AS child_count,
@@ -99,7 +101,7 @@ router.get('/entries/:id', (req, res) => {
     const ancestors = publicAncestors(row);
     if (ancestors === null) return res.status(404).json({ success: false, message: '内容不存在' });
     const sort = ['latest', 'oldest', 'updated'].includes(req.query.sort) ? req.query.sort : 'latest';
-    res.json({ success: true, data: { ...entry(row), ancestors, images: row.resource_kind === 'gallery' ? imagesFor(row.id) : [], article_navigation: articleNavigation(cardDb, row, { sort }) } });
+    res.json({ success: true, data: { ...entry(row), ancestors, images: row.resource_kind === 'gallery' ? imagesFor(row.id) : [], video_playback_url: videoPlaybackUrl(row), article_navigation: articleNavigation(cardDb, row, { sort }) } });
 });
 
 export default router;

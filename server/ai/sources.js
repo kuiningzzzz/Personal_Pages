@@ -37,6 +37,7 @@ export function allowedUrls(task) {
     for (const row of collectionTree(task.collection_id)) {
         for (const url of localReferences(row.body + '\n' + row.summary)) urls.add(url);
         if (row.cover_image) urls.add(row.cover_image);
+        if (row.video_url) urls.add(row.video_url);
         for (const action of JSON.parse(row.actions)) urls.add(action.url);
         for (const image of cardDb.prepare('SELECT url FROM gallery_images WHERE entry_id = ?').all(row.id)) urls.add(image.url);
     }

@@ -10,6 +10,7 @@ test('文章按实际栏目选中导航，合集与图集保留资源库选中�
     assert.equal(navigationPath('/entry/13', { id: 12, kind: 'resource' }), null);
     assert.equal(navigationPath('/resource/collection/12'), '/resource');
     assert.equal(navigationPath('/resource/gallery/12'), '/resource');
+    assert.equal(navigationPath('/resource/video/12'), '/resource');
     assert.equal(navigationPath('/moments'), '/moments');
     assert.equal(navigationPath('/activities'), '/activities');
     assert.equal(navigationPath('/'), '/');

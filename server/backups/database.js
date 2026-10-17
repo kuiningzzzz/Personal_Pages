@@ -122,7 +122,7 @@ const singleton = new Set(['profile', 'home_welcome']);
 // Incremental import follows stable record identities, then natural unique keys.
 // Numeric IDs are allocated afresh, and all relationships follow the resulting map.
 export function merge(db, dump, rewrite = value => value) {
-    const current = snapshot(db), maps = {}, pending = new Set(), added = new Set();
+    const current = snapshot(db), maps = {}, pending = new Set(), added = new Set(), deferredText = [];
     let count = 0, skipped = 0;
     const uuidRows = new Map();
     for (const [table, rows] of Object.entries(current.tables)) for (const r of rows) uuidRows.set(r.identity, { table, row: r.values });
@@ -150,7 +150,9 @@ export function merge(db, dump, rewrite = value => value) {
         if (table === 'entries' && row.parent_id) row.resource_type_id = db.prepare('SELECT resource_type_id FROM entries WHERE id=?').get(row.parent_id).resource_type_id;
         if (table === 'entry_comments' && row.reply_to_id) row.reply_to_name = db.prepare('SELECT u.username FROM entry_comments c JOIN users u ON u.id=c.user_id WHERE c.id=?').get(row.reply_to_id)?.username || row.reply_to_name;
         // At this point collection/task identities exist; rewrite URLs and workspace references.
+        const originalText = Object.fromEntries(Object.entries(row).filter(([, value]) => typeof value === 'string'));
         for (const c of Object.keys(row)) if (typeof row[c] === 'string') row[c] = rewrite(row[c], maps, table, c);
+        const initialText = Object.fromEntries(Object.keys(originalText).map(column => [column, row[column]]));
         const primary = keys(info);
         let existing;
         if (singleton.has(table)) existing = db.prepare(`SELECT * FROM ${quote(table)} WHERE id=?`).get(row.id);
@@ -184,12 +186,24 @@ export function merge(db, dump, rewrite = value => value) {
             const result = insert(db, table, row);
             if (integerId) row.id = Number(result.lastInsertRowid);
             maps[table].set(key, row); added.add(token); count++;
+            deferredText.push({ table, row, primary, originalText, initialText });
             db.prepare('INSERT OR REPLACE INTO backup_records VALUES(?,?,?,?)').run(table, rowKey(info, row), item.identity, String(row.created_at ?? ''));
         }
         pending.delete(token); return maps[table].get(key);
     }
     withoutTriggers(db, 'main', () => {
         for (const [table, rows] of Object.entries(dump.tables)) for (const r of rows) importRow(table, r);
+        // Markdown may link to a video/article imported later in the dump.
+        // Recompute from the original text after ALL identities are allocated,
+        // never from already remapped IDs, and never modify existing records.
+        for (const { table, row, primary, originalText, initialText } of deferredText) {
+            const changes = Object.entries(originalText).filter(([column]) => !primary.includes(column) && row[column] === initialText[column])
+                .map(([column, text]) => [column, rewrite(text, maps, table, column)]).filter(([column, value]) => value !== row[column]);
+            if (!changes.length) continue;
+            db.prepare(`UPDATE ${quote(table)} SET ${changes.map(([column]) => `${quote(column)}=?`).join(',')} WHERE ${primary.map(column => `${quote(column)} IS ?`).join(' AND ')}`)
+                .run(...changes.map(([, value]) => value), ...primary.map(column => row[column]));
+            for (const [column, value] of changes) row[column] = value;
+        }
         for (const alias of dump.aliases || []) {
             const target = maps[alias.table_name]?.get(alias.row_key);
             if (target) db.prepare('INSERT OR IGNORE INTO backup_aliases VALUES(?,?,?)').run(alias.identity, alias.table_name, rowKey(dump.schema[alias.table_name], target));

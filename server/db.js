@@ -16,6 +16,7 @@ import { migrateFeedback } from './feedback/schema.js';
 import { migrateAnnouncements } from './announcements.js';
 import { migrateMomentPins } from './moment-pins.js';
 import { migrateActivities } from './activities/schema.js';
+import { migrateResourceVideos } from './migrations/resource-videos.js';
 import { recoverRestore } from './backups/store.js';
 
 // 获取当前文件的目录
@@ -133,7 +134,7 @@ function initializeDatabase() {
             cardDb.exec("ALTER TABLE entries ADD COLUMN cover_image TEXT NOT NULL DEFAULT ''");
         }
         if (!cardDb.pragma('table_info(entries)').some(column => column.name === 'resource_kind')) {
-            cardDb.exec("ALTER TABLE entries ADD COLUMN resource_kind TEXT NOT NULL DEFAULT 'document' CHECK (resource_kind IN ('document', 'collection', 'gallery'))");
+            cardDb.exec("ALTER TABLE entries ADD COLUMN resource_kind TEXT NOT NULL DEFAULT 'document' CHECK (resource_kind IN ('document', 'collection', 'gallery', 'video'))");
         }
         if (!cardDb.pragma('table_info(entries)').some(column => column.name === 'parent_id')) {
             cardDb.exec('ALTER TABLE entries ADD COLUMN parent_id INTEGER REFERENCES entries(id) ON DELETE SET NULL');
@@ -151,6 +152,7 @@ function initializeDatabase() {
             );
             CREATE INDEX IF NOT EXISTS idx_gallery_images_entry ON gallery_images(entry_id, display_order, id);
         `);
+        migrateResourceVideos(cardDb);
         if (!cardDb.prepare('SELECT id FROM profile WHERE id = 1').get()) {
             const legacy = JSON.parse(cardDb.prepare('SELECT data FROM site_configs WHERE key = ?').get('home_content').data);
             const description = Array.isArray(legacy.profile.bio) ? legacy.profile.bio.join('\n') : String(legacy.profile.bio || '');

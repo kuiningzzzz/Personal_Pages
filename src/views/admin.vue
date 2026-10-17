@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, toRaw } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import { resourceLabel } from '../lib/resources'
@@ -36,8 +36,11 @@ const settings = ref({ momentsDescription: '', resourceDescription: '', activiti
 const entries = ref([])
 const kind = ref('moment')
 const editingId = ref(null)
-const blank = () => ({ kind: kind.value, format: 'article', resource_kind: 'document', parent_id: null, member_ids: [], images: [], title: '', summary: '', cover_image: '', body: '', tags: [], resource_type_id: null, actions: [], status: 'published', pinned: false, published_at: new Date().toISOString() })
+const blank = () => ({ kind: kind.value, format: 'article', resource_kind: 'document', parent_id: null, member_ids: [], images: [], video_url: '', title: '', summary: '', cover_image: '', body: '', tags: [], resource_type_id: null, actions: [], status: 'published', pinned: false, published_at: new Date().toISOString() })
 const form = ref(blank())
+const videoUploadProgress = ref(null)
+let videoUploadRequest
+onBeforeUnmount(() => videoUploadRequest?.abort())
 const isShort = computed(() => kind.value === 'moment' && form.value.format === 'short')
 const bodyLength = computed(() => [...String(form.value.body || '').trim()].length)
 const shortTooLong = computed(() => isShort.value && bodyLength.value > 500)
@@ -152,6 +155,27 @@ async function uploadGallery(event) {
   } catch (cause) { report(`已上传 ${uploaded} 张；${cause.message}`, true) }
   finally { busy.value = false; event.target.value = '' }
 }
+async function uploadVideo(event) {
+  const file = event.target.files?.[0]
+  if (!file || busy.value) return
+  if (!/\.mp4$/i.test(file.name) || file.size > 1024 ** 3) { report('请选择不超过 1 GB 的 MP4 视频', true); event.target.value = ''; return }
+  const target = form.value
+  busy.value = true; videoUploadProgress.value = 0
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest(); videoUploadRequest = xhr
+      xhr.open('POST', '/api/admin/upload-video'); xhr.responseType = 'json'
+      xhr.upload.onprogress = event => { if (event.lengthComputable) videoUploadProgress.value = Math.round(event.loaded / event.total * 100) }
+      xhr.onerror = () => reject(new Error('上传连接中断，请重试'))
+      xhr.onabort = () => reject(new Error('已取消视频上传'))
+      xhr.onload = () => xhr.status >= 200 && xhr.status < 300 && xhr.response?.success ? resolve(xhr.response) : reject(new Error(xhr.response?.message || (xhr.status === 413 ? '视频超过服务器允许的上传大小' : '视频上传失败')))
+      const data = new FormData(); data.append('file', file); xhr.send(data)
+    })
+    target.video_url = result.url
+    report('视频已上传，保存内容后生效')
+  } catch (cause) { report(cause.message, true) }
+  finally { videoUploadRequest = null; videoUploadProgress.value = null; busy.value = false; event.target.value = '' }
+}
 function moveImage(index, shift) { const target = index + shift; if (target < 0 || target >= form.value.images.length) return; [form.value.images[index], form.value.images[target]] = [form.value.images[target], form.value.images[index]] }
 function imageDimensions(event, image) { image.width = event.target.naturalWidth; image.height = event.target.naturalHeight }
 onMounted(async () => { try { const r = await fetch('/api/admin/session'); const j = await r.json(); authenticated.value = j.authenticated; if (authenticated.value) await loadAll() } catch (e) { report(e.message || '连接失败', true) } finally { checking.value = false } })
@@ -197,7 +221,7 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
 <section v-if="tab === 'profile'" class="admin-section"><div class="section-head"><div><h2>个人介绍</h2><p>头像、名称、描述和下方卡片都会实时显示在首页。</p></div><button class="primary-button" :disabled="busy" @click="saveProfile">保存首页</button></div><div class="surface editor-box"><div class="form-grid"><label>头像地址<input v-model="profile.avatar" placeholder="/picture/avatar.png" /></label><label>显示名称<input v-model="profile.name" placeholder="你的名字" /></label></div><label>上传头像<input type="file" accept="image/*" @change="uploadFile($event, 'avatar')" /></label><img v-if="profile.avatar" :src="profile.avatar" class="avatar-preview" alt="当前头像" /><label>描述<textarea v-model="profile.description" rows="4" placeholder="简单介绍一下自己"></textarea></label></div><HomeWelcomeAdmin v-model="welcome" /><HomePlaylistAdmin v-model="playlist" :busy="busy" @notice="report" @uploading="busy = $event" /><div class="section-head card-head"><div><h2>介绍卡片</h2><p>卡片内容支持 Markdown，使用 ++文字++ 添加下划线。</p></div><button class="ghost-button" @click="cards.push({ title: '', content: '' })">+ 添加卡片</button></div><div v-for="(card, index) in cards" :key="index" class="surface editor-box card-editor"><div class="card-controls"><strong>卡片 {{ index + 1 }}</strong><div><button @click="moveCard(index, -1)" :disabled="index === 0">上移</button><button @click="moveCard(index, 1)" :disabled="index === cards.length - 1">下移</button><button @click="cards.splice(index, 1)">删除</button></div></div><label>卡片标题<input v-model="card.title" placeholder="例如：联系方式" /></label><label>卡片内容 · Markdown<textarea v-model="card.content" rows="6" placeholder="支持链接、代码块、加粗、斜体、划去、下划线"></textarea></label><details><summary>预览</summary><MarkdownContent :source="card.content" /></details></div></section>
       <section v-else-if="tab === 'settings'" class="admin-section"><div class="section-head"><div><h2>站点文案</h2><p>编辑各页面介绍和页脚备案信息。</p></div><button class="primary-button" :disabled="busy" @click="saveSettings">保存文案</button></div><div class="surface editor-box"><label>动态页介绍<textarea v-model="settings.momentsDescription" rows="3"></textarea></label><label>资源库介绍<textarea v-model="settings.resourceDescription" rows="3"></textarea></label><label>广场介绍<textarea v-model="settings.activitiesMessage" rows="3"></textarea></label><label>备案号<input v-model="settings.icpNumber" placeholder="留空则不显示" /></label></div></section>
       <section v-else-if="tab === 'moment' || tab === 'resource'" class="admin-section">
-        <div ref="listHeading" class="section-head list-heading"><div><h2>{{ tab === 'moment' ? '动态' : '资源库' }}</h2><p>编辑、发布或保留草稿。合集成员只在对应合集里展示。</p></div><div v-if="tab === 'resource'" class="head-actions"><button class="primary-button" @click="newEntry('resource')">+ 文档</button><button class="ghost-button" @click="newEntry('resource', 'collection')">+ 合集</button><button class="ghost-button" @click="newEntry('resource', 'gallery')">+ 图集</button></div><button v-else class="primary-button" @click="newEntry('moment')">+ 新建动态</button></div>
+        <div ref="listHeading" class="section-head list-heading"><div><h2>{{ tab === 'moment' ? '动态' : '资源库' }}</h2><p>编辑、发布或保留草稿。合集成员只在对应合集里展示。</p></div><div v-if="tab === 'resource'" class="head-actions"><button class="primary-button" @click="newEntry('resource')">+ 文档</button><button class="ghost-button" @click="newEntry('resource', 'collection')">+ 合集</button><button class="ghost-button" @click="newEntry('resource', 'gallery')">+ 图集</button><button class="ghost-button" @click="newEntry('resource', 'video')">+ 视频</button></div><button v-else class="primary-button" @click="newEntry('moment')">+ 新建动态</button></div>
         <details v-if="tab === 'resource'" class="category-manager">
           <summary>资源分类管理 <span>{{ types.length }} 个大类</span></summary>
           <div class="category-content">
@@ -226,10 +250,10 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
           <div class="form-grid"><label>标题{{ form.format === 'short' ? '（可选）' : '' }}<input v-model="form.title" placeholder="给内容起个标题" /></label><label>发布状态<select v-model="form.status" @change="form.status === 'draft' && (form.pinned = false)"><option value="published">已发布</option><option value="draft">草稿</option></select></label></div>
           <label v-if="kind === 'moment'" class="moment-pin-setting"><input v-model="form.pinned" type="checkbox" :disabled="busy || form.status === 'draft'" /><span>置顶动态（短帖与长文合计最多 5 条，仅限已发布内容）</span></label>
           <div class="form-grid"><label>发布时间<input v-model="dateInput" type="datetime-local" /></label><label v-if="kind === 'moment'">动态形式<select v-model="form.format"><option value="article">长文</option><option value="short">短帖</option></select></label><label v-else-if="!form.parent_id">根大类<select v-model.number="form.resource_type_id"><option :value="null">未分类</option><option v-for="type in types" :key="type.id" :value="type.id">{{ type.name }}</option></select></label><label v-else>根大类 · 继承父合集<input :value="inheritedCategory" readonly /></label></div>
-          <div v-if="kind === 'resource'" class="form-grid"><label>资源形态<select v-model="form.resource_kind"><option value="document">文档</option><option value="collection">合集</option><option value="gallery">图集</option></select></label><label>所属合集<select v-model="form.parent_id"><option :value="null">无 · 展示在资源库首页</option><option v-for="collection in parentCollections" :key="collection.id" :value="collection.id">{{ resourceLocation(collection) }} / {{ collection.title }}{{ collection.status === 'draft' ? '（草稿）' : '' }}</option></select></label></div>
+          <div v-if="kind === 'resource'" class="form-grid"><label>资源形态<select v-model="form.resource_kind"><option value="document">文档</option><option value="collection">合集</option><option value="gallery">图集</option><option value="video">视频</option></select></label><label>所属合集<select v-model="form.parent_id"><option :value="null">无 · 展示在资源库首页</option><option v-for="collection in parentCollections" :key="collection.id" :value="collection.id">{{ resourceLocation(collection) }} / {{ collection.title }}{{ collection.status === 'draft' ? '（草稿）' : '' }}</option></select></label></div>
           <p v-if="kind === 'resource' && form.parent_id" class="editor-hint">此内容只在所属合集中出现，大类随父合集自动继承；如果上级合集是草稿，此内容也暂不对外展示。</p>
           <section v-if="kind === 'resource' && form.resource_kind === 'collection'" class="member-editor">
-            <div class="section-head"><div><h3>合集成员</h3><p>勾选已有资源、图集或其他合集。保存时移入本合集；取消勾选的原成员会回到资源库首页。</p></div><span>{{ form.member_ids.length }} 项</span></div>
+            <div class="section-head"><div><h3>合集成员</h3><p>勾选已有文档、图集、视频或其他合集。保存时移入本合集；取消勾选的原成员会回到资源库首页。</p></div><span>{{ form.member_ids.length }} 项</span></div>
             <input v-model="memberQuery" type="search" placeholder="按标题、标签或所属合集查找成员" aria-label="查找合集成员" />
             <div class="member-picker"><label v-for="item in memberCandidates" :key="item.id" class="member-option"><input v-model="form.member_ids" type="checkbox" :value="item.id" /><span><strong>{{ item.title }}</strong><small>{{ resourceLabel(item) }} · {{ resourceLocation(item) }}{{ item.status === 'draft' ? ' · 草稿' : '' }}</small></span></label><p v-if="!memberCandidates.length" class="editor-hint">暂无可加入的资源，可以先保存合集，再创建子资源。</p></div>
           </section>
@@ -241,6 +265,14 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
           <p v-if="isShort" id="short-body-count" class="editor-hint" :class="{ 'count-warning': shortTooLong }" :role="shortTooLong ? 'alert' : undefined">{{ bodyLength }} / 500 字{{ shortTooLong ? `，请删减 ${bodyLength - 500} 字后保存。` : ' · 包含 Markdown 标记和链接地址；短帖只在列表中展示。' }}</p>
           <label class="upload-label">上传图片或文件并插入正文<input type="file" @change="uploadFile($event, 'body')" /></label>
           <details><summary>正文预览</summary><MarkdownContent :source="form.body" /></details>
+          <section v-if="kind === 'resource' && form.resource_kind === 'video'" class="video-editor">
+            <h3>视频</h3>
+            <p class="editor-hint">每页一个 MP4，最大 1 GB。封面用作播放前的预览图；推荐使用 H.264 视频与 AAC 音频，兼容手机和电脑。</p>
+            <label>MP4 地址<input v-model="form.video_url" :disabled="busy" placeholder="上传后自动填写，或输入 https://.../video.mp4" /></label>
+            <label class="upload-label">上传或替换视频<input type="file" accept="video/mp4,.mp4" :disabled="busy" @change="uploadVideo" /></label>
+            <div v-if="videoUploadProgress !== null" class="video-upload-progress" role="status"><progress :value="videoUploadProgress" max="100"></progress><span>{{ videoUploadProgress === 100 ? '正在校验文件…' : `正在上传 ${videoUploadProgress}%` }}</span><button type="button" class="ghost-button" @click="videoUploadRequest?.abort()">取消上传</button></div>
+            <video v-if="form.video_url" :key="form.video_url" class="video-preview" :src="form.video_url" :poster="form.cover_image || undefined" controls playsinline preload="none" aria-label="视频预览"></video>
+          </section>
           <section v-if="kind === 'resource' && form.resource_kind === 'gallery'" class="gallery-editor">
             <div class="section-head"><div><h3>图集图片</h3><p>按比例以瀑布流呈现，点击可查看大图。第一张图片会作为默认封面。</p></div><span>{{ form.images.length }} / 500 张</span></div>
             <label class="upload-label">批量上传图片<input type="file" accept="image/*" multiple :disabled="busy" @change="uploadGallery" /></label>

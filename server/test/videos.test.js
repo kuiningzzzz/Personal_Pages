@@ -1,0 +1,83 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve, sep } from 'node:path';
+import express from 'express';
+import Database from '../sqlite.js';
+import { migrateResourceVideos } from '../migrations/resource-videos.js';
+import { createVideoRoutes, validVideoUrl, videoPlaybackUrl } from '../videos.js';
+
+test('视频升级保留原内容、关联、触发器、索引和自增序号，重复启动不丢数据', t => {
+    const db = new Database(':memory:'); t.after(() => db.close());
+    db.exec(`PRAGMA foreign_keys=ON;
+        CREATE TABLE entries(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, resource_kind TEXT DEFAULT 'document' CHECK(resource_kind IN ('document','collection','gallery')),parent_id INTEGER REFERENCES entries(id) ON DELETE SET NULL);
+        CREATE TABLE comments(id INTEGER PRIMARY KEY,entry_id INTEGER REFERENCES entries(id) ON DELETE CASCADE);
+        CREATE TABLE events(entry_id INTEGER); CREATE TABLE other(id INTEGER);
+        CREATE INDEX entries_parent ON entries(parent_id);
+        CREATE TRIGGER entry_events AFTER INSERT ON entries BEGIN INSERT INTO events VALUES(NEW.id); END;
+        CREATE TRIGGER other_events AFTER INSERT ON other BEGIN INSERT INTO events SELECT id FROM entries; END;
+        CREATE VIEW entry_titles AS SELECT id,title FROM entries;
+        INSERT INTO entries(id,title,resource_kind) VALUES(1,'原合集','collection');
+        INSERT INTO entries(id,title,parent_id) VALUES(2,'原文档',1);
+        INSERT INTO entries(id,title) VALUES(100,'已删除的内容'); DELETE FROM entries WHERE id=100;
+        INSERT INTO comments VALUES(1,2);`);
+    const events = db.prepare('SELECT count(*) AS n FROM events').get().n;
+    migrateResourceVideos(db); migrateResourceVideos(db);
+    assert.equal(db.prepare('SELECT entry_id FROM comments').get().entry_id, 2);
+    assert.equal(db.prepare('SELECT parent_id,video_url FROM entries WHERE id=2').get().parent_id, 1);
+    assert.equal(db.prepare('SELECT video_url FROM entries WHERE id=2').get().video_url, '');
+    assert.equal(db.prepare('SELECT count(*) AS n FROM events').get().n, events);
+    assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE name='entries_parent'").get());
+    assert.equal(db.prepare('SELECT title FROM entry_titles WHERE id=2').get().title, '原文档');
+    const id = Number(db.prepare("INSERT INTO entries(title,resource_kind,video_url,parent_id) VALUES('视频','video','/source/movie.mp4',1)").run().lastInsertRowid);
+    assert.equal(id, 101);
+    assert.equal(db.prepare('SELECT count(*) AS n FROM events').get().n, events + 1);
+    db.prepare('INSERT INTO other VALUES(1)').run();
+    assert.equal(db.prepare('SELECT count(*) AS n FROM events').get().n, events + 4);
+    assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+    assert.equal(db.prepare('PRAGMA legacy_alter_table').get().legacy_alter_table, 0);
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('视频地址只接受本地 source MP4 或 HTTP(S) MP4，播放链接随文件版本变化', () => {
+    for (const value of ['/source/movie.mp4', 'https://example.com/movie.mp4?token=abc']) assert.equal(validVideoUrl(value), true);
+    for (const value of ['', 'javascript:movie.mp4', '//example.com/movie.mp4', '/picture/movie.mp4', '/source/../private.mp4', 'https://user:pass@example.com/movie.mp4', '/source/movie.webm']) assert.equal(validVideoUrl(value), false, value);
+    assert.equal(videoPlaybackUrl({ id: 1, resource_kind: 'video', video_url: '/source/one.mp4' }), '/api/content/entries/1/video/one.mp4');
+    assert.equal(videoPlaybackUrl({ id: 1, resource_kind: 'video', video_url: '/source/two.mp4' }), '/api/content/entries/1/video/two.mp4');
+    assert.equal(videoPlaybackUrl({ id: 1, resource_kind: 'video', video_url: 'https://example.com/video.mp4' }), 'https://example.com/video.mp4');
+});
+
+test('视频流支持 HEAD、分段拖动、尾部元数据、条件缓存，并隐藏草稿和私有合集', async t => {
+    const folder = await mkdtemp(join(tmpdir(), 'pages-video-'));
+    const db = new Database(':memory:');
+    const name = '1790000000000-0123456789abcdef.mp4';
+    const file = Buffer.alloc(256 * 1024); for (let i = 0; i < file.length; i++) file[i] = i % 251;
+    await mkdir(join(folder, 'source')); await writeFile(join(folder, 'source', name), file);
+    db.exec('CREATE TABLE entries(id INTEGER PRIMARY KEY,kind TEXT,resource_kind TEXT,status TEXT,parent_id INTEGER,video_url TEXT)');
+    const insert = db.prepare("INSERT INTO entries VALUES(?,'resource','video',?,?,?)");
+    insert.run(1, 'published', null, '/source/' + name); insert.run(2, 'draft', null, '/source/' + name); insert.run(3, 'published', 100, '/source/' + name);
+    const app = express(); app.use('/api/content', createVideoRoutes({ db, publicRoot: folder, publicAncestors: row => row.parent_id ? null : [] }));
+    const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+    t.after(async () => {
+        await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }); db.close();
+        assert.ok(resolve(folder).startsWith(resolve(tmpdir()) + sep) && folder.includes('pages-video-'));
+        await rm(folder, { recursive: true, force: true });
+    });
+    const url = `http://127.0.0.1:${server.address().port}/api/content/entries/1/video/${name}`;
+    const head = await fetch(url, { method: 'HEAD' });
+    assert.equal(head.status, 200); assert.equal(head.headers.get('content-length'), String(file.length));
+    assert.equal(head.headers.get('accept-ranges'), 'bytes'); assert.match(head.headers.get('content-type'), /video\/mp4/);
+    assert.match(head.headers.get('cache-control'), /immutable/);
+    const middle = await fetch(url, { headers: { Range: 'bytes=1000-1999' } });
+    assert.equal(middle.status, 206); assert.equal(middle.headers.get('content-range'), `bytes 1000-1999/${file.length}`);
+    assert.deepEqual(Buffer.from(await middle.arrayBuffer()), file.subarray(1000, 2000));
+    const tail = await fetch(url, { headers: { Range: 'bytes=-128' } });
+    assert.equal(tail.status, 206); assert.deepEqual(Buffer.from(await tail.arrayBuffer()), file.subarray(-128));
+    const invalid = await fetch(url, { headers: { Range: 'bytes=999999-' } }); assert.equal(invalid.status, 416);
+    assert.equal((await fetch(url, { headers: { 'If-None-Match': head.headers.get('etag'), 'Cache-Control': 'max-age=0' } })).status, 304);
+    const stale = await fetch(url, { headers: { Range: 'bytes=0-99', 'If-Range': 'Mon, 01 Jan 1990 00:00:00 GMT' } });
+    assert.equal(stale.status, 200); assert.equal((await stale.arrayBuffer()).byteLength, file.length);
+    for (const id of [2, 3]) assert.equal((await fetch(url.replace('/entries/1/', `/entries/${id}/`))).status, 404);
+    const missing = await fetch(url.replace(name, 'old-version.mp4')); assert.equal(missing.status, 404); assert.equal(missing.headers.get('cache-control'), 'no-store');
+});

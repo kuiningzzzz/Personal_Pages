@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import GalleryViewer from '../components/GalleryViewer.vue'
+import VideoViewer from '../components/VideoViewer.vue'
 import ResourceBreadcrumbs from '../components/ResourceBreadcrumbs.vue'
 import CommentsPanel from '../components/CommentsPanel.vue'
 import { lockPageScroll, trapFocus } from '../lib/layers'
@@ -46,7 +47,7 @@ const drawerTrigger = ref(null)
 const media = window.matchMedia('(max-width: 900px)')
 const mobile = ref(media.matches)
 const drawerOpen = ref(false)
-const outline = computed(() => [...headings.value, ...(entry.value?.resource_kind === 'gallery' ? [{ id: `gallery-${entry.value.id}`, text: '图集', level: 1 }] : [])])
+const outline = computed(() => [...headings.value, ...(['gallery', 'video'].includes(entry.value?.resource_kind) ? [{ id: `${entry.value.resource_kind}-${entry.value.id}`, text: resourceLabel(entry.value), level: 1 }] : [])])
 const minimumLevel = computed(() => Math.min(...outline.value.map(item => item.level), 6))
 let releaseScroll, frame = 0, resizeObserver, followPending = false
 function trackSection() {
@@ -116,7 +117,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 </script>
 
 <template>
-  <div class="page-shell detail-page" :class="{ 'gallery-page': entry?.resource_kind === 'gallery' }">
+  <div class="page-shell detail-page" :class="{ 'gallery-page': ['gallery', 'video'].includes(entry?.resource_kind) }">
     <div v-if="error" class="surface state">{{ error }}</div>
     <div v-else-if="!entry" class="surface state">加载中…</div>
     <template v-else>
@@ -134,7 +135,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
       <article class="article">
         <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time></div>
         <h1 v-if="entry.title">{{ entry.title }}</h1>
-        <img v-if="entry.cover_image && entry.resource_kind !== 'gallery'" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
+        <img v-if="entry.cover_image && !['gallery', 'video'].includes(entry.resource_kind)" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
         <MarkdownContent v-if="entry.summary" class="lead" :source="entry.summary" />
         <div v-if="entry.tags.length" class="tags"><span v-for="tag in entry.tags" :key="tag">#{{ tag }}</span></div>
         <MarkdownContent :source="entry.body" :heading-prefix="`entry-${entry.id}-section-`" @outline="headings = $event" />
@@ -148,6 +149,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
           </router-link>
         </nav>
       </article>
+      <section v-if="entry.resource_kind === 'video'" :id="`video-${entry.id}`" class="gallery-section video-section"><div class="gallery-heading"><h2>视频</h2></div><VideoViewer v-if="entry.video_playback_url" :src="entry.video_playback_url" :poster="entry.cover_image" :title="entry.title" /><p v-else class="lead">暂无可播放的视频。</p></section>
       <section v-if="entry.resource_kind === 'gallery'" :id="`gallery-${entry.id}`" class="gallery-section"><div class="gallery-heading"><h2>图集</h2><button type="button" class="ghost-button gallery-download" :disabled="downloading || !entry.images.length" :aria-busy="downloading" @click="downloadGallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4" stroke-linecap="round" stroke-linejoin="round" /></svg>{{ downloading ? '正在打包…' : '下载整个图包' }}</button></div><p v-if="downloadError" class="gallery-download-error" role="alert">{{ downloadError }}</p><GalleryViewer :images="entry.images" /></section>
         </div>
       </div>
@@ -168,6 +170,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 .toc-panel a.active { color: var(--link); font-size: 16px; font-weight: 800; }
 .toc-panel p { color: var(--muted); font-size: 12px; line-height: 1.7; }
 .gallery-section { scroll-margin-top: 105px; margin-top: 38px; }
+.video-section .gallery-heading { margin-bottom: 18px; }
 .gallery-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; }
 .gallery-heading h2 { margin: 0; color: var(--ink); font-family: var(--heading-font); font-size: 24px; }
 .gallery-download { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; font-size: 12px; }
