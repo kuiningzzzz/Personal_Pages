@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { music, currentTrack, currentPlaylist, togglePlayback, previousTrack, nextTrack, cyclePlayMode, selectTrack, selectPlaylist, seekMusic, volumeIcon, setVolume, toggleMute } from '../lib/music'
 import { searchSongs } from '../lib/music-library'
 import { musicTime } from '../lib/music-queue'
@@ -10,18 +10,68 @@ const playlistOpen = ref(false)
 const volumeOpen = ref(false)
 const volumePercent = computed(() => Math.round(music.volume * 100))
 const container = ref(null)
+const popover = ref(null)
+const popoverStyle = ref({ visibility: 'hidden' })
+let popoverObserver, positionFrame = 0
 const search = ref('')
 const searchInput = ref(null)
 const searching = computed(() => Boolean(search.value.trim()))
 const songs = computed(() => searching.value ? searchSongs(music.playlists, search.value) : music.tracks.map((track, index) => ({ track, index, playlistId: music.playlistId, playlistTitle: currentPlaylist.value?.title })))
 const selected = song => song.playlistId === music.playlistId && song.index === music.currentIndex
 const modeNames = { single: '单曲循环', list: '列表循环', shuffle: '随机播放' }
-function close(event) { if (!container.value?.contains(event.target)) { playlistOpen.value = false; volumeOpen.value = false } }
+function close(event) { if (!container.value?.contains(event.target) && !popover.value?.contains(event.target)) { playlistOpen.value = false; volumeOpen.value = false } }
 function keys(event) { if (event.key === 'Escape') { playlistOpen.value = false; volumeOpen.value = false } }
 function openVolume() { volumeOpen.value = !volumeOpen.value; playlistOpen.value = false }
 function openPlaylist() { playlistOpen.value = !playlistOpen.value; volumeOpen.value = false; if (playlistOpen.value) { search.value = ''; nextTick(() => searchInput.value?.focus({ preventScroll: true })) } }
-onMounted(() => { window.addEventListener('pointerdown', close); window.addEventListener('keydown', keys) })
-onUnmounted(() => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', keys) })
+function positionPopover() {
+  positionFrame = 0
+  if ((!playlistOpen.value && !volumeOpen.value) || !container.value || !popover.value) return
+  const rect = container.value.getBoundingClientRect()
+  const mobile = window.matchMedia('(max-width: 720px)').matches
+  const viewport = window.visualViewport
+  const viewportLeft = viewport?.offsetLeft || 0, viewportTop = viewport?.offsetTop || 0
+  const viewportWidth = viewport?.width || document.documentElement.clientWidth
+  const viewportBottom = viewportTop + (viewport?.height || window.innerHeight) - 12
+  const headerBottom = document.querySelector('.site-header')?.getBoundingClientRect().bottom || 0
+  const minimumTop = Math.max(viewportTop + 12, headerBottom + 12)
+  const width = Math.min(volumeOpen.value ? 260 : mobile ? 330 : Math.min(rect.width, 360), viewportWidth - 40)
+  const space = mobile ? viewportBottom - (rect.bottom + 12) : Math.min(viewportBottom, rect.bottom - 48) - minimumTop
+  const maxHeight = Math.max(0, Math.min(460, space >= 140 ? space : viewportBottom - minimumTop))
+  // Measure at the final width before placing the portal; long titles can wrap.
+  popover.value.style.width = `${width}px`
+  popover.value.style.maxHeight = `${maxHeight}px`
+  const height = popover.value.offsetHeight
+  const top = Math.max(minimumTop, Math.min(mobile ? rect.bottom + 12 : rect.bottom - 48 - height, viewportBottom - height))
+  const left = Math.max(viewportLeft + 20, Math.min(rect.right - width, viewportLeft + viewportWidth - width - 20))
+  popoverStyle.value = { width: `${width}px`, maxHeight: `${maxHeight}px`, top: `${top}px`, left: `${left}px` }
+}
+function schedulePosition(event) {
+  if ((!playlistOpen.value && !volumeOpen.value) || (event?.target instanceof Node && popover.value?.contains(event.target))) return
+  if (!positionFrame) positionFrame = requestAnimationFrame(positionPopover)
+}
+watch([playlistOpen, volumeOpen], async ([playlist, volume]) => {
+  popoverObserver?.disconnect()
+  if (!playlist && !volume) return
+  popoverStyle.value = { visibility: 'hidden' }
+  await nextTick()
+  positionPopover()
+  if (popover.value) popoverObserver?.observe(popover.value)
+})
+onMounted(() => {
+  popoverObserver = new ResizeObserver(() => schedulePosition())
+  window.addEventListener('pointerdown', close); window.addEventListener('keydown', keys)
+  window.addEventListener('resize', schedulePosition, { passive: true })
+  window.addEventListener('scroll', schedulePosition, { passive: true, capture: true })
+  window.visualViewport?.addEventListener('resize', schedulePosition, { passive: true })
+  window.visualViewport?.addEventListener('scroll', schedulePosition, { passive: true })
+})
+onUnmounted(() => {
+  popoverObserver?.disconnect(); cancelAnimationFrame(positionFrame)
+  window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', keys)
+  window.removeEventListener('resize', schedulePosition); window.removeEventListener('scroll', schedulePosition, true)
+  window.visualViewport?.removeEventListener('resize', schedulePosition)
+  window.visualViewport?.removeEventListener('scroll', schedulePosition)
+})
 </script>
 <template>
   <section ref="container" class="player-console" aria-label="音乐播放器">
@@ -33,17 +83,21 @@ onUnmounted(() => { window.removeEventListener('pointerdown', close); window.rem
       <button type="button" :disabled="!music.tracks.length" :aria-label="`${modeNames[music.mode]}，点击切换循环模式`" :title="modeNames[music.mode]" @click="cyclePlayMode"><PlayerIcon :name="music.mode" /></button>
       <button type="button" :aria-expanded="playlistOpen" aria-controls="home-playlist" aria-label="选择歌单" @click="openPlaylist"><PlayerIcon name="playlist" /></button>
     </div>
-    <Transition name="playlist-pop"><div v-if="volumeOpen" id="player-volume" class="volume-popover"><header><strong>音量</strong><span>{{ volumePercent }}%</span></header><div class="volume-adjust"><button type="button" :aria-label="music.volume === 0 ? '恢复音量' : '静音'" :title="music.volume === 0 ? '恢复音量' : '静音'" @click="toggleMute"><PlayerIcon :name="volumeIcon" /></button><input type="range" min="0" max="100" step="1" :value="volumePercent" aria-label="音量" :aria-valuetext="volumePercent + '%'" @input="setVolume(Number($event.target.value) / 100)" /></div></div></Transition>
     <p v-if="music.error" class="player-error" role="alert">{{ music.error }}</p>
+    <Teleport to="body">
     <Transition name="playlist-pop">
-      <div v-if="playlistOpen" id="home-playlist" class="playlist-popover">
+      <div v-if="playlistOpen || volumeOpen" :id="playlistOpen ? 'home-playlist' : 'player-volume'" ref="popover" class="player-popover" :class="playlistOpen ? 'playlist-popover' : 'volume-popover'" :style="popoverStyle">
+        <template v-if="volumeOpen"><header><strong>音量</strong><span>{{ volumePercent }}%</span></header><div class="volume-adjust"><button type="button" :aria-label="music.volume === 0 ? '恢复音量' : '静音'" :title="music.volume === 0 ? '恢复音量' : '静音'" @click="toggleMute"><PlayerIcon :name="volumeIcon" /></button><input type="range" min="0" max="100" step="1" :value="volumePercent" aria-label="音量" :aria-valuetext="volumePercent + '%'" @input="setVolume(Number($event.target.value) / 100)" /></div></template>
+        <template v-else>
         <header><strong>{{ searching ? '搜索歌曲' : currentPlaylist?.title || '歌单' }}</strong><span>{{ searching ? songs.length + ' 个结果' : music.playlists.length + ' 个歌单' }}</span></header>
         <label class="playlist-search"><span class="sr-only">搜索所有歌单中的歌曲、歌手</span><input ref="searchInput" v-model="search" type="search" placeholder="搜索所有歌单的歌曲、歌手…" autocomplete="off" /></label>
         <nav v-if="!searching && music.playlists.length" class="playlist-selector" aria-label="切换歌单"><button v-for="playlist in music.playlists" :key="playlist.id" type="button" :class="{ selected: playlist.id === music.playlistId }" :aria-pressed="playlist.id === music.playlistId" @click="selectPlaylist(playlist.id)">{{ playlist.title }}<span>{{ playlist.tracks.length }}</span></button></nav>
         <p v-if="!songs.length" role="status">{{ searching ? '没有找到匹配的歌曲' : '这个歌单还没有歌曲' }}</p>
         <div v-else class="playlist-rows"><button v-for="song in songs" :key="`${song.playlistId}-${song.track.id || song.index}`" type="button" :class="{ selected: selected(song) }" :aria-pressed="selected(song)" @click="selectTrack(song.index, song.playlistId); playlistOpen = false"><span>{{ String(song.index + 1).padStart(2, '0') }}</span><div><strong>{{ song.track.title }}</strong><small v-if="song.track.artist || searching">{{ [song.track.artist, searching ? song.playlistTitle : ''].filter(Boolean).join(' · ') }}</small></div><PlayerIcon v-if="selected(song)" :name="music.playing ? 'pause' : 'play'" /></button></div>
+        </template>
       </div>
     </Transition>
+    </Teleport>
   </section>
 </template>
 <style scoped>
@@ -67,8 +121,11 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 button svg { width: 21px; height: 21px; }
 .console-tools { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 14px; }
 .player-error { margin: 10px 0 0; color: var(--danger); font-size: 12px; line-height: 1.6; }
-.playlist-popover { position: absolute; z-index: 90; right: 0; bottom: 48px; width: min(100%, 360px); max-height: min(460px, calc(100dvh - 220px)); display: flex; flex-direction: column; padding: 16px; border-radius: 7px; background: var(--paper); box-shadow: 6px 7px 0 var(--denim); }
-.volume-popover { position: absolute; z-index: 90; right: 0; bottom: 48px; width: min(260px, calc(100vw - 40px)); padding: 15px; border-radius: 7px; background: var(--paper); box-shadow: 5px 6px 0 var(--denim); }
+/* Outside the page's perspective/sticky stacking contexts: above the record,
+   below the mobile navigation (100) and site dialogs. */
+.player-popover { position: fixed; z-index: 95; color: var(--ink); }
+.playlist-popover { display: flex; flex-direction: column; padding: 16px; border-radius: 7px; background: var(--paper); box-shadow: 6px 7px 0 var(--denim); }
+.volume-popover { overflow-y: auto; padding: 15px; border-radius: 7px; background: var(--paper); box-shadow: 5px 6px 0 var(--denim); }
 .volume-popover header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 9px; font-size: 13px; }.volume-popover header span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .volume-adjust { display: flex; align-items: center; gap: 12px; }.volume-adjust button { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 6px; border: 0; border-radius: 4px; color: var(--ink); background: var(--accent-soft); }.volume-adjust input { flex: 1; min-width: 0; width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .playlist-popover header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 12px; font-size: 14px; }.playlist-popover header span, .playlist-popover p { color: var(--muted); font-size: 12px; }
@@ -81,6 +138,6 @@ button svg { width: 21px; height: 21px; }
 @keyframes sound-pulse { to { transform: scaleY(.4); } }
 @media (max-width: 720px) { .player-console { padding: 12px 14px 9px; box-shadow: 4px 5px 0 var(--sky); }.track-label strong { font-size: 13px; }.track-label small { margin-top: 2px; font-size: 10px; }.sound-meter { display: none; }.track-progress { margin: 10px 0 6px; }.transport { gap: 14px; }.transport .play-key { width: 39px; height: 32px; }.transport button { width: 30px; height: 30px; padding: 6px; }.transport svg, .console-tools svg { width: 17px; height: 17px; }.console-tools { margin-top: 4px; }.console-tools > button { width: 28px; height: 26px; padding: 4px; }.playlist-popover { width: min(330px, calc(100vw - 40px)); }.player-error { font-size: 10px; } }
 @media (prefers-reduced-motion: reduce) { .sound-meter i { animation: none; }.transport button, .console-tools button, .playlist-pop-enter-active, .playlist-pop-leave-active { transition: none; } }
-@media (max-width: 720px) { .playlist-popover, .volume-popover { top: calc(100% + 12px); bottom: auto; }.playlist-rows { max-height: 270px; } }
+@media (max-width: 720px) { .playlist-rows { max-height: 270px; } }
 @media (max-width: 720px) and (max-height: 660px) { .player-console { padding: 8px 10px; }.track-progress { margin: 6px 0 3px; }.console-tools { margin-top: 0; }.track-label small { max-height: 14px; overflow: hidden; }.transport .play-key { height: 28px; }.transport button { height: 26px; }.console-tools > button { height: 24px; } }
 </style>
