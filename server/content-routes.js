@@ -4,6 +4,7 @@ import { imagesFor, publicAncestors } from './resource-structure.js';
 import { publicRoot } from './upload-cleanup.js';
 import { createGalleryArchiveRoutes } from './gallery-archive.js';
 import { homePlaylist, homePlaylists, homeWelcome } from './home-music.js';
+import { homeSentences } from './home-sentences.js';
 import { articleNavigation } from './article-navigation.js';
 import { createAnnouncementPublicRoutes } from './announcements.js';
 import { publicEntryComparator } from './moment-pins.js';
@@ -24,7 +25,7 @@ const entry = ({ gallery_cover, ...row }) => ({ ...row, pinned: Boolean(row.pinn
 router.get('/profile', (_req, res) => {
     const profile = cardDb.prepare('SELECT avatar, name, description FROM profile WHERE id = 1').get();
     const cards = cardDb.prepare('SELECT id, title, content FROM home_cards ORDER BY display_order, id').all();
-    res.json({ success: true, data: { profile, cards, playlists: homePlaylists(cardDb), playlist: homePlaylist(cardDb), welcome: homeWelcome(cardDb) } });
+    res.json({ success: true, data: { profile, cards, playlists: homePlaylists(cardDb), playlist: homePlaylist(cardDb), welcome: homeWelcome(cardDb), sentences: homeSentences(cardDb) } });
 });
 
 router.get('/resource-types', (_req, res) => {

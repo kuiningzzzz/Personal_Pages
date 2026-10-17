@@ -15,6 +15,7 @@ import { relocatePaths } from '../backups/paths.js';
 import { sessionProjectKey, decodedSessionFrames } from '../backups/ai-sessions.js';
 import { zstdCompressSync } from 'node:zlib';
 import { savePlaylists, homePlaylists } from '../home-music.js';
+import { saveSentences, homeSentences } from '../home-sentences.js';
 import express from 'express';
 
 async function fixture(t, options = {}) {
@@ -67,6 +68,7 @@ async function seed(f) {
     db.prepare('INSERT INTO feedback_images(feedback_id,filename,name,mime_type,size) VALUES(?,?,?,?,?)').run(feedback, 'screen.png', '截图.png', 'image/png', 7);
     db.transaction(() => savePlaylists(db, [{ title: '日常', tracks: [{ title: '音乐', artist: '歌手', url: '/source/song.mp3' }] },
         { title: '游戏', tracks: [{ title: '游戏音乐', artist: '歌手', url: '/source/song.mp3' }] }]))();
+    db.transaction(() => saveSentences(db, [{ content: '走慢一些，也会抵达。' }, { content: '生活有光。' }]))();
     db.prepare("UPDATE profile SET name='测试小站',avatar='/picture/course.png' WHERE id=1").run();
     db.prepare("INSERT INTO announcements(title,body,status,pinned,published_at,created_at,updated_at) VALUES('公告','公告正文','published',1,'2026-10-01','2026-10-01','2026-10-01')").run();
     const tag = Number(db.prepare("INSERT INTO announcement_tags(name,color) VALUES('更新日志','#a34f3d')").run().lastInsertRowid);
@@ -110,6 +112,7 @@ test('完整备份、覆盖还原和历史下载删除：保留所有内容关�
     assert.equal(f.comment.prepare('SELECT content FROM comments').get().content, '旧评论');
     assert.equal(await readFile(join(f.publicRoot, 'source/course.pdf'), 'utf8'), 'PDF source');
     assert.deepEqual(homePlaylists(f.card).map(list => [list.title, list.tracks[0].title]), [['日常', '音乐'], ['游戏', '游戏音乐']]);
+    assert.deepEqual(homeSentences(f.card).map(sentence => sentence.content), ['走慢一些，也会抵达。', '生活有光。']);
     assert.equal(f.card.prepare('SELECT video_url FROM entries WHERE id=?').get(ids.video).video_url, '/source/course.mp4');
     assert.equal(await readFile(join(f.publicRoot, 'source/course.mp4'), 'utf8'), 'MP4 video');
     assert.deepEqual(await readdir(join(f.publicRoot, 'picture')), ['course.png']);
@@ -138,6 +141,7 @@ test('增量还原处理编号、用户名和文件冲突；保留当前修改�
     const result = await target.successful(target.store.restore(archive, 'merge'));
     assert.ok(result.importedRecords > 0);
     const library = homePlaylists(target.card);
+    assert.deepEqual(homeSentences(target.card).map(sentence => sentence.content), ['走慢一些，也会抵达。', '生活有光。']);
     assert.equal(library.find(list => list.title === '已有歌单').tracks[0].title, '现有歌曲');
     const importedMusic = library.find(list => list.title === '日常');
     assert.equal(importedMusic.tracks[0].title, '音乐');
@@ -304,7 +308,7 @@ test('旧版备份可在新服务器导入，且不会清除旧格式未覆盖�
     const zip = unzipSync(current), manifest = JSON.parse(strFromU8(zip['manifest.json']));
     manifest.version = 1; delete manifest.directories; delete manifest.paths; delete manifest.activityImages;
     const oldDatabase = JSON.parse(strFromU8(zip['databases/card.json']));
-    for (const table of ['plaza_items', 'plaza_versions', 'plaza_tags']) { delete oldDatabase.schema[table]; delete oldDatabase.tables[table]; }
+    for (const table of ['plaza_items', 'plaza_versions', 'plaza_tags', 'home_sentences']) { delete oldDatabase.schema[table]; delete oldDatabase.tables[table]; }
     delete oldDatabase.schema.home_playlists; delete oldDatabase.tables.home_playlists;
     oldDatabase.schema.home_tracks.columns = oldDatabase.schema.home_tracks.columns.filter(column => column.name !== 'playlist_id');
     oldDatabase.schema.home_tracks.foreign = [];
@@ -323,6 +327,7 @@ test('旧版备份可在新服务器导入，且不会清除旧格式未覆盖�
     assert.equal(target.card.prepare('SELECT name FROM profile').get().name, '测试小站');
     assert.equal(target.card.prepare('SELECT reply_notifications FROM users LIMIT 1').get().reply_notifications, 1);
     assert.equal(target.card.prepare('SELECT COUNT(*) AS n FROM plaza_items').get().n, 0);
+    assert.deepEqual(homeSentences(target.card), [], '旧备份没有句子时可正常还原');
     assert.equal(homePlaylists(target.card)[0].title, '我的歌单');
     assert.equal(homePlaylists(target.card)[0].tracks.length, 2, '旧版备份中的歌曲自动放入默认歌单');
     await target.successful(target.store.restore(old, 'merge'));

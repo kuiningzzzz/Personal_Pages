@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import PlayerControls from '../components/PlayerControls.vue'
 import HomeAnnouncements from '../components/HomeAnnouncements.vue'
+import HomeSentence from '../components/HomeSentence.vue'
 import PlayerIcon from '../components/PlayerIcon.vue'
 import { music, loadStation, enterHome } from '../lib/music'
 import { prepareReveal, revealDuration } from '../lib/theme-animation'
@@ -89,6 +90,7 @@ onUnmounted(() => { window.removeEventListener('home-player-open', reveal); medi
         <Teleport to="body" :disabled="!mobile"><aside class="turntable" :inert="music.entering" :class="{ 'turntable-leaving': route.path !== '/', 'reveal-pending': music.entering }"><div data-player-home class="record-anchor"></div><PlayerControls /></aside></Teleport>
         <section class="content-stage" :inert="music.entering" aria-label="首页内容">
           <header ref="heading" class="station-intro"><h1>{{ music.profile.name }}</h1><p>{{ music.profile.description }}</p></header>
+          <HomeSentence :sentences="music.sentences" />
           <button type="button" class="section-skip skip-up" :aria-label="'切换到' + titles[(section + 2) % 3]" @click="changeSection(-1)"><PlayerIcon name="up" /><span>{{ titles[(section + 2) % 3] }}</span></button>
           <div class="section-title"><h2>{{ titles[section] }}</h2><span aria-hidden="true">{{ String(section + 1).padStart(2, '0') }} / 03</span></div>
           <div class="home-content-viewport" aria-live="polite">

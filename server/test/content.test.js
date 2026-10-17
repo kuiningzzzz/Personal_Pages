@@ -416,13 +416,21 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         // Saved songs join the same upload-reference protection as Markdown.
         const songUrl = await uploadText('song.mp3');
         const home = (await request('/api/admin/profile')).body.data;
-        const homeWithMusic = { ...home, playlists: [{ title: '日常', tracks: [{ title: '测试歌曲', artist: '测试作者', url: songUrl }] }, { title: '游戏', tracks: [] }] };
+        const homeWithMusic = { ...home, sentences: [{ content: '  走慢一些，也会抵达。  ' }, { content: '生活有光，音乐有声。' }], playlists: [{ title: '日常', tracks: [{ title: '测试歌曲', artist: '测试作者', url: songUrl }] }, { title: '游戏', tracks: [] }] };
         assert.equal((await request('/api/admin/profile', write('PUT', homeWithMusic))).status, 200);
         assert.ok(existsSync(filePath(songUrl)));
         assert.equal((await request('/api/content/profile')).body.data.playlist[0].url, songUrl);
+        const savedSentences = (await request('/api/content/profile')).body.data.sentences;
+        assert.deepEqual(savedSentences.map(sentence => sentence.content), ['走慢一些，也会抵达。', '生活有光，音乐有声。']);
+        assert.deepEqual((await request('/api/admin/profile')).body.data.sentences, savedSentences);
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...homeWithMusic, sentences: [{ content: ' ' }] }))).status, 400);
+        assert.equal((await request('/api/admin/profile', write('PUT', { ...homeWithMusic, sentences: [savedSentences[0], savedSentences[0]] }))).status, 400);
         assert.equal((await request('/api/admin/profile', write('PUT', { ...homeWithMusic, playlists: [{ title: '无效', tracks: [{ title: '无效', url: 'https://example.com/song.mp3' }] }] }))).status, 400);
         assert.equal((await request('/api/admin/profile', write('PUT', { profile: home.profile, cards: home.cards }))).status, 200);
         assert.equal((await request('/api/content/profile')).body.data.playlist.length, 1, '不传歌单的旧保存请求保留歌曲');
+        assert.deepEqual((await request('/api/content/profile')).body.data.sentences, savedSentences, '不传句子的保存请求保留原有句子');
+        assert.equal((await request('/api/admin/profile', write('PUT', { profile: home.profile, cards: home.cards, sentences: [{ ...savedSentences[1], content: '生活有光。' }] }))).status, 200);
+        assert.deepEqual((await request('/api/content/profile')).body.data.sentences, [{ ...savedSentences[1], content: '生活有光。' }], '句子可编辑、移除，保留已有编号');
         assert.ok(existsSync(filePath(songUrl)));
         const library = (await request('/api/admin/profile')).body.data.playlists;
         assert.deepEqual(library.map(list => list.title), ['日常', '游戏']);

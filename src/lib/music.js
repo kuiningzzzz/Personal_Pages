@@ -5,7 +5,7 @@ const DEFAULT_VOLUME = .5
 const OUTPUT_VOLUME_SCALE = .8
 
 export const music = reactive({
-  profile: null, cards: [], playlists: [], playlistId: null, tracks: [], welcome: [], ready: false, entered: false, entering: false,
+  profile: null, cards: [], sentences: [], playlists: [], playlistId: null, tracks: [], welcome: [], ready: false, entered: false, entering: false,
   playing: false, buffering: false, currentIndex: 0, time: 0, duration: 0,
   mode: 'single', surface: 'hidden', error: '', volume: DEFAULT_VOLUME,
 })
@@ -85,6 +85,7 @@ export function applyStation(data) {
   music.playlists = playlists.map(playlist => ({ id: playlist.id, title: playlist.title,
     tracks: playlist.tracks.map(track => ({ id: track.id, title: track.title, artist: track.artist, url: track.url })) }))
   music.welcome = [...(data.welcome || [])]
+  music.sentences = (data.sentences || []).map(sentence => ({ id: sentence.id, content: sentence.content }))
   // Stable song IDs preserve playback even when admin moves a song to another playlist.
   const matches = track => previousTrack?.id != null ? track.id === previousTrack.id : previous && track.url === previous
   const retained = music.playlists.find(playlist => playlist.tracks.some(matches))

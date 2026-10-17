@@ -19,6 +19,7 @@ import { validateMomentPin, setMomentPin } from './moment-pins.js';
 import { activities, activityRoutes } from './activities/index.js';
 import { homePlaylist, homePlaylists, validatePlaylist, validatePlaylists, savePlaylist, savePlaylists, homeWelcome, validateWelcome, saveWelcome } from './home-music.js';
 import { VIDEO_UPLOAD_LIMIT, validVideoUrl } from './videos.js';
+import { homeSentences, validateSentences, saveSentences } from './home-sentences.js';
 
 const router = express.Router();
 const password = process.env.ADMIN_PASSWORD || '';
@@ -73,7 +74,7 @@ const normalizeActions = value => (Array.isArray(value) ? value : []).map(action
 router.get('/profile', (_req, res) => res.json({ success: true, data: {
     profile: cardDb.prepare('SELECT avatar, name, description FROM profile WHERE id = 1').get(),
     cards: cardDb.prepare('SELECT id, title, content FROM home_cards ORDER BY display_order, id').all(),
-    playlists: homePlaylists(cardDb), playlist: homePlaylist(cardDb), welcome: homeWelcome(cardDb)
+    playlists: homePlaylists(cardDb), playlist: homePlaylist(cardDb), welcome: homeWelcome(cardDb), sentences: homeSentences(cardDb)
 } }));
 router.put('/profile', (req, res) => {
     const profile = req.body.profile || {};
@@ -91,6 +92,10 @@ router.put('/profile', (req, res) => {
         const error = validateWelcome(req.body.welcome);
         if (error) return res.status(400).json({ success: false, message: error });
     }
+    if (req.body.sentences !== undefined) {
+        const error = validateSentences(req.body.sentences);
+        if (error) return res.status(400).json({ success: false, message: error });
+    }
     cardDb.transaction(() => {
         cardDb.prepare('UPDATE profile SET avatar = ?, name = ?, description = ? WHERE id = 1').run(clean(profile.avatar, 2048), clean(profile.name, 120), clean(profile.description, 2000));
         cardDb.prepare('DELETE FROM home_cards').run();
@@ -99,6 +104,7 @@ router.put('/profile', (req, res) => {
         if (req.body.playlists !== undefined) savePlaylists(cardDb, req.body.playlists);
         else if (req.body.playlist !== undefined) savePlaylist(cardDb, req.body.playlist);
         if (req.body.welcome !== undefined) saveWelcome(cardDb, req.body.welcome);
+        if (req.body.sentences !== undefined) saveSentences(cardDb, req.body.sentences);
     })();
     res.json({ success: true, ...auditAndCleanupUploads() });
 });

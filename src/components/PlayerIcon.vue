@@ -8,6 +8,7 @@ defineProps({ name: { type: String, required: true } })
     <template v-else-if="name === 'previous'"><path d="m18 5-11 7 11 7Z" fill="currentColor" stroke="none" /><path d="M5 5v14" stroke-width="3" /></template>
     <template v-else-if="name === 'next'"><path d="m6 5 11 7-11 7Z" fill="currentColor" stroke="none" /><path d="M19 5v14" stroke-width="3" /></template>
     <path v-else-if="name === 'playlist'" d="M4 6h16M4 12h16M4 18h16" />
+    <path v-else-if="name === 'refresh'" d="M20 7v5h-5M4 17v-5h5m-4-3a7.5 7.5 0 0 1 12.4-3.4L20 9M4 15l2.6 3.4A7.5 7.5 0 0 0 19 15" />
     <template v-else-if="name.startsWith('volume-')">
       <path d="M2 9h3l5-4v14l-5-4H2Z" />
       <path v-if="name === 'volume-muted'" d="m15 9 6 6m0-6-6 6" />

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, defineAsyncComponent } from 'vue'
+import HomeAdminSection from './HomeAdminSection.vue'
 const draggable = defineAsyncComponent(() => import('vuedraggable'))
 
 const playlists = defineModel({ type: Array, default: () => [] })
@@ -45,9 +46,9 @@ async function upload(event, playlist) {
 </script>
 
 <template>
-  <section class="playlist-editor surface">
+  <HomeAdminSection title="首页歌单" :summary="`${playlists.length} 个歌单`" class="playlist-editor">
     <div class="playlist-editor-head">
-      <div><h2>首页歌单</h2><p id="music-drag-help">拖动六点手柄调整歌单、歌曲顺序，也可将歌曲拖入另一个展开的歌单。手柄获得焦点后可用 ↑ ↓ 调整。保存首页后生效。</p></div>
+      <p id="music-drag-help">拖动六点手柄调整歌单、歌曲顺序，也可将歌曲拖入另一个展开的歌单。手柄获得焦点后可用 ↑ ↓ 调整。保存首页后生效。</p>
       <button type="button" class="add-playlist" :disabled="busy || uploading || playlists.length >= 20" @click="addPlaylist">+ 新建歌单</button>
     </div>
     <p class="library-note">排在第一的歌单为默认歌单，从第一首开始播放。</p>
@@ -84,7 +85,7 @@ async function upload(event, playlist) {
         </article>
       </template>
     </draggable>
-  </section>
+  </HomeAdminSection>
 </template>
 
 <style scoped>

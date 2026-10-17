@@ -12,6 +12,7 @@ import { migrateComments } from './comments/schema.js';
 import { migrateResourceCategories } from './resource-categories.js';
 import { migrateResourceModifications } from './resource-modifications.js';
 import { migrateHomeMusic } from './home-music.js';
+import { migrateHomeSentences } from './home-sentences.js';
 import { migrateFeedback } from './feedback/schema.js';
 import { migrateAnnouncements } from './announcements.js';
 import { migrateMomentPins } from './moment-pins.js';
@@ -179,6 +180,7 @@ function initializeDatabase() {
         migrateResourceCategories(cardDb);
         migrateResourceModifications(cardDb);
         migrateHomeMusic(cardDb);
+        migrateHomeSentences(cardDb);
         migrateComments(cardDb);
         migrateFeedback(cardDb);
         migrateAnnouncements(cardDb);
