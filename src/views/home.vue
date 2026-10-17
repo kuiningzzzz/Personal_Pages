@@ -102,7 +102,7 @@ onUnmounted(() => { window.removeEventListener('home-player-open', reveal); medi
                   <article v-for="(item, index) in items" :key="item.id" class="home-card" :style="{ '--card-delay': Math.min(index, 9) * 85 + 'ms' }">
                     <header><span class="card-number" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span><h3 v-if="section === 0">{{ item.title }}</h3><router-link v-else :to="link(item)">{{ item.title || '无标题短帖' }}<span aria-hidden="true">↗</span></router-link></header>
                     <MarkdownContent v-if="section === 0" :source="item.content" />
-                    <template v-else><p v-if="snippet(item)" class="card-excerpt">{{ snippet(item) }}</p><footer><span>{{ section === 2 ? resourceLabel(item) : item.format === 'short' ? '短帖' : '长文' }}</span><span v-for="tag in item.tags.slice(0, 2)" :key="tag">#{{ tag }}</span><time :datetime="item.published_at">{{ date(item.published_at) }}</time></footer></template>
+                    <template v-else><p v-if="snippet(item)" class="card-excerpt">{{ snippet(item) }}</p><footer><span>{{ section === 2 ? resourceLabel(item) : item.format === 'short' ? '短帖' : '长文' }}</span><span v-for="tag in item.tags.slice(0, 2)" :key="tag">#{{ tag }}</span><time :datetime="item.published_at">{{ date(item.published_at) }}</time><span v-if="section === 2 && item.resource_kind === 'document' && item.word_count != null">{{ item.word_count.toLocaleString('zh-CN') }} 字</span></footer></template>
                   </article>
                 </template>
               </div>

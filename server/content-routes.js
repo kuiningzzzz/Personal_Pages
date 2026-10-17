@@ -9,6 +9,7 @@ import { articleNavigation } from './article-navigation.js';
 import { createAnnouncementPublicRoutes } from './announcements.js';
 import { publicEntryComparator } from './moment-pins.js';
 import { createVideoRoutes, videoPlaybackUrl } from './videos.js';
+import { documentWordCount } from './document-word-count.js';
 
 const router = express.Router();
 router.use('/announcements', createAnnouncementPublicRoutes({ db: cardDb }));
@@ -91,6 +92,7 @@ router.get('/entries', (req, res) => {
     page = Math.min(page, Math.max(1, Math.ceil(total / limit)));
     // 列表仅返回摘要；正文仍用于搜索，详情接口返回完整内容。
     const data = rows.slice((page - 1) * limit, page * limit).map(({ body, actions, ...rest }) => ({ ...rest,
+        ...documentWordCount({ ...rest, body }),
         ...(recursiveSearch ? { ancestors: publicAncestors(rest) || [] } : {}),
         body: rest.format === 'short' ? body : '', actions: kind === 'resource' ? actions : [] }));
     res.json({ success: true, data, total, page, limit });
@@ -102,7 +104,7 @@ router.get('/entries/:id', (req, res) => {
     const ancestors = publicAncestors(row);
     if (ancestors === null) return res.status(404).json({ success: false, message: '内容不存在' });
     const sort = ['latest', 'oldest', 'updated'].includes(req.query.sort) ? req.query.sort : 'latest';
-    res.json({ success: true, data: { ...entry(row), ancestors, images: row.resource_kind === 'gallery' ? imagesFor(row.id) : [], video_playback_url: videoPlaybackUrl(row), article_navigation: articleNavigation(cardDb, row, { sort }) } });
+    res.json({ success: true, data: { ...entry(row), ...documentWordCount(row), ancestors, images: row.resource_kind === 'gallery' ? imagesFor(row.id) : [], video_playback_url: videoPlaybackUrl(row), article_navigation: articleNavigation(cardDb, row, { sort }) } });
 });
 
 export default router;

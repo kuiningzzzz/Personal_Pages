@@ -38,8 +38,11 @@ logs
 coverage
 .nyc_output
 
-# 服务器代码（前端构建不需要）
-server
+# 前端仅需要前后端共享的 Markdown 解析器。
+server/*
+!server/shared/
+server/shared/*
+!server/shared/markdown.js
 
 # Docker 相关
 Dockerfile

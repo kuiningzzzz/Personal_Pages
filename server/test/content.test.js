@@ -134,6 +134,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         const momentId = (await request('/api/admin/entries', write('POST', moment))).body.id;
         assert.ok(momentId);
         assert.equal((await request(`/api/content/entries/${momentId}`)).body.data.article_navigation, null);
+        assert.equal(Object.hasOwn((await request(`/api/content/entries/${momentId}`)).body.data, 'word_count'), false, '动态不显示资源库文档字数');
         assert.equal((await request('/api/content/entries?kind=moment&q=vue')).body.total, 1);
         assert.equal((await request('/api/content/entries?kind=moment&q=%E6%90%9C%E7%B4%A2')).body.total, 1);
         await request('/api/admin/entries', write('POST', { ...moment, title: '第二条记录', body: '这里也提到 Vue', tags: [], published_at: '2026-01-01T00:00:00Z' }));
@@ -178,6 +179,12 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.equal(list.total, 1);
         assert.equal(list.data[0].cover_image, '/picture/tool.png');
         assert.equal(list.data[0].actions[0].label, actionLabel);
+        assert.equal(list.data[0].body, '');
+        assert.equal(list.data[0].word_count, 6, '列表字数取完整正文，不取摘要或被省略的正文');
+        assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.word_count, 6);
+        assert.equal((await request(`/api/admin/entries/${resourceId}`, write('PUT', { ...resource, body: '**新的正文**', word_count: 99999 }))).status, 200);
+        assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.word_count, 4, '修改正文后字数立即更新，不采信客户端传入的统计');
+        assert.equal((await request(`/api/content/entries?kind=resource&type=${types[0].id}`)).body.data[0].word_count, 4);
         assert.equal((await request(`/api/admin/entries/${resourceId}`, write('PUT', resource))).status, 200);
         assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.actions[0].label, actionLabel);
         assert.equal((await request(`/api/content/entries/${resourceId}`)).body.data.body, '一个开源项目');
