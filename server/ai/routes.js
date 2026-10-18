@@ -37,7 +37,23 @@ router.get('/documents', (_req, res) => {
     };
     res.json({ success: true, data: rows.filter(row => row.resource_kind === 'document').map(row => ({ ...row, path: path(row) })) });
 });
-router.get('/tasks', (_req, res) => res.json({ success: true, data: cardDb.prepare('SELECT * FROM ai_tasks ORDER BY created_at DESC LIMIT 100').all().map(row => taskView(row)) }));
+router.get('/tasks', (_req, res) => {
+    const collections = new Map(cardDb.prepare("SELECT id,title,parent_id FROM entries WHERE kind='resource' AND resource_kind='collection'").all().map(row => [row.id, row]));
+    const paths = new Map([[0, '资源库根目录']]);
+    const path = id => {
+        if (paths.has(id)) return paths.get(id);
+        const names = [], visited = new Set();
+        for (let row = collections.get(id); row && !visited.has(row.id); row = collections.get(row.parent_id)) {
+            visited.add(row.id); names.unshift(row.title);
+        }
+        const label = names.length ? ['资源库', ...names].join(' / ') : `合集已删除（#${id}）`;
+        paths.set(id, label);
+        return label;
+    };
+    const data = cardDb.prepare('SELECT * FROM ai_tasks ORDER BY created_at DESC, rowid DESC').all()
+        .map(row => ({ ...taskView(row), collection_path: path(row.collection_id) }));
+    res.json({ success: true, data });
+});
 router.get('/tasks/:id', (req, res) => {
     const task = taskView(getTask(req.params.id), true);
     res.status(task ? 200 : 404).json(task ? { success: true, data: task } : { success: false, message: '任务不存在' });

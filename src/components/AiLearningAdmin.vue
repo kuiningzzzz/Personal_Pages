@@ -5,6 +5,20 @@ import MarkdownContent from './MarkdownContent.vue'
 const emit = defineEmits(['notice'])
 const config = ref(null), collections = ref([]), tasks = ref([]), selected = ref(null)
 const documents = ref([]), documentQuery = ref('')
+const expandedTaskGroups = ref(new Set())
+const taskGroups = computed(() => {
+  const groups = new Map()
+  for (const task of tasks.value) {
+    const id = task.collection_id
+    if (!groups.has(id)) groups.set(id, { id, path: task.collection_path || task.collection_title, tasks: [] })
+    groups.get(id).tasks.push(task)
+  }
+  return [...groups.values()]
+})
+function toggleTaskGroup(id) {
+  if (expandedTaskGroups.value.has(id)) expandedTaskGroups.value.delete(id)
+  else expandedTaskGroups.value.add(id)
+}
 const busy = ref(false), error = ref(''), files = ref([]), fileInput = ref(null)
 const form = ref({ mode: 'create', target_entry_id: '', title: '', collection_id: '', prompt: '', links: '' })
 const modifying = computed(() => form.value.mode === 'modify')
@@ -130,7 +144,15 @@ onUnmounted(() => { disposed = true; clearTimeout(timer) })
     <div class="learning-heading"><h2>学习记录</h2><button class="ghost-button" @click="refresh().catch(cause => error = cause.message)">刷新</button></div>
     <p v-if="!tasks.length" class="surface state">还没有学习任务</p>
     <div v-else class="learning-history">
-      <div class="task-list"><button v-for="task in tasks" :key="task.id" type="button" class="surface task-card" :class="{ selected: selected?.id === task.id }" @click="select(task)"><div><strong>{{ task.title }}</strong><span class="task-status" :class="task.status">{{ statusLabel(task) }}</span></div><small>{{ task.mode === 'modify' ? '修改模式' : '新增模式' }} · {{ task.collection_title }} · {{ new Date(task.created_at).toLocaleString('zh-CN') }}</small><p>{{ task.iterations }} / {{ task.budget }} 次迭代</p></button></div>
+      <div class="task-list">
+        <section v-for="group in taskGroups" :key="group.id" class="task-group" :aria-labelledby="`task-group-${group.id}`">
+          <header class="task-group-heading"><h3 :id="`task-group-${group.id}`">{{ group.path }}</h3><small>{{ group.tasks.length }} 条</small></header>
+          <div :id="`task-group-records-${group.id}`" class="task-group-records">
+            <button v-for="task in (expandedTaskGroups.has(group.id) ? group.tasks : group.tasks.slice(0, 5))" :key="task.id" type="button" class="surface task-card" :class="{ selected: selected?.id === task.id }" @click="select(task)"><div><strong>{{ task.title }}</strong><span class="task-status" :class="task.status">{{ statusLabel(task) }}</span></div><small>{{ task.mode === 'modify' ? '修改模式' : '新增模式' }} · {{ new Date(task.created_at).toLocaleString('zh-CN') }}</small><p>{{ task.iterations }} / {{ task.budget }} 次迭代</p></button>
+          </div>
+          <button v-if="group.tasks.length > 5" type="button" class="ghost-button task-group-toggle" :aria-expanded="expandedTaskGroups.has(group.id)" :aria-controls="`task-group-records-${group.id}`" @click="toggleTaskGroup(group.id)">{{ expandedTaskGroups.has(group.id) ? '收起' : `展开其余 ${group.tasks.length - 5} 条` }}</button>
+        </section>
+      </div>
       <article v-if="selected" class="surface task-detail">
         <header><h3>{{ selected.title }}</h3><span class="task-status" :class="selected.status">{{ statusLabel(selected) }}</span></header>
         <p v-if="selected.mode === 'modify'" class="task-progress">修改目标：{{ selected.target_title }}（#{{ selected.target_entry_id || '已删除' }}）<span v-if="selected.status === 'published' && !selected.result_public"> · 已保存，可在资源库管理中查看</span></p>
@@ -163,6 +185,7 @@ small { font-size: 11px; font-weight: 400; } .learning-submit { margin: 0; } .le
 .learning-config { padding: 20px 25px; margin-bottom: 32px; } summary { cursor: pointer; font-size: 13px; font-weight: 700; } .learning-config summary { margin-bottom: 18px; } .learning-config summary small { margin-left: 12px; }
 .learning-history { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(0,1.6fr); align-items: start; gap: 22px; } .task-list { display: grid; gap: 13px; } .task-card { border: 0; color: var(--ink); padding: 18px; text-align: left; transition: transform .2s ease,background .2s ease; } .task-card:hover { transform: translateY(-2px); } .task-card.selected { background: var(--sky); box-shadow: 5px 6px 0 var(--denim); } .task-card>div { display: flex; justify-content: space-between; gap: 10px; } .task-card strong { overflow-wrap: anywhere; } .task-card small { display: block; margin-top: 8px; } .task-card p { margin: 8px 0 0; font-size: 12px; }
 .task-status { flex-shrink: 0; font-size: 11px; padding: 4px 8px; align-self: start; background: var(--paper-deep); border-radius: 3px; } .task-status.running,.task-status.queued { background: var(--accent-soft); } .task-status.published { background: var(--mint); } .task-status.failed { background: var(--failed-bg); }
+.task-list { min-width: 0; gap: 26px; }.task-group-records { display: grid; gap: 13px; }.task-group-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; }.task-group-heading h3 { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }.task-group-heading small { flex-shrink: 0; }.task-group-toggle { width: 100%; margin-top: 12px; font-size: 12px; }
 .task-detail { padding: 23px; min-width: 0; } .task-detail header { display: flex; justify-content: space-between; gap: 12px; } .task-progress,.task-usage { font-size: 12px; } progress { width: 100%; height: 8px; accent-color: var(--denim); } .task-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; } .task-actions a,.task-actions button { min-height: 35px; padding: 6px 10px; font-size: 12px; } .task-detail details { padding: 14px; margin: 15px 0; border-radius: 4px; background: var(--paper-deep); } .task-detail details p,.task-detail details li { font-size: 12px; overflow-wrap: anywhere; } .task-prompt { white-space: pre-wrap; } .task-detail details .markdown { margin-top: 16px; }
 .task-log { padding: 0; list-style: none; max-height: 460px; overflow-y: auto; } .task-log li { display: grid; grid-template-columns: 62px minmax(0,1fr); gap: 10px; padding: 10px 0; font-size: 12px; } .task-log li:nth-child(even) { background: var(--paper-deep); } .task-log time { color: var(--soft); font-size: 10px; } .task-log span { white-space: pre-wrap; overflow-wrap: anywhere; } .task-log .tool-error,.task-log .failed { color: var(--error-text); }
 .task-log span { display: block; }.task-log .log-label { display: inline-block; margin-bottom: 5px; color: var(--ink); font-weight: 700; }.task-log .reasoning .log-label { color: var(--link); }.task-log .idle-warning { color: var(--error-text); }.task-log .log-data { padding: 8px; margin: 8px 0 0; }.task-log pre { margin: 8px 0 0; max-height: 280px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.6; }

@@ -39,6 +39,39 @@ function modifyTask(target) {
 }
 after(() => { cardDb.close(); commentDb.close(); rmSync(folder, { recursive: true, force: true }); });
 
+test('学习记录保留百条以外的历史，并提供草稿嵌套合集、根目录及已删除合集的位置', async () => {
+    const outer = entry('课程'), inner = entry('讲义', outer, 'collection', 'draft');
+    const other = entry('另一门课'), sameName = entry('讲义', other);
+    const prefix = 'history-group-test-';
+    const insert = cardDb.prepare(`INSERT INTO ai_tasks(id,title,prompt,collection_id,settings,status,created_at,updated_at)
+        VALUES (?,?,'',?,'{}','cancelled',?,?)`);
+    cardDb.transaction(() => {
+        for (let i = 0; i < 106; i++) {
+            const date = new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString();
+            insert.run(prefix + i, `记录 ${i}`, i === 0 ? 0 : i === 1 ? 999999 : i === 2 ? sameName : inner, date, date);
+        }
+    })();
+    const app = express();
+    app.use('/ai', (await import('../ai/routes.js')).default);
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.once('listening', resolve));
+    try {
+        const response = await fetch(`http://127.0.0.1:${server.address().port}/ai/tasks`);
+        assert.equal(response.status, 200);
+        const rows = (await response.json()).data.filter(row => row.id.startsWith(prefix));
+        assert.equal(rows.length, 106);
+        assert.equal(rows[0].id, prefix + 105);
+        assert.equal(rows.at(-1).id, prefix + 0);
+        assert.equal(rows.find(row => row.collection_id === inner).collection_path, '资源库 / 课程 / 讲义');
+        assert.equal(rows.find(row => row.collection_id === sameName).collection_path, '资源库 / 另一门课 / 讲义');
+        assert.equal(rows.find(row => row.collection_id === 0).collection_path, '资源库根目录');
+        assert.equal(rows.find(row => row.collection_id === 999999).collection_path, '合集已删除（#999999）');
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+        cardDb.prepare('DELETE FROM ai_tasks WHERE id LIKE ?').run(prefix + '%');
+    }
+});
+
 test('上下文包含全部子合集和草稿，读取权限限制在目标树内', async () => {
     const root = entry('根合集'), child = entry('子合集', root), draft = entry('草稿', child, 'document', 'draft'), other = entry('其他合集');
     const job = task(root);
