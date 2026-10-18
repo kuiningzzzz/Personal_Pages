@@ -25,6 +25,18 @@ router.get('/collections', (_req, res) => {
     res.json({ success: true, data: rows.map(row => ({ id: row.id, title: row.title, parent_id: row.parent_id, status: row.status,
         publishable: row.status === 'published' && !!publicAncestors(row), path: [...(publicAncestors(row) || []).map(parent => parent.title), row.title].join(' / ') })) });
 });
+router.get('/documents', (_req, res) => {
+    const rows = cardDb.prepare("SELECT id,title,parent_id,status,resource_kind FROM entries WHERE kind='resource'").all();
+    const byId = new Map(rows.map(row => [row.id, row]));
+    const path = row => {
+        const names = [row.title], visited = new Set([row.id]);
+        for (let parent = byId.get(row.parent_id); parent && !visited.has(parent.id); parent = byId.get(parent.parent_id)) {
+            visited.add(parent.id); names.unshift(parent.title);
+        }
+        return ['资源库', ...names].join(' / ');
+    };
+    res.json({ success: true, data: rows.filter(row => row.resource_kind === 'document').map(row => ({ ...row, path: path(row) })) });
+});
 router.get('/tasks', (_req, res) => res.json({ success: true, data: cardDb.prepare('SELECT * FROM ai_tasks ORDER BY created_at DESC LIMIT 100').all().map(row => taskView(row)) }));
 router.get('/tasks/:id', (req, res) => {
     const task = taskView(getTask(req.params.id), true);

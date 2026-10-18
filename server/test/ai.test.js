@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { fork } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { samplePdf } from './fixtures.js';
+import express from 'express';
 
 const folder = mkdtempSync(join(tmpdir(), 'learning-tests-'));
 process.env.DATA_DIR = folder;
@@ -14,11 +15,12 @@ process.env.PUBLIC_DIR = join(folder, 'public');
 process.env.DEEPSEEK_API_KEY = '';
 mkdirSync(process.env.PUBLIC_DIR);
 const { cardDb, commentDb } = await import('../db.js');
-const { createTask, getTask, dispatch, failTask, taskView, taskEvents, collectionSession, retryTask, event } = await import('../ai/tasks.js');
+const { createTask, getTask, dispatch, failTask, taskView, taskEvents, collectionSession, retryTask, event, pauseTasksForBackup, resumeTasksAfterBackup } = await import('../ai/tasks.js');
 const { directory, storeAsset, readSource, pdfPage, downloadPublic } = await import('../ai/sources.js');
 const { auditAndCleanupUploads } = await import('../upload-cleanup.js');
 const { runPdf } = await import('../ai/pdf-process.js');
 const { reportFile } = await import('../ai/workspace.js');
+const { captureModification } = await import('../ai/editing.js');
 const date = new Date().toISOString();
 function entry(title, parent = null, type = 'collection', status = 'published') {
     return Number(cardDb.prepare(`INSERT INTO entries(kind,resource_kind,title,body,tags,actions,parent_id,status,published_at,created_at,updated_at)
@@ -27,6 +29,11 @@ function entry(title, parent = null, type = 'collection', status = 'published') 
 function task(collection = entry('目标合集')) {
     const result = createTask({ collection_id: collection, title: '课程学习', prompt: '学习资料' }, []);
     // Unit driver claims the queued job before the application queue can start it.
+    cardDb.prepare("UPDATE ai_tasks SET status='running' WHERE id=?").run(result.id);
+    return getTask(result.id);
+}
+function modifyTask(target) {
+    const result = createTask({ mode: 'modify', target_entry_id: target, prompt: '根据资料修正文档' }, []);
     cardDb.prepare("UPDATE ai_tasks SET status='running' WHERE id=?").run(result.id);
     return getTask(result.id);
 }
@@ -155,6 +162,138 @@ async function harnessScenario(selectTool, { job = task(), inspectRequest, legac
 }
 
 const writeReport = (title, body) => ({ name: 'write', args: { file_path: '$REPORT', content: `# ${title}\n\n${body}` } });
+
+test('修改原文保留身份、目录、时间、评论；可编辑全部内容字段且不触发新增通知', async () => {
+    const root = entry('编辑目标合集'), id = entry('原文', root, 'document');
+    cardDb.prepare("UPDATE entries SET summary='原摘要',tags='[\"原标签\"]',actions='[{\"label\":\"原按钮\",\"url\":\"https://example.com\"}]',cover_image='https://example.com/old.png' WHERE id=?").run(id);
+    const before = cardDb.prepare('SELECT * FROM entries WHERE id=?').get(id), count = cardDb.prepare('SELECT COUNT(*) AS n FROM entries').get().n;
+    const user = Number(cardDb.prepare("INSERT INTO users(username,username_key,email,password_hash,created_at) VALUES('编辑测试','编辑测试','edit@example.com','hash',?)").run(date).lastInsertRowid);
+    const comment = Number(cardDb.prepare('INSERT INTO entry_comments(entry_id,user_id,body,created_at) VALUES(?,?,?,?)').run(id, user, '保留的评论', date).lastInsertRowid);
+    const events = cardDb.prepare('SELECT COUNT(*) AS n FROM subscription_events').get().n;
+    const job = modifyTask(id);
+    await dispatch(job.id, 'write_document', { title: '更新标题', body: '修正后的讲解', summary: '更新摘要', tags: ['新标签'], actions: [{ label: '新按钮', url: 'https://example.com/new' }], cover_image: 'https://example.com/new.png' });
+    const result = await dispatch(job.id, 'submit_document');
+    assert.equal(result.entryId, id); assert.equal(cardDb.prepare('SELECT COUNT(*) AS n FROM entries').get().n, count);
+    const edited = cardDb.prepare('SELECT * FROM entries WHERE id=?').get(id);
+    for (const key of ['id','parent_id','resource_type_id','status','published_at','created_at']) assert.equal(edited[key], before[key], key);
+    assert.equal(edited.title, '更新标题'); assert.equal(edited.body, '修正后的讲解'); assert.equal(edited.summary, '更新摘要');
+    assert.equal(edited.cover_image, 'https://example.com/new.png'); assert.deepEqual(JSON.parse(edited.tags), ['新标签']);
+    assert.equal(JSON.parse(edited.actions)[0].label, '新按钮');
+    assert.equal(cardDb.prepare('SELECT entry_id FROM entry_comments WHERE id=?').get(comment).entry_id, id);
+    assert.equal(cardDb.prepare('SELECT COUNT(*) AS n FROM subscription_events').get().n, events);
+    assert.equal(taskView(getTask(job.id)).result_public, true);
+});
+
+test('修改模式允许根文档、草稿和空正文，保留未提供的元数据，失败不新增或覆盖文档', async () => {
+    const id = entry('根草稿', null, 'document', 'draft');
+    cardDb.prepare("UPDATE entries SET body='',summary='保留摘要',tags='[\"保留标签\"]' WHERE id=?").run(id);
+    const job = modifyTask(id);
+    assert.equal(job.collection_id, 0); assert.ok(directory(0).some(row => row.id === id));
+    assert.equal(collectionSession(0).sessionId, collectionSession(0).sessionId);
+    assert.notEqual(collectionSession(0).workspace, collectionSession(entry('独立合集')).workspace);
+    await dispatch(job.id, 'write_document', { title: '新标题' });
+    await dispatch(job.id, 'submit_document');
+    const edited = cardDb.prepare('SELECT * FROM entries WHERE id=?').get(id);
+    assert.equal(edited.status, 'draft'); assert.equal(edited.summary, '保留摘要'); assert.equal(edited.tags, '["保留标签"]'); assert.equal(edited.body, '');
+    assert.equal(taskView(getTask(job.id)).result_public, false);
+    const failed = modifyTask(id), total = cardDb.prepare('SELECT COUNT(*) AS n FROM entries').get().n;
+    await dispatch(failed.id, 'write_document', { body: '不会覆盖的未完成内容' });
+    failTask(failed.id, '测试失败');
+    assert.equal(cardDb.prepare('SELECT COUNT(*) AS n FROM entries').get().n, total);
+    assert.equal(cardDb.prepare('SELECT body FROM entries WHERE id=?').get(id).body, '');
+    assert.equal(getTask(failed.id).result_entry_id, null); assert.match(readFileSync(join(folder,'ai',failed.id,'error.md'),'utf8'), /不会覆盖/);
+    assert.throws(() => modifyTask(entry('图集不能修改', null, 'gallery')), /不再是文档/);
+});
+
+test('人工修改或删除目标时拒绝覆盖；排队开始和重试时重新读取原文', async () => {
+    const id = entry('并发编辑', null, 'document'), job = modifyTask(id);
+    await dispatch(job.id, 'write_document', { body: 'AI 工作稿' });
+    cardDb.prepare('UPDATE entries SET body=? WHERE id=?').run('人工修改', id);
+    await assert.rejects(dispatch(job.id, 'submit_document'), /已被修改/);
+    assert.equal(getTask(job.id).status, 'failed'); assert.equal(cardDb.prepare('SELECT body FROM entries WHERE id=?').get(id).body, '人工修改');
+    retryTask(job.id);
+    assert.equal(JSON.parse(getTask(job.id).draft).body, '人工修改');
+    cardDb.prepare('UPDATE entries SET body=? WHERE id=?').run('排队期间的新原文', id);
+    captureModification(cardDb, getTask(job.id));
+    assert.equal(JSON.parse(getTask(job.id).draft).body, '排队期间的新原文');
+    cardDb.prepare("UPDATE ai_tasks SET status='running' WHERE id=?").run(job.id);
+    cardDb.prepare('DELETE FROM entries WHERE id=?').run(id);
+    await assert.rejects(dispatch(job.id, 'submit_document'), /已删除/);
+    assert.equal(getTask(job.id).status, 'failed'); assert.throws(() => retryTask(job.id), /已删除/);
+});
+
+test('修改提交合并新旧 PDF 溯源链接，保留原附件并避免重复源资料栏', async () => {
+    const setup = task(), oldPdf = await storeAsset(setup, samplePdf(), '.pdf', '原课件.pdf', 'input');
+    await dispatch(setup.id, 'write_document', { title: '课程文档', body: '旧正文' });
+    const original = await dispatch(setup.id, 'submit_document');
+    const job = modifyTask(original.entryId), newPdf = await storeAsset(job, samplePdf(), '.pdf', '补充课件.pdf', 'input');
+    await dispatch(job.id, 'write_document', { body: '更新的正文' });
+    await dispatch(job.id, 'submit_document');
+    const body = cardDb.prepare('SELECT body FROM entries WHERE id=?').get(original.entryId).body;
+    assert.ok(body.includes(oldPdf)); assert.ok(body.includes(newPdf)); assert.ok(body.endsWith('更新的正文'));
+    assert.equal(body.match(/学习源资料：/g).length, 1);
+    const again = modifyTask(original.entryId); await dispatch(again.id, 'submit_document');
+    assert.equal(cardDb.prepare('SELECT body FROM entries WHERE id=?').get(original.entryId).body.match(/学习源资料：/g).length, 1);
+    assert.ok(existsSync(join(process.env.PUBLIC_DIR, oldPdf.slice(1))));
+    assert.ok(existsSync(join(process.env.PUBLIC_DIR, newPdf.slice(1))));
+});
+
+test('真实 Harness 修改模式预置原文，使用原生 read/edit 修改并更新同一文档', async () => {
+    const id = entry('待编辑原文', entry('编辑会话'), 'document'), job = modifyTask(id);
+    const result = await harnessScenario(count => count === 1 ? { name: 'read', args: { file_path: '$REPORT' } }
+        : count === 2 ? { name: 'edit', args: { file_path: '$REPORT', old_string: '用于学习的正文', new_string: '已修正的正文' } }
+        : { name: 'submit_document', args: { summary: '编辑后的摘要', tags: ['已修正'], cover_image: 'https://example.com/cover.png' } }, {
+        job, inspectRequest(request, count) {
+            if (count !== 1) return;
+            assert.match(JSON.stringify(request.messages), /唯一待修改文档 ID/);
+            assert.match(request.tools.find(tool => tool.name === 'submit_document').description, /更新本次指定/);
+        }
+    });
+    assert.equal(result.task.status, 'published', result.task.error + result.diagnostics);
+    assert.equal(result.task.result_entry_id, id);
+    const row = cardDb.prepare('SELECT * FROM entries WHERE id=?').get(id);
+    assert.equal(row.body, '已修正的正文'); assert.equal(row.title, '待编辑原文'); assert.equal(row.summary, '编辑后的摘要');
+    assert.equal(row.cover_image, 'https://example.com/cover.png'); assert.equal(result.calls, 3);
+});
+
+test('修改模式 HTTP 表单同时接收文档、PDF、链接和要求，进入同一后台队列', async () => {
+    const { default: aiRoutes } = await import('../ai/routes.js');
+    const app = express(); app.use('/ai', aiRoutes);
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.once('listening', resolve));
+    const id = entry('HTTP 编辑目标', null, 'document'), before = cardDb.prepare('SELECT body FROM entries WHERE id=?').get(id).body;
+    pauseTasksForBackup(); process.env.DEEPSEEK_API_KEY = 'test-key-no-network';
+    let jobId;
+    try {
+        const form = new FormData();
+        for (const [key, value] of Object.entries({ mode: 'modify', target_entry_id: id, collection_id: '', title: '', prompt: '结合课件修改说明', links: 'https://example.com/course' })) form.append(key, String(value));
+        form.append('files', new Blob([samplePdf()], { type: 'application/pdf' }), 'course.pdf');
+        const response = await fetch(`http://127.0.0.1:${server.address().port}/ai/tasks`, { method: 'POST', body: form });
+        const result = await response.json();
+        assert.equal(response.status, 201, JSON.stringify(result));
+        jobId = result.data.id;
+        assert.equal(result.data.mode, 'modify'); assert.equal(result.data.target_entry_id, id); assert.equal(result.data.collection_id, 0);
+        assert.equal(result.data.status, 'queued'); assert.equal(result.data.files.length, 1); assert.equal(result.data.files[0].kind, 'pdf');
+        assert.deepEqual(result.data.links, ['https://example.com/course']); assert.equal(result.data.draft.body, before);
+        assert.equal(cardDb.prepare('SELECT body FROM entries WHERE id=?').get(id).body, before);
+    } finally {
+        if (jobId) failTask(jobId, 'HTTP 表单测试结束');
+        process.env.DEEPSEEK_API_KEY = ''; resumeTasksAfterBackup();
+        await new Promise(resolve => setImmediate(resolve));
+        server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+    }
+});
+
+test('真实 Harness 可为只有按钮的空文档修改摘要，工作区仍预置可读取的空原文', async () => {
+    const id = entry('空正文附件页', null, 'document', 'draft');
+    cardDb.prepare("UPDATE entries SET body='',actions='[{\"label\":\"下载\",\"url\":\"https://example.com/file\"}]' WHERE id=?").run(id);
+    const result = await harnessScenario(count => count === 1 ? { name: 'read', args: { file_path: '$REPORT' } } : { name: 'submit_document', args: { summary: '更新的摘要' } }, { job: modifyTask(id) });
+    assert.equal(result.task.status, 'published', result.task.error + result.diagnostics);
+    assert.equal(result.task.result_entry_id, id); assert.equal(result.calls, 2);
+    const row = cardDb.prepare('SELECT * FROM entries WHERE id=?').get(id);
+    assert.equal(row.body, ''); assert.equal(row.summary, '更新的摘要'); assert.equal(row.status, 'draft');
+    assert.equal(JSON.parse(row.actions)[0].label, '下载');
+});
 
 test('原生文件工具及指引保留，旧输出配置不生效，可分段编辑长报告并提交元数据', async () => {
     const body = '深入讲解。'.repeat(22000);

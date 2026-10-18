@@ -73,7 +73,7 @@ async function seed(f) {
     db.prepare("INSERT INTO announcements(title,body,status,pinned,published_at,created_at,updated_at) VALUES('公告','公告正文','published',1,'2026-10-01','2026-10-01','2026-10-01')").run();
     const tag = Number(db.prepare("INSERT INTO announcement_tags(name,color) VALUES('更新日志','#a34f3d')").run().lastInsertRowid);
     db.prepare('INSERT INTO announcement_tag_links VALUES(1,?)').run(tag);
-    db.prepare("INSERT INTO ai_tasks(id,title,prompt,collection_id,settings,status,result_entry_id,created_at,updated_at) VALUES('task-a','课程学习','解释课程',?,'{}','queued',?,'2026-10-03','2026-10-03')").run(collection, article);
+    db.prepare("INSERT INTO ai_tasks(id,title,prompt,collection_id,settings,status,result_entry_id,created_at,updated_at,mode,target_entry_id) VALUES('task-a','课程学习','解释课程',?,'{}','queued',?,'2026-10-03','2026-10-03','modify',?)").run(collection, article, article);
     db.prepare("INSERT INTO ai_task_files(task_id,url,name,kind) VALUES('task-a','/source/course.pdf','course.pdf','pdf')").run();
     db.prepare('INSERT INTO ai_collection_sessions(collection_id,session_id) VALUES(?,?)').run(collection, `learning-collection-${collection}-workspace`);
     db.prepare("INSERT INTO managed_uploads(url) VALUES('/picture/course.png'),('/source/course.pdf'),('/source/song.mp3'),('/source/course.mp4')").run();
@@ -119,6 +119,8 @@ test('完整备份、覆盖还原和历史下载删除：保留所有内容关�
     assert.deepEqual(await readdir(join(f.data, 'feedback/images')), ['screen.png']);
     assert.equal(await readFile(join(f.publicRoot, 'favicon.png'), 'utf8'), 'hardcoded-favicon');
     assert.equal(f.card.prepare('SELECT status FROM ai_tasks').get().status, 'cancelled');
+    assert.equal(f.card.prepare('SELECT mode,target_entry_id FROM ai_tasks').get().mode, 'modify');
+    assert.equal(f.card.prepare('SELECT target_entry_id FROM ai_tasks').get().target_entry_id, ids.article);
     assert.equal(f.card.prepare('SELECT status FROM discussion_mail_queue').get().status, 'skipped');
     // Reinstalled triggers still publish future content and enforce pin limits.
     const events = f.card.prepare('SELECT COUNT(*) AS n FROM subscription_events').get().n;
@@ -157,6 +159,7 @@ test('增量还原处理编号、用户名和文件冲突；保留当前修改�
     assert.equal(await readFile(join(target.publicRoot, importedVideo.video_url.slice(1)), 'utf8'), 'MP4 video');
     assert.equal(await readFile(join(target.publicRoot, 'source/course.mp4'), 'utf8'), 'current video');
     assert.notEqual(parent.id, ids.collection); assert.equal(imported.parent_id, parent.id);
+    assert.equal(target.card.prepare("SELECT target_entry_id FROM ai_tasks WHERE id='task-a'").get().target_entry_id, imported.id, '增量导入后，修改任务指向重新编号的正确文档');
     assert.notEqual(parent.resource_type_id, type);
     const owner = target.card.prepare("SELECT * FROM users WHERE email='one@example.com'").get();
     assert.notEqual(owner.id, ids.user); assert.ok(owner.username.startsWith('站主_')); assert.equal(owner.is_owner, 0);
@@ -313,6 +316,11 @@ test('旧版备份可在新服务器导入，且不会清除旧格式未覆盖�
     oldDatabase.schema.home_tracks.columns = oldDatabase.schema.home_tracks.columns.filter(column => column.name !== 'playlist_id');
     oldDatabase.schema.home_tracks.foreign = [];
     for (const row of oldDatabase.tables.home_tracks) delete row.values.playlist_id;
+    for (const column of ['mode', 'target_entry_id', 'target_snapshot']) {
+        oldDatabase.schema.ai_tasks.columns = oldDatabase.schema.ai_tasks.columns.filter(item => item.name !== column);
+        for (const row of oldDatabase.tables.ai_tasks) delete row.values[column];
+    }
+    oldDatabase.schema.ai_tasks.foreign = oldDatabase.schema.ai_tasks.foreign.filter(item => item.from !== 'target_entry_id');
     for (const column of ['is_owner', 'reply_notifications']) {
         oldDatabase.schema.users.columns = oldDatabase.schema.users.columns.filter(c => c.name !== column);
         for (const row of oldDatabase.tables.users) delete row.values[column];
@@ -328,6 +336,7 @@ test('旧版备份可在新服务器导入，且不会清除旧格式未覆盖�
     assert.equal(target.card.prepare('SELECT reply_notifications FROM users LIMIT 1').get().reply_notifications, 1);
     assert.equal(target.card.prepare('SELECT COUNT(*) AS n FROM plaza_items').get().n, 0);
     assert.deepEqual(homeSentences(target.card), [], '旧备份没有句子时可正常还原');
+    assert.equal(target.card.prepare('SELECT mode FROM ai_tasks').get().mode, 'create', '旧学习记录自动归为新增模式');
     assert.equal(homePlaylists(target.card)[0].title, '我的歌单');
     assert.equal(homePlaylists(target.card)[0].tracks.length, 2, '旧版备份中的歌曲自动放入默认歌单');
     await target.successful(target.store.restore(old, 'merge'));

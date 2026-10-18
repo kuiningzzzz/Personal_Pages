@@ -23,6 +23,10 @@ export function migrateAi(db) {
             session_id TEXT NOT NULL
         );
     `);
+    const columns = new Set(db.prepare('PRAGMA table_info(ai_tasks)').all().map(row => row.name));
+    if (!columns.has('mode')) db.exec("ALTER TABLE ai_tasks ADD COLUMN mode TEXT NOT NULL DEFAULT 'create' CHECK(mode IN ('create','modify'))");
+    if (!columns.has('target_entry_id')) db.exec('ALTER TABLE ai_tasks ADD COLUMN target_entry_id INTEGER REFERENCES entries(id) ON DELETE SET NULL');
+    if (!columns.has('target_snapshot')) db.exec("ALTER TABLE ai_tasks ADD COLUMN target_snapshot TEXT NOT NULL DEFAULT '{}'");
     db.prepare("UPDATE ai_tasks SET budget=? WHERE status='queued' AND iterations=0 AND budget<?").run(INITIAL_BUDGET, INITIAL_BUDGET);
     db.prepare('INSERT OR IGNORE INTO site_configs (key, data) VALUES (?, ?)').run('ai_learning', JSON.stringify({
         reportInstructions: '', taskTimeoutMinutes: 30

@@ -4,13 +4,21 @@ import MarkdownContent from './MarkdownContent.vue'
 
 const emit = defineEmits(['notice'])
 const config = ref(null), collections = ref([]), tasks = ref([]), selected = ref(null)
+const documents = ref([]), documentQuery = ref('')
 const busy = ref(false), error = ref(''), files = ref([]), fileInput = ref(null)
-const form = ref({ title: '', collection_id: '', prompt: '', links: '' })
+const form = ref({ mode: 'create', target_entry_id: '', title: '', collection_id: '', prompt: '', links: '' })
+const modifying = computed(() => form.value.mode === 'modify')
+const targetDocument = computed(() => documents.value.find(item => item.id === Number(form.value.target_entry_id)))
+const filteredDocuments = computed(() => {
+  const query = documentQuery.value.trim().toLocaleLowerCase()
+  return documents.value.filter(item => item.id === Number(form.value.target_entry_id) || !query || item.path.toLocaleLowerCase().includes(query))
+})
 const statusText = { queued: '排队中', running: '正在学习', published: '已发布', failed: '失败', cancelled: '已取消' }
 const logLabels = { reasoning: '思考', assistant: '输出', 'tool-call': '工具调用', 'tool-result': '工具结果', 'tool-error': '工具错误', phase: '阶段', model: '模型', 'model-finish': '请求结束', 'model-error': '请求错误', compaction: '压缩', 'idle-warning': '空转提醒', step: '迭代', session: '会话' }
 const loadingEarlier = ref(false)
 const working = task => task && (['queued', 'running'].includes(task.status) || task.stopping)
-const ready = computed(() => config.value?.keyConfigured && collections.value.some(item => item.publishable))
+const ready = computed(() => config.value?.keyConfigured && (modifying.value ? !!targetDocument.value : !!form.value.collection_id))
+const statusLabel = task => task.status === 'published' && task.mode === 'modify' ? '已修改' : statusText[task.status]
 const request = async (path, options = {}) => {
   const response = await fetch(`/api/admin/ai${path}`, { credentials: 'same-origin', ...options })
   const result = await response.json()
@@ -19,7 +27,11 @@ const request = async (path, options = {}) => {
 }
 const json = (method, body = {}) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 async function refresh() {
+  const previous = tasks.value
   tasks.value = await request('/tasks')
+  if (tasks.value.some(task => task.status === 'published' && previous.some(old => old.id === task.id && old.status !== 'published'))) {
+    documents.value = await request('/documents')
+  }
   if (!selected.value) return
   const current = selected.value, id = current.id
   const latest = await request(`/tasks/${id}`)
@@ -88,8 +100,9 @@ async function poll() {
 }
 onMounted(async () => {
   try {
-    const [configuration, destinations] = await Promise.all([request('/config'), request('/collections')])
+    const [configuration, destinations, editable] = await Promise.all([request('/config'), request('/collections'), request('/documents')])
     config.value = configuration; collections.value = destinations
+    documents.value = editable
     form.value.collection_id = destinations.find(item => item.publishable)?.id || ''
     await poll()
   } catch (cause) { error.value = cause.message }
@@ -99,31 +112,34 @@ onUnmounted(() => { disposed = true; clearTimeout(timer) })
 
 <template>
   <section class="learning-admin">
-    <header class="learning-heading"><div><h2>AI 学习</h2><p>放进课件、链接或一个学习要求，让它整理成一篇可复习的报告。</p></div><span class="model-label">{{ config?.model || 'deepseek-flash' }}</span></header>
+    <header class="learning-heading"><div><h2>AI 学习</h2><p>提供课件、链接和要求，新增学习报告，或完善已有文档。</p></div><span class="model-label">{{ config?.model || 'deepseek-flash' }}</span></header>
     <p v-if="error" class="learning-error" role="alert">{{ error }}</p>
     <p v-if="config && !config.keyConfigured" class="learning-error">服务端尚未配置 API key。在根目录 .env 设置 DEEPSEEK_API_KEY 后重启后端。</p>
-    <p v-if="config && !collections.some(item => item.publishable)" class="learning-error">请先在资源库创建并发布一个合集。报告会直接公开，目标合集及上级合集都需要已发布。</p>
+    <p v-if="!modifying && config && !collections.some(item => item.publishable)" class="learning-error">请先在资源库创建并发布一个合集。报告会直接公开，目标合集及上级合集都需要已发布。</p>
+    <p v-if="modifying && config && !documents.length" class="learning-error">资源库暂时没有文档，请先添加一个文档资源。</p>
     <form class="surface learning-form" @submit.prevent="start">
-      <div class="learning-grid"><label>任务名称<input v-model="form.title" maxlength="200" placeholder="例如：线性代数 · 第三课" /></label><label>报告目的地<select v-model="form.collection_id" required><option value="" disabled>选择一个合集</option><option v-for="collection in collections" :key="collection.id" :value="collection.id" :disabled="!collection.publishable">{{ collection.path }}{{ collection.publishable ? '' : '（尚未公开）' }}</option></select></label></div>
+      <div class="learning-modes" role="group" aria-label="学习模式"><button type="button" :class="{ active: !modifying }" :aria-pressed="!modifying" :disabled="busy" @click="form.mode = 'create'">新增模式</button><button type="button" :class="{ active: modifying }" :aria-pressed="modifying" :disabled="busy" @click="form.mode = 'modify'">修改模式</button></div>
+      <div class="learning-grid"><label>任务名称<input v-model="form.title" maxlength="200" :placeholder="modifying ? '可选，默认使用待修改文档名称' : '例如：线性代数 · 第三课'" /></label><label v-if="!modifying">报告目的地<select v-model="form.collection_id" required><option value="" disabled>选择一个合集</option><option v-for="collection in collections" :key="collection.id" :value="collection.id" :disabled="!collection.publishable">{{ collection.path }}{{ collection.publishable ? '' : '（尚未公开）' }}</option></select></label><div v-else class="document-target"><label for="learning-target-document">待修改文档</label><input v-model="documentQuery" type="search" placeholder="搜索文档名称或所在合集" aria-label="搜索待修改文档" /><select id="learning-target-document" v-model="form.target_entry_id" required><option value="" disabled>选择一个现有文档</option><option v-for="document in filteredDocuments" :key="document.id" :value="document.id">{{ document.path }}{{ document.status === 'draft' ? '（草稿）' : '' }}</option></select><small v-if="targetDocument">当前选中：{{ targetDocument.path }}。保留原有位置和发布状态。</small></div></div>
       <label>课件与图片<input ref="fileInput" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md" :disabled="busy" @change="pickFiles" /><small>PDF、图片、文本；最多 12 个文件，每个不超过 50 MB。提交任务时一并上传。</small></label>
       <ul v-if="files.length" class="picked-files"><li v-for="(file, index) in files" :key="index">{{ file.name }} <span>{{ (file.size / 1024 / 1024).toFixed(1) }} MB</span><button type="button" :disabled="busy" @click="files.splice(index, 1)">移除</button></li></ul>
       <label>资料链接<textarea v-model="form.links" rows="2" placeholder="每行一个网址，可与文件、学习要求一起提供" /></label>
-      <label>学习要求<textarea v-model="form.prompt" rows="4" maxlength="20000" placeholder="例如：学习这份课件，详细讲解核心概念和推导过程，再给出复习总结。也可以只输入一个学习主题。" /></label>
-      <div class="learning-submit"><p>包含全部子合集和草稿作为可读上下文。报告提交成功后直接公开发布。</p><button class="primary-button" :disabled="busy || !ready || !form.collection_id || (!files.length && !form.links.trim() && !form.prompt.trim())">{{ busy ? '正在处理…' : '开始学习' }}</button></div>
+      <label>{{ modifying ? '修改要求' : '学习要求' }}<textarea v-model="form.prompt" rows="4" maxlength="20000" :placeholder="modifying ? '例如：根据补充课件修正第二节的推导，保留其他章节，并更新摘要和标签。' : '例如：学习这份课件，详细讲解核心概念和推导过程，再给出复习总结。也可以只输入一个学习主题。'" /></label>
+      <div class="learning-submit"><p>{{ modifying ? '读取原文及所在目录全部子合集、草稿作为上下文。提交后更新原文，保留原链接和评论；运行期间若原文被人工改动，会拒绝覆盖。' : '包含全部子合集和草稿作为可读上下文。报告提交成功后直接公开发布。' }}</p><button class="primary-button" :disabled="busy || !ready || (!files.length && !form.links.trim() && !form.prompt.trim())">{{ busy ? '正在处理…' : modifying ? '开始修改' : '开始学习' }}</button></div>
     </form>
     <details v-if="config" class="surface learning-config"><summary>学习设置 <small>Harness {{ config.harnessVersion }} · 密钥{{ config.keyConfigured ? '已配置' : '未配置' }}</small></summary><div class="learning-grid"><label>单个任务时限（分钟）<input v-model.number="config.taskTimeoutMinutes" type="number" min="5" max="120" /></label></div><label>附加报告要求<textarea v-model="config.reportInstructions" rows="3" maxlength="10000" placeholder="例如：尽量用直观类比解释，所有代码注明语言。" /></label><button type="button" class="ghost-button" :disabled="busy" @click="saveConfig">保存设置</button></details>
     <div class="learning-heading"><h2>学习记录</h2><button class="ghost-button" @click="refresh().catch(cause => error = cause.message)">刷新</button></div>
     <p v-if="!tasks.length" class="surface state">还没有学习任务</p>
     <div v-else class="learning-history">
-      <div class="task-list"><button v-for="task in tasks" :key="task.id" type="button" class="surface task-card" :class="{ selected: selected?.id === task.id }" @click="select(task)"><div><strong>{{ task.title }}</strong><span class="task-status" :class="task.status">{{ statusText[task.status] }}</span></div><small>{{ task.collection_title }} · {{ new Date(task.created_at).toLocaleString('zh-CN') }}</small><p>{{ task.iterations }} / {{ task.budget }} 次迭代</p></button></div>
+      <div class="task-list"><button v-for="task in tasks" :key="task.id" type="button" class="surface task-card" :class="{ selected: selected?.id === task.id }" @click="select(task)"><div><strong>{{ task.title }}</strong><span class="task-status" :class="task.status">{{ statusLabel(task) }}</span></div><small>{{ task.mode === 'modify' ? '修改模式' : '新增模式' }} · {{ task.collection_title }} · {{ new Date(task.created_at).toLocaleString('zh-CN') }}</small><p>{{ task.iterations }} / {{ task.budget }} 次迭代</p></button></div>
       <article v-if="selected" class="surface task-detail">
-        <header><h3>{{ selected.title }}</h3><span class="task-status" :class="selected.status">{{ statusText[selected.status] }}</span></header>
+        <header><h3>{{ selected.title }}</h3><span class="task-status" :class="selected.status">{{ statusLabel(selected) }}</span></header>
+        <p v-if="selected.mode === 'modify'" class="task-progress">修改目标：{{ selected.target_title }}（#{{ selected.target_entry_id || '已删除' }}）<span v-if="selected.status === 'published' && !selected.result_public"> · 已保存，可在资源库管理中查看</span></p>
         <p class="task-progress">{{ selected.iterations }} / {{ selected.budget }} 次迭代 · 总上限 {{ config?.maxIterations }}</p><progress :value="selected.iterations" :max="selected.budget" />
         <p v-if="selected.error" class="learning-error">{{ selected.error }}</p>
-        <div class="task-actions"><a v-if="selected.result_entry_id && selected.status === 'published'" class="primary-button" :href="`/entry/${selected.result_entry_id}`" target="_blank" rel="noopener">查看报告</a><a class="ghost-button" :href="`/api/admin/ai/tasks/${selected.id}/report`">下载 Markdown</a><button v-if="['queued','running'].includes(selected.status)" class="ghost-button" :disabled="busy" @click="action(selected, 'cancel')">取消任务</button><button v-if="['failed','cancelled'].includes(selected.status)" class="ghost-button" :disabled="busy || selected.stopping" @click="action(selected, 'retry')">{{ selected.stopping ? '正在停止…' : '重新学习' }}</button><button v-if="!working(selected)" class="ghost-button" :disabled="busy" @click="remove(selected)">删除记录</button></div>
+        <div class="task-actions"><a v-if="selected.result_entry_id && selected.status === 'published' && selected.result_public" class="primary-button" :href="`/entry/${selected.result_entry_id}`" target="_blank" rel="noopener">{{ selected.mode === 'modify' ? '查看文档' : '查看报告' }}</a><a class="ghost-button" :href="`/api/admin/ai/tasks/${selected.id}/report`">下载 Markdown</a><button v-if="['queued','running'].includes(selected.status)" class="ghost-button" :disabled="busy" @click="action(selected, 'cancel')">取消任务</button><button v-if="['failed','cancelled'].includes(selected.status)" class="ghost-button" :disabled="busy || selected.stopping" @click="action(selected, 'retry')">{{ selected.stopping ? '正在停止…' : selected.mode === 'modify' ? '重新修改' : '重新学习' }}</button><button v-if="!working(selected)" class="ghost-button" :disabled="busy" @click="remove(selected)">删除记录</button></div>
         <details><summary>资料与学习要求</summary><p class="task-prompt">{{ selected.prompt || '按默认要求学习资料' }}</p><ul><li v-for="file in selected.files" :key="file.id"><a :href="file.url" target="_blank" rel="noopener">{{ file.name }}</a> <small>{{ file.role === 'derived' ? '生成附件' : '源资料' }}</small></li><li v-for="link in selected.links" :key="link"><a :href="link" target="_blank" rel="noopener">{{ link }}</a></li></ul></details>
         <p class="task-usage">主模型用量：输入 {{ (selected.usage.inputTokens || 0).toLocaleString() }} / 输出 {{ (selected.usage.outputTokens || 0).toLocaleString() }} tokens。搜索与压缩会另有消耗。</p>
-        <details v-if="selected.draft?.body"><summary>已保存报告预览</summary><MarkdownContent :source="selected.draft.body" /></details>
+        <details v-if="selected.draft?.body"><summary>工作稿预览</summary><MarkdownContent :source="selected.draft.body" /></details>
         <h4>运行日志</h4><button v-if="selected.hasEarlierEvents" type="button" class="ghost-button" :disabled="loadingEarlier" @click="earlierLogs">{{ loadingEarlier ? '加载中…' : '加载更早的日志' }}</button><ol class="task-log" aria-live="polite"><li v-for="item in selected.events" :key="item.id" :class="item.kind"><time>{{ new Date(item.created_at).toLocaleTimeString('zh-CN') }}</time><div><small class="log-label">{{ logLabels[item.kind] || item.kind }}</small><span>{{ item.message }}</span><details v-if="Object.keys(item.data || {}).length" class="log-data"><summary>查看参数与详细信息</summary><pre>{{ JSON.stringify(item.data, null, 2) }}</pre></details></div></li></ol>
       </article>
       <div v-else class="surface state">选择任务查看进度、资料和报告</div>
@@ -137,6 +153,8 @@ onUnmounted(() => { disposed = true; clearTimeout(timer) })
 h2 { margin: 0; font-size: 27px; font-weight: 900; } h3 { margin: 0; font-size: 19px; } p, small { color: var(--muted); line-height: 1.7; } .learning-heading p { margin: 6px 0 0; font-size: 13px; }
 .model-label { background: var(--sky); padding: 8px 12px; border-radius: 4px; font-size: 12px; white-space: nowrap; box-shadow: 3px 3px 0 var(--denim); }
 .learning-form { padding: 25px; margin-bottom: 24px; } .learning-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+.learning-modes { display: flex; gap: 10px; margin-bottom: 22px; }.learning-modes button { padding: 10px 18px; border: 0; border-radius: 4px; background: var(--paper-deep); color: var(--ink); font-size: 13px; font-weight: 800; }.learning-modes button.active { background: var(--accent-soft); box-shadow: 3px 3px 0 var(--sun); }
+.document-target { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; font-size: 13px; font-weight: 700; }.document-target label { margin: 0; }
 label { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; font-size: 13px; font-weight: 700; }
 input,textarea,select { width: 100%; padding: 11px 12px; border: 0; border-radius: 5px; outline: 0; color: var(--ink); background: var(--paper-deep); } input:focus,textarea:focus,select:focus { background: var(--sky); box-shadow: 0 3px 0 var(--accent); } textarea { resize: vertical; line-height: 1.7; }
 small { font-size: 11px; font-weight: 400; } .learning-submit { margin: 0; } .learning-submit p { margin: 0; max-width: 550px; font-size: 12px; } .learning-submit button { flex-shrink: 0; }

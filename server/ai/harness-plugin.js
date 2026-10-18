@@ -60,9 +60,10 @@ export function apply(ctx) {
         ['view_pdf_page', '将指定 PDF 页渲染为图片直接查看，返回可以插入报告的本地图片 URL。', { url: string('本地 PDF URL'), page: number('页码，从 1 开始', true) }],
         ['import_asset', '下载公网 PDF、图片或纯文本，保存为可引用的本地文件。', { url: string('公网 HTTP(S) URL'), name: string('显示名称', false) }],
         ['extend_budget', `增加 ${BUDGET_INCREMENT} 次主模型迭代，总预算最多 ${MAX_BUDGET} 次。`, {}],
-        ['submit_document', '读取工作区中的 Markdown 文件并公开发布到固定合集；成功后立即结束任务。', {
+        ['submit_document', process.env.LEARNING_MODE === 'modify' ? '读取工作区的 Markdown 并更新本次指定的现有文档；保留原身份、位置、发布状态和评论。成功后立即结束任务。' : '读取工作区中的 Markdown 文件并公开发布到固定合集；成功后立即结束任务。', {
             file_path: string('原生 write/edit 工具保存的 Markdown 文件路径；省略时读取本次任务的默认报告文件', false),
-            title: string('报告标题，省略时从一级标题提取', false), summary: string('简短摘要', false),
+            title: string(process.env.LEARNING_MODE === 'modify' ? '文档标题，省略时保留原标题' : '报告标题，省略时从一级标题提取', false), summary: string('简短摘要', false),
+            cover_image: string('封面图片的本地 URL 或 HTTP(S) URL；空字符串清空封面', false),
             tags: { type: 'array', items: { type: 'string' } },
             actions: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { label: string('按钮文字'), url: string('按钮链接') } } }
         }]

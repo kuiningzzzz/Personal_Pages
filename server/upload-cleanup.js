@@ -88,6 +88,8 @@ export function auditAndCleanupUploads() {
     for (const file of cardDb.prepare("SELECT f.url FROM ai_task_files f JOIN ai_tasks t ON t.id = f.task_id WHERE t.status != 'published'").all()) inspect(file.url, 'AI 学习任务附件');
     for (const task of cardDb.prepare("SELECT title, draft FROM ai_tasks WHERE status != 'published'").all()) {
         const draft = JSON.parse(task.draft);
+        inspect(draft.cover_image, `AI 任务「${task.title}」封面`);
+        markdown(draft.summary, `AI 任务「${task.title}」摘要`);
         markdown(draft.body, `AI 任务「${task.title}」草稿`);
         for (const action of draft.actions || []) inspect(action.url, `AI 任务「${task.title}」按钮`);
     }

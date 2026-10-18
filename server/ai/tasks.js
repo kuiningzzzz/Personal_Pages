@@ -12,6 +12,7 @@ import { MODEL, HARNESS_VERSION, budgetReminder } from './prompt.js';
 import { INITIAL_BUDGET, BUDGET_INCREMENT, MAX_BUDGET } from './budget.js';
 import { safeDiagnostic } from './diagnostics.js';
 import { collectionWorkspace, reportFile, readWorkspaceReport } from './workspace.js';
+import { targetDocument, documentDraft, documentSnapshot, captureModification, assertUnchanged, updateDocument } from './editing.js';
 
 const dataRoot = process.env.DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 export const taskRoot = join(dataRoot, 'ai');
@@ -58,6 +59,7 @@ export function collectionSession(collectionId) {
         }
     }
     const sessionId = `learning-collection-${collectionId}-workspace`;
+    if (collectionId === 0) return { sessionId, home, workspace, previousSessionId: null };
     const current = cardDb.prepare('SELECT * FROM ai_collection_sessions WHERE collection_id=?').get(collectionId);
     if (current) {
         if (current.session_id !== sessionId) cardDb.prepare('UPDATE ai_collection_sessions SET session_id=?,previous_session_id=? WHERE collection_id=?').run(sessionId, current.session_id, collectionId);
@@ -82,9 +84,13 @@ export function collectionSession(collectionId) {
 }
 export function taskView(task, detailed = false) {
     if (!task) return null;
+    const result = task.result_entry_id && cardDb.prepare('SELECT * FROM entries WHERE id=?').get(task.result_entry_id);
     const row = { ...task, links: JSON.parse(task.links), settings: JSON.parse(task.settings), usage: JSON.parse(task.usage),
-        collection_title: cardDb.prepare('SELECT title FROM entries WHERE id = ?').get(task.collection_id)?.title || '合集已删除', stopping: taskStopping(task.id),
+        collection_title: task.collection_id === 0 ? '资源库根目录' : cardDb.prepare('SELECT title FROM entries WHERE id = ?').get(task.collection_id)?.title || '合集已删除', stopping: taskStopping(task.id),
+        target_title: task.mode === 'modify' ? cardDb.prepare('SELECT title FROM entries WHERE id=?').get(task.target_entry_id)?.title || '文档已删除' : null,
+        result_status: result?.status || null, result_public: Boolean(result?.status === 'published' && publicAncestors(result)),
         files: cardDb.prepare('SELECT id,url,name,kind,role FROM ai_task_files WHERE task_id = ?').all(task.id) };
+    delete row.target_snapshot;
     if (detailed) {
         row.draft = JSON.parse(task.draft);
         const page = taskEvents(task.id);
@@ -98,8 +104,11 @@ function destination(id, requirePublic = false) {
     return root;
 }
 export function createTask(input, files) {
-    const collectionId = Number(input.collection_id);
-    destination(collectionId, true);
+    const mode = input.mode || 'create';
+    if (!['create', 'modify'].includes(mode)) throw new Error('请选择新增模式或修改模式');
+    const target = mode === 'modify' ? targetDocument(cardDb, input.target_entry_id) : null;
+    const collectionId = target ? target.parent_id || 0 : Number(input.collection_id);
+    if (!target) destination(collectionId, true);
     const links = (Array.isArray(input.links) ? input.links : String(input.links || '').split(/\r?\n/)).map(value => String(value).trim()).filter(Boolean);
     if (links.length > 20 || links.some(value => { try { const u = new URL(value); return !['http:', 'https:'].includes(u.protocol) || !!u.username || !!u.password; } catch { return true; } })) throw new Error('链接必须是有效的 HTTP(S) 地址，最多 20 条');
     const prompt = String(input.prompt || '').trim();
@@ -107,8 +116,9 @@ export function createTask(input, files) {
     if (!prompt && !links.length && !files.length) throw new Error('请提供资料文件、链接或学习要求');
     const id = randomUUID();
     cardDb.transaction(() => {
-        cardDb.prepare('INSERT INTO ai_tasks (id,title,prompt,links,collection_id,settings,budget,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
-            .run(id, String(input.title || '学习报告').trim().slice(0, 200), prompt, JSON.stringify(links), collectionId, JSON.stringify(settings()), INITIAL_BUDGET, now(), now());
+        cardDb.prepare('INSERT INTO ai_tasks (id,title,prompt,links,collection_id,settings,budget,created_at,updated_at,mode,target_entry_id,target_snapshot,draft) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(id, String(input.title || (target ? `修改：${target.title}` : '学习报告')).trim().slice(0, 200), prompt, JSON.stringify(links), collectionId, JSON.stringify(settings()), INITIAL_BUDGET, now(), now(),
+                mode, target?.id || null, target ? documentSnapshot(target) : '{}', target ? JSON.stringify(documentDraft(target)) : '{}');
         for (const file of files) cardDb.prepare('INSERT INTO ai_task_files (task_id,url,name,kind) VALUES (?,?,?,?)').run(id, file.url, file.name, file.kind);
         event(id, 'queued', '任务已加入队列，源资料已保护');
     })();
@@ -116,16 +126,26 @@ export function createTask(input, files) {
     return taskView(getTask(id), true);
 }
 
-function sourceHeader(id) {
-    const pdfs = cardDb.prepare("SELECT DISTINCT url,name FROM ai_task_files WHERE task_id = ? AND kind = 'pdf' AND role = 'input'").all(id);
+function sourceHeader(id, previous = []) {
+    const pdfs = [...new Map([...previous, ...cardDb.prepare("SELECT DISTINCT url,name FROM ai_task_files WHERE task_id = ? AND kind = 'pdf' AND role = 'input'").all(id)].map(file => [file.url, file])).values()];
     return pdfs.length ? '学习源资料：' + pdfs.map(file => `[${file.name.replace(/[\[\]\\\r\n]/g, '_')}](${file.url})`).join(' · ') + '\n\n---\n\n' : '';
+}
+function reportBody(task, draft) {
+    if (task.mode !== 'modify') return sourceHeader(task.id) + draft.body;
+    const original = JSON.parse(task.target_snapshot), pdfs = [];
+    marked.walkTokens(marked.lexer((original.body || '') + '\n' + (original.summary || '')), token => {
+        if (token.type === 'link' && localFile(token.href) && /\.pdf(?:[?#]|$)/i.test(token.href)) pdfs.push({ url: token.href, name: token.text || '原文源资料' });
+    });
+    for (const action of JSON.parse(original.actions || '[]')) if (localFile(action.url) && /\.pdf(?:[?#]|$)/i.test(action.url)) pdfs.push({ url: action.url, name: action.label || '原文源资料' });
+    const header = sourceHeader(task.id, pdfs);
+    return header ? header + draft.body.replace(/^学习源资料：[^\r\n]*\r?\n\r?\n---\r?\n\r?\n/, '') : draft.body;
 }
 function insertReport(task, draft, status) {
     const date = now();
     const root = destination(task.collection_id, status === 'published');
-    const result = cardDb.prepare(`INSERT INTO entries (kind,format,resource_kind,parent_id,title,summary,body,tags,actions,status,resource_type_id,published_at,created_at,updated_at)
-        VALUES ('resource','article','document',?,?,?,?,?,?,?,?,?,?,?)`).run(root.id, draft.title, draft.summary || '', sourceHeader(task.id) + draft.body,
-            JSON.stringify(draft.tags || []), JSON.stringify(draft.actions || []), status, root.resource_type_id, date, date, date);
+    const result = cardDb.prepare(`INSERT INTO entries (kind,format,resource_kind,parent_id,title,summary,body,tags,actions,status,resource_type_id,published_at,created_at,updated_at,cover_image)
+        VALUES ('resource','article','document',?,?,?,?,?,?,?,?,?,?,?,?)`).run(root.id, draft.title, draft.summary || '', sourceHeader(task.id) + draft.body,
+            JSON.stringify(draft.tags || []), JSON.stringify(draft.actions || []), status, root.resource_type_id, date, date, date, draft.cover_image || '');
     return Number(result.lastInsertRowid);
 }
 export function failTask(id, reason, status = 'failed') {
@@ -138,7 +158,7 @@ export function failTask(id, reason, status = 'failed') {
     writeFileSync(join(taskRoot, id, 'error.md'), sourceHeader(id) + failure.body, 'utf8');
     cardDb.transaction(() => {
         let resultId = null;
-        try { resultId = insertReport(task, failure, 'draft'); } catch { /* Deleted destination: error.md remains downloadable in Admin. */ }
+        try { if (task.mode !== 'modify') resultId = insertReport(task, failure, 'draft'); } catch { /* Deleted destination: error.md remains downloadable in Admin. */ }
         cardDb.prepare('UPDATE ai_tasks SET status=?,error=?,result_entry_id=?,updated_at=? WHERE id=?').run(status, String(reason).slice(0, 2000), resultId, now(), id);
         event(id, status, reason);
     })();
@@ -179,18 +199,22 @@ export async function dispatch(id, method, args = {}, signal) {
         case 'view_pdf_page': return pdfPage(task, args, signal);
         case 'import_asset': return importAsset(task, args, signal);
         case 'write_document': {
-            if (!String(args.title || '').trim() || !String(args.body || '').trim()) throw new Error('报告标题和正文不能为空');
+            args = { ...JSON.parse(task.draft), ...args };
+            if (!String(args.title || '').trim() || typeof args.body !== 'string' || (task.mode !== 'modify' && !args.body.trim())) throw new Error('报告标题和正文不能为空');
             const draft = { title: args.title.trim().slice(0, 200), body: args.body, summary: String(args.summary || '').slice(0, 1000),
                 tags: [...new Set((args.tags || []).map(item => String(item).trim().slice(0, 40)).filter(Boolean))].slice(0, 20),
-                actions: (args.actions || []).map(action => ({ label: String(action.label || ''), url: String(action.url || '') })).slice(0, 6) };
+                actions: (args.actions || []).map(action => ({ label: String(action.label || ''), url: String(action.url || '') })).slice(0, 6),
+                cover_image: String(args.cover_image || '').trim().slice(0, 2048) };
             if (draft.actions.some(action => !action.label || !/^(https?:\/\/|\/[^/])/i.test(action.url))) throw new Error('按钮需要文字及有效 URL');
+            if (draft.cover_image && !/^(https?:\/\/|\/[^/])/i.test(draft.cover_image)) throw new Error('封面需要有效的图片 URL');
             cardDb.prepare('UPDATE ai_tasks SET draft=?,updated_at=? WHERE id=?').run(JSON.stringify(draft), now(), id);
             return { saved: true, title: draft.title, characters: draft.body.length };
         }
         case 'read_document': return JSON.parse(task.draft);
         case 'sync_document': {
             const body = await readWorkspaceReport(collectionWorkspace(taskRoot, task.collection_id), args.file_path || reportFile(task.id));
-            return dispatch(id, 'write_document', { ...JSON.parse(task.draft), title: task.title, body });
+            const draft = JSON.parse(task.draft);
+            return dispatch(id, 'write_document', { ...draft, title: draft.title || task.title, body });
         }
         case 'extend_budget': {
             if (task.budget >= MAX_BUDGET) throw new Error(`已达到 ${MAX_BUDGET} 次总上限，请提交报告`);
@@ -200,19 +224,24 @@ export async function dispatch(id, method, args = {}, signal) {
             return { budget, remaining: budget - task.iterations };
         }
         case 'submit_document': {
+            if (task.mode === 'modify') {
+                try { assertUnchanged(cardDb, task); }
+                catch (error) { failTask(id, error.message); throw error; }
+            }
             let draft = JSON.parse(task.draft);
             if (args.file_path) {
                 const body = await readWorkspaceReport(collectionWorkspace(taskRoot, task.collection_id), args.file_path);
-                const title = String(args.title || body.match(/^#\s+(.+)$/m)?.[1] || task.title).trim();
+                const title = String(args.title || (task.mode === 'modify' ? draft.title : body.match(/^#\s+(.+)$/m)?.[1]) || task.title).trim();
                 await dispatch(id, 'write_document', { ...draft, ...args, title, body });
                 draft = JSON.parse(getTask(id).draft);
             }
-            if (!draft.body || !draft.title) throw new Error('请用原生 write/edit 工具保存 Markdown，再调用 submit_document 并传入 file_path');
+            if (typeof draft.body !== 'string' || (task.mode !== 'modify' && !draft.body.trim()) || !draft.title) throw new Error('请用原生 write/edit 工具保存 Markdown，再调用 submit_document 并传入 file_path');
             let emptyLink = false;
-            marked.walkTokens(marked.lexer(draft.body), token => { if (['link','image'].includes(token.type) && !String(token.href || '').trim()) emptyLink = true; });
+            marked.walkTokens(marked.lexer(draft.body + '\n' + (draft.summary || '')), token => { if (['link','image'].includes(token.type) && !String(token.href || '').trim()) emptyLink = true; });
             if (emptyLink) throw new Error('报告包含地址为空的 Markdown 链接或图片，请修正后再提交');
+            const body = reportBody(task, draft);
             const permitted = allowedUrls(task);
-            const refs = new Set([...localReferences(draft.body), ...(draft.actions || []).map(action => action.url), ...cardDb.prepare("SELECT url FROM ai_task_files WHERE task_id=? AND kind='pdf' AND role='input'").all(id).map(file => file.url)]);
+            const refs = new Set([...localReferences(body + '\n' + (draft.summary || '')), draft.cover_image || '', ...(draft.actions || []).map(action => action.url)]);
             for (const url of refs) {
                 const local = localFile(url);
                 if (!local) continue;
@@ -222,15 +251,19 @@ export async function dispatch(id, method, args = {}, signal) {
                 try { await access(local.path); } catch { throw new Error(`本地文件不存在：${url}`); }
             }
             // Idempotent transaction: retries after an uncertain response cannot publish duplicates.
-            const entryId = cardDb.transaction(() => {
+            let entryId;
+            try { entryId = cardDb.transaction(() => {
                 const current = getTask(id);
                 if (current.status === 'published') return current.result_entry_id;
                 if (current.status !== 'running') throw new Error('任务已结束');
-                const entryId = insertReport(current, draft, 'published');
+                const entryId = current.mode === 'modify' ? updateDocument(cardDb, current, draft, body) : insertReport(current, draft, 'published');
                 cardDb.prepare("UPDATE ai_tasks SET status='published',result_entry_id=?,updated_at=? WHERE id=?").run(entryId, now(), id);
-                event(id, 'published', '报告已公开发布', { entryId });
+                event(id, 'published', current.mode === 'modify' ? '原文档已更新，保留原有位置、发布状态和评论' : '报告已公开发布', { entryId, mode: current.mode });
                 return entryId;
-            })();
+            })(); } catch (error) {
+                if (task.mode === 'modify') failTask(id, error.message);
+                throw error;
+            }
             auditAndCleanupUploads();
             return { submitted: true, entryId, url: `/entry/${entryId}` };
         }
@@ -252,7 +285,8 @@ export function retryTask(id) {
     const task = getTask(id);
     if (!task || !['failed', 'cancelled'].includes(task.status)) throw new Error('只有失败或取消的任务可以重试');
     if (active?.id === id) throw new Error('任务正在停止，请稍后重试');
-    destination(task.collection_id, true);
+    if (task.mode === 'modify') captureModification(cardDb, task);
+    else destination(task.collection_id, true);
     cardDb.prepare("UPDATE ai_tasks SET status='queued',iterations=0,budget=?,error='',result_entry_id=NULL,settings=?,usage='{}',updated_at=? WHERE id=?").run(INITIAL_BUDGET, JSON.stringify(settings()), now(), id);
     event(id, 'queued', '重新开始学习，保留源资料和已保存草稿');
     setImmediate(pump);
@@ -260,9 +294,11 @@ export function retryTask(id) {
 
 async function pump() {
     if (active || stopping || backupPaused) return;
-    const task = cardDb.prepare("SELECT * FROM ai_tasks WHERE status='queued' ORDER BY created_at LIMIT 1").get();
+    let task = cardDb.prepare("SELECT * FROM ai_tasks WHERE status='queued' ORDER BY created_at LIMIT 1").get();
     if (!task) return;
     if (!process.env.DEEPSEEK_API_KEY) { failTask(task.id, '服务器根目录 .env 中未配置 DEEPSEEK_API_KEY'); setImmediate(pump); return; }
+    try { if (task.mode === 'modify') { captureModification(cardDb, task); task = getTask(task.id); } }
+    catch (error) { failTask(task.id, error.message); setImmediate(pump); return; }
     cardDb.prepare("UPDATE ai_tasks SET status='running',updated_at=? WHERE id=?").run(now(), task.id);
     event(task.id, 'running', `启动 DeepSeek Harness ${HARNESS_VERSION} / ${MODEL}`);
     mkdirSync(join(taskRoot, task.id), { recursive: true });

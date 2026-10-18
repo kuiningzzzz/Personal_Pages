@@ -39,6 +39,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.ok(ready, '服务应成功启动');
         assert.equal((await request('/api/admin/profile')).status, 401);
         assert.equal((await request('/api/admin/ai/config')).status, 401);
+        assert.equal((await request('/api/admin/ai/documents')).status, 401);
         assert.equal((await request('/api/admin/ai/tasks/missing/events')).status, 401);
         assert.equal((await request('/api/admin/moderation/reports')).status, 401);
         assert.equal((await request('/api/admin/moderation/blacklist')).status, 401);
@@ -175,6 +176,9 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         const resource = { kind: 'resource', title: '示例工具', cover_image: '/picture/tool.png', body: '一个开源项目', tags: ['工具'], resource_type_id: types[0].id,
             actions: [{ label: actionLabel, url: 'https://example.com' }], status: 'published' };
         const resourceId = (await request('/api/admin/entries', write('POST', resource))).body.id;
+        const editableDocuments = (await request('/api/admin/ai/documents')).body.data;
+        assert.ok(editableDocuments.some(document => document.id === resourceId && document.path.includes('示例工具')));
+        assert.ok(editableDocuments.every(document => document.resource_kind === 'document'));
         const list = (await request(`/api/content/entries?kind=resource&type=${types[0].id}`)).body;
         assert.equal(list.total, 1);
         assert.equal(list.data[0].cover_image, '/picture/tool.png');

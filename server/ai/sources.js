@@ -9,6 +9,8 @@ import { downloadPublic } from '../public-download.js';
 export { downloadPublic } from '../public-download.js';
 
 export function collectionTree(collectionId) {
+    // Root-level modifications share the resource library's root context.
+    if (collectionId === 0) return cardDb.prepare("SELECT * FROM entries WHERE kind='resource'").all();
     const root = cardDb.prepare("SELECT * FROM entries WHERE id = ? AND kind = 'resource' AND resource_kind = 'collection'").get(collectionId);
     if (!root) throw new Error('目标合集不存在或已不再是合集');
     const rows = cardDb.prepare("SELECT * FROM entries WHERE kind = 'resource'").all();
