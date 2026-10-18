@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { countMarkdownCharacters, documentWordCount } from '../document-word-count.js';
+import { countMarkdownCharacters, documentWordCount, articleWordCount } from '../document-word-count.js';
 
 test('正文按可见 Unicode 字符计数，排除空白、排版标记、图片及链接地址', () => {
     const cases = [
@@ -34,4 +34,8 @@ test('仅资源库文档提供字数，标题、摘要和按钮文案不计入�
     assert.deepEqual(documentWordCount({ ...entry, body: '' }), { word_count: 0 });
     for (const kind of ['collection', 'gallery', 'video']) assert.deepEqual(documentWordCount({ ...entry, resource_kind: kind }), {});
     assert.deepEqual(documentWordCount({ ...entry, kind: 'moment' }), {});
+    assert.deepEqual(articleWordCount(entry), { word_count: 2 });
+    assert.deepEqual(articleWordCount({ ...entry, kind: 'moment', format: 'article' }), { word_count: 2 });
+    assert.deepEqual(articleWordCount({ ...entry, kind: 'moment', format: 'short' }), {});
+    for (const kind of ['collection', 'gallery', 'video']) assert.deepEqual(articleWordCount({ ...entry, resource_kind: kind }), {});
 });

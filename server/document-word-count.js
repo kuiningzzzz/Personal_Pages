@@ -16,3 +16,8 @@ export function documentWordCount(entry) {
     return entry.kind === 'resource' && entry.resource_kind === 'document'
         ? { word_count: countMarkdownCharacters(entry.body) } : {};
 }
+
+export function articleWordCount(entry) {
+    return entry.kind === 'moment' && entry.format === 'article'
+        ? { word_count: countMarkdownCharacters(entry.body) } : documentWordCount(entry);
+}

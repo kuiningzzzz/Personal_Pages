@@ -135,7 +135,8 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         const momentId = (await request('/api/admin/entries', write('POST', moment))).body.id;
         assert.ok(momentId);
         assert.equal((await request(`/api/content/entries/${momentId}`)).body.data.article_navigation, null);
-        assert.equal(Object.hasOwn((await request(`/api/content/entries/${momentId}`)).body.data, 'word_count'), false, '动态不显示资源库文档字数');
+        assert.equal((await request(`/api/content/entries/${momentId}`)).body.data.word_count, 8, '动态长文阅读页返回正文的字数');
+        assert.equal(Object.hasOwn((await request('/api/content/entries?kind=moment&q=vue')).body.data[0], 'word_count'), false, '动态列表保留原有展示');
         assert.equal((await request('/api/content/entries?kind=moment&q=vue')).body.total, 1);
         assert.equal((await request('/api/content/entries?kind=moment&q=%E6%90%9C%E7%B4%A2')).body.total, 1);
         await request('/api/admin/entries', write('POST', { ...moment, title: '第二条记录', body: '这里也提到 Vue', tags: [], published_at: '2026-01-01T00:00:00Z' }));

@@ -133,7 +133,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         </Teleport>
         <div ref="readingPane" class="reading-content">
       <article class="article">
-        <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time><small v-if="entry.kind === 'resource' && entry.resource_kind === 'document' && entry.word_count != null" class="article-word-count">{{ entry.word_count.toLocaleString('zh-CN') }} 字</small></div>
+        <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time><small v-if="entry.word_count != null" class="article-word-count">{{ entry.word_count.toLocaleString('zh-CN') }} 字</small></div>
         <h1 v-if="entry.title">{{ entry.title }}</h1>
         <img v-if="entry.cover_image && !['gallery', 'video'].includes(entry.resource_kind)" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
         <MarkdownContent v-if="entry.summary" class="lead" :source="entry.summary" />
