@@ -3,7 +3,7 @@ import HomeAdminSection from './HomeAdminSection.vue'
 const sentences = defineModel({ type: Array, default: () => [] })
 defineProps({ busy: Boolean })
 function add() {
-  sentences.value.push({ _key: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, content: '' })
+  sentences.value.unshift({ _key: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, content: '' })
 }
 </script>
 <template>
