@@ -5,10 +5,22 @@ import { activityRequest, activityJson, activityGuest, activityUuid, safeRuntime
 import { theme } from '../lib/theme'
 import { pauseForActivity } from '../lib/music'
 import { activityBrowserStorage } from '../lib/activity-browser-storage'
+import { createActivityGeolocation } from '../lib/activity-geolocation'
+import UiDialog from '../components/UiDialog.vue'
 const route = useRoute(), router = useRouter()
 const frame = ref(null), activity = ref(null), loaded = ref(false), error = ref(''), preview = route.query.preview === '1'
 let channel, connectionId, poll, loadTimer, restoreMusic, disposed = false, pendingCalls = 0
 const sockets = new Map()
+const locationPrompt = ref(false)
+let resolveLocationConsent, locationEpoch = 0
+function locationConsent() { locationPrompt.value = true; return new Promise(resolve => { resolveLocationConsent = resolve }) }
+function finishLocationConsent(allowed = false) { locationPrompt.value = false; resolveLocationConsent?.(allowed); resolveLocationConsent = null }
+const locationService = createActivityGeolocation({
+  geolocation: navigator.geolocation, secureContext: window.isSecureContext,
+  allowsFeature: () => { const policy = document.permissionsPolicy || document.featurePolicy; return !policy?.allowsFeature || policy.allowsFeature('geolocation') },
+  confirm: locationConsent
+})
+function resetLocation() { locationEpoch++; locationService.reset(); finishLocationConsent(false) }
 function closeSockets() { for (const socket of sockets.values()) socket.close(); sockets.clear() }
 async function request(path, options = {}) {
   const ticket = activity.value.runtime.ticket
@@ -33,12 +45,17 @@ async function refreshRuntime() {
     activity.value.runtime = { ...data, ticket: activity.value.runtime.ticket }
     const updated = safeRuntime(activity.value.runtime)
     if (JSON.stringify(old) !== JSON.stringify(updated)) channel?.port1.postMessage({ event: 'runtime', data: updated })
-  } catch (cause) { if (!disposed) { error.value = cause.message; clearInterval(poll); closeSockets(); channel?.port1.postMessage({ event: 'unavailable', data: cause.message }) } }
+  } catch (cause) { if (!disposed) { error.value = cause.message; clearInterval(poll); closeSockets(); resetLocation(); channel?.port1.postMessage({ event: 'unavailable', data: cause.message }) } }
 }
 async function dispatch(method, args) {
   const encode = value => encodeURIComponent(String(value))
   if (method === 'user') return (await request('/user')).data
   if (method === 'login') { router.push({ path: '/login', query: { redirect: route.fullPath } }); return true }
+  if (method === 'geolocation.getCurrentPosition') {
+    const epoch = locationEpoch
+    try { return await locationService.getCurrentPosition(args.options) }
+    finally { if (epoch === locationEpoch) finishLocationConsent(false) }
+  }
   if (['browserStorage.get', 'browserStorage.set', 'browserStorage.remove'].includes(method)) return activityBrowserStorage(window.localStorage, activity.value.id, method.split('.')[1], args.key, args.value)
   if (method === 'storage.get') return (await request(`/storage/${encode(args.key)}`)).data
   if (method === 'storage.read') return (await request(`/storage/${encode(args.key)}?versioned=1`)).data
@@ -95,6 +112,7 @@ function connect(event) {
   if (event.source !== frame.value?.contentWindow || event.data?.type !== 'PP_ACTIVITY_READY' || !activity.value) return
   if (channel && typeof event.data.connectionId === 'string' && event.data.connectionId === connectionId) return
   connectionId = event.data.connectionId
+  resetLocation()
   closeSockets(); channel?.port1.close(); channel?.port2.close()
   channel = new MessageChannel()
   const reply = channel.port1
@@ -103,20 +121,24 @@ function connect(event) {
     if (pendingCalls >= 20) { channel?.port1.postMessage({ id: data.id, error: '请求过于频繁' }); return }
     pendingCalls++
     try { const result = await dispatch(data.method, data.args || {}); if (!disposed) reply.postMessage({ id: data.id, data: result }) }
-    catch (cause) { if (!disposed) reply.postMessage({ id: data.id, error: cause.message, status: cause.status }) }
+    catch (cause) { if (!disposed) reply.postMessage({ id: data.id, error: cause.message, status: cause.status, code: cause.code }) }
     finally { pendingCalls-- }
   }
   channel.port1.start()
   frame.value.contentWindow.postMessage({ type: 'PP_ACTIVITY_CONNECT', runtime: safeRuntime(activity.value.runtime), theme: theme.value }, '*', [channel.port2])
 }
 function frameLoaded() { loaded.value = true; clearTimeout(loadTimer) }
-function retry() { closeSockets(); channel?.port1.close(); channel?.port2.close(); channel = null; clearInterval(poll); clearTimeout(loadTimer); activity.value = null; start() }
+function retry() { resetLocation(); closeSockets(); channel?.port1.close(); channel?.port2.close(); channel = null; clearInterval(poll); clearTimeout(loadTimer); activity.value = null; start() }
 watch(theme, value => channel?.port1.postMessage({ event: 'theme', data: value }))
 onMounted(() => { window.addEventListener('message', connect); start() })
-onUnmounted(() => { disposed = true; window.removeEventListener('message', connect); closeSockets(); channel?.port1.close(); channel?.port2.close(); clearInterval(poll); clearTimeout(loadTimer); restoreMusic?.() })
+onUnmounted(() => { disposed = true; locationService.dispose(); finishLocationConsent(false); window.removeEventListener('message', connect); closeSockets(); channel?.port1.close(); channel?.port2.close(); clearInterval(poll); clearTimeout(loadTimer); restoreMusic?.() })
 </script>
 <template>
   <div class="page-shell player-page">
+    <UiDialog :open="locationPrompt" title="活动请求当前位置" @close="finishLocationConsent(false)">
+      <p class="location-consent">允许“{{ activity?.title }}”读取当前位置吗？位置将用于该活动的附近城市与天气查询，本次授权仅在当前活动页面有效。</p>
+      <div class="location-actions"><button class="ghost-button" @click="finishLocationConsent(false)">暂不允许</button><button class="primary-button" @click="finishLocationConsent(true)">允许本次活动定位</button></div>
+    </UiDialog>
     <nav class="player-trail"><RouterLink :to="preview ? '/admin?tab=plaza' : '/activities'">{{ preview ? '返回发布管理' : '广场' }}</RouterLink><RouterLink v-for="entry in activity?.ancestors || []" :key="entry.id" :to="`/activities/collection/${entry.id}`">/ {{ entry.title }}</RouterLink></nav>
     <header class="player-title"><h1>{{ activity?.title || '打开活动' }}</h1><span v-if="preview" class="preview-label">管理预览</span></header>
     <div v-if="error" class="surface player-error" role="alert">{{ error }}<button class="ghost-button" @click="retry">重试</button><RouterLink v-if="!preview" :to="{ path: '/login', query: { redirect: route.fullPath } }">登录 / 注册</RouterLink></div>
@@ -127,6 +149,7 @@ onUnmounted(() => { disposed = true; window.removeEventListener('message', conne
   </div>
 </template>
 <style scoped>
+.location-consent { font-size: 14px; line-height: 1.9; }.location-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
 .player-page { padding-block: 25px 45px; width: min(1440px, calc(100% - 48px)); }.player-trail { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--accent); }.player-title { display: flex; align-items: center; gap: 18px; margin-block: 18px 24px; }.player-title h1 { font-size: 28px; margin: 0; }.preview-label { background: var(--sun); color: var(--ink); border-radius: 3px; padding: 4px 9px; font-size: 12px; }.player-stage { position: relative; height: max(560px, calc(100dvh - 240px)); border-radius: 8px; background: var(--paper); box-shadow: 6px 7px 0 var(--home-stack); overflow: hidden; }iframe { display: block; border: 0; width: 100%; height: 100%; }.loading iframe { visibility: hidden; }.player-loader { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 20px; color: var(--muted); }.loading-disc { width: 40px; height: 40px; border-radius: 5px; background: var(--accent-soft); box-shadow: 3px 4px 0 var(--home-stack); animation: loading .9s linear infinite; }.loading-disc::after { content: ''; display: block; margin: 8px; width: 24px; height: 24px; border-radius: 3px; background: var(--accent); }.player-error { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 30px; }
 @keyframes loading { to { transform: rotate(360deg); } }
 @media(max-width:640px) { .player-page { width: calc(100% - 24px); }.player-stage { height: calc(100dvh - 220px); min-height: 420px; }.player-title h1 { font-size: 23px; } }

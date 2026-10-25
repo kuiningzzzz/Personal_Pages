@@ -141,6 +141,7 @@ QQ 机器人、抽奖、报名、投票等均可在活动后端实现。容器�
 | `sdk.onThemeChange(fn)` | 主题变化通知，返回取消监听函数 |
 | `sdk.onRuntimeChange(fn)` | 端口等运行配置变化通知，返回取消监听函数 |
 | `await sdk.requestLogin()` | 打开主站登录页，登录后返回活动 |
+| `await sdk.geolocation.getCurrentPosition(options?)` | 经主站确认后请求浏览器位置，返回 `{coords:{latitude,longitude,accuracy},timestamp}`；失败时 `error.code` 为 1（未允许）、2（不可用）或 3（超时） |
 | `await sdk.browserStorage.get(key)` / `.set(key, value)` / `.remove(key)` | 仅在当前浏览器保存 JSON，不写入服务器；按活动隔离，适用于游客本地存档 |
 | `await sdk.storage.get(key)` | 读取 JSON 存档，无存档返回 null |
 | `await sdk.storage.set(key, value)` | 保存可 JSON 序列化的数据 |
@@ -171,6 +172,10 @@ const connection = await sdk.backend.openSocket('/live');
 connection.onMessage(data => console.log(data));
 await connection.send('hello');
 ```
+
+活动 iframe 是隔离来源，不能直接依赖 `navigator.geolocation` 或子页面的 `navigator.permissions` 判断主站是否已获定位授权。定位按钮应调用 `sdk.geolocation.getCurrentPosition({enableHighAccuracy?, timeout?, maximumAge?})`：主站先确认当前活动的请求，再在主站 HTTPS 来源下调用浏览器定位。确认仅对本次活动页面有效；页面切换会取消请求并丢弃迟到的位置。调用结果仅包含经纬度、精度和时间，不自动存档。活动需说明坐标的用途及是否会发送给天气、地图等服务。用户拒绝、浏览器不支持、HTTPS 不满足、权限策略限制和超时会返回明确错误。
+
+定位选项 `timeout` 限制为 1～20 秒（默认 15 秒），`maximumAge` 限制为 0～5 分钟（默认 1 分钟）。主站确认超时为 30 秒。只在用户点击定位时调用；不要在页面加载时主动请求位置。需要同时部署支持此方法的主站前端和 SDK，不能通过移除沙箱或添加 `allow-same-origin` 来绕过限制。
 
 每个活动、每位用户的 SDK 存档分别隔离，登录用户跨设备可读自己的存档。游客使用当前浏览器保存的匿名 ID，不会自动转移到新注册账户；清理浏览器数据后匿名 ID 也会丢失。每位用户在每个活动中最多 20MB / 200 文件，单个 JSON 存档 512KB，单文件 10MB。后端 `/activity-data` 是活动共享数据，不同于 SDK 的每用户存档目录。
 

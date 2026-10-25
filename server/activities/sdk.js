@@ -24,7 +24,7 @@
       }
       const call = pending.get(data.id); if (!call) return;
       pending.delete(data.id); clearTimeout(call.timer);
-      if (data.error) { const error = new Error(data.error); if (Number.isInteger(data.status)) error.status = data.status; call.reject(error); } else call.resolve(data.data);
+      if (data.error) { const error = new Error(data.error); if (Number.isInteger(data.status)) error.status = data.status; if (Number.isInteger(data.code)) error.code = data.code; call.reject(error); } else call.resolve(data.data);
     };
     port.start(); clearTimeout(timer); resolveReady({ runtime, theme: appearance });
   });
@@ -42,6 +42,7 @@
     ready, getUser: () => call('user'), getRuntime: async () => { await ready; return runtime; },
     getTheme: async () => { await ready; return appearance; }, onThemeChange: callback => on('theme', callback), onRuntimeChange: callback => on('runtime', callback),
     requestLogin: () => call('login'),
+    geolocation: Object.freeze({ getCurrentPosition: (options = {}) => call('geolocation.getCurrentPosition', { options }) }),
     browserStorage: Object.freeze({
       get: key => call('browserStorage.get', { key }), set: (key, value) => call('browserStorage.set', { key, value }), remove: key => call('browserStorage.remove', { key })
     }),
