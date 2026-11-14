@@ -18,6 +18,7 @@ import { createAnnouncementAdminRoutes } from './announcements.js';
 import { validateMomentPin, setMomentPin } from './moment-pins.js';
 import { activities, activityRoutes } from './activities/index.js';
 import { homePlaylist, homePlaylists, validatePlaylist, validatePlaylists, savePlaylist, savePlaylists, homeWelcome, validateWelcome, saveWelcome } from './home-music.js';
+import { PDF_UPLOAD_LIMIT, validPdfUrl } from './pdfs.js';
 import { VIDEO_UPLOAD_LIMIT, validVideoUrl } from './videos.js';
 import { homeSentences, validateSentences, saveSentences } from './home-sentences.js';
 
@@ -172,6 +173,8 @@ function validateEntry(input, id = null) {
     const date = input.published_at ? new Date(input.published_at) : new Date();
     if (Number.isNaN(date.getTime())) return { error: '发布时间格式错误' };
     const images = [];
+    const pdfUrl = structure.resourceKind === 'pdf' ? clean(input.pdf_url, 2048) : '';
+    if (structure.resourceKind === 'pdf' && ((!pdfUrl && input.status !== 'draft') || (pdfUrl && !validPdfUrl(pdfUrl)))) return { error: '请上传一个 PDF 文件，或填写本地 /source/ PDF 地址' };
     const videoUrl = structure.resourceKind === 'video' ? clean(input.video_url, 2048) : '';
     if (structure.resourceKind === 'video' && ((!videoUrl && input.status !== 'draft') || (videoUrl && !validVideoUrl(videoUrl)))) {
         return { error: '请上传一个 MP4 视频，或填写有效的 MP4 地址' };
@@ -188,15 +191,15 @@ function validateEntry(input, id = null) {
     }
     return { kind, format, title, summary: clean(input.summary, 1000), coverImage, body: clean(input.body, 100000),
         tags: JSON.stringify(normalizeTags(input.tags)), resourceTypeId, actions: JSON.stringify(kind === 'resource' ? normalizeActions(input.actions) : []),
-        status: input.status === 'draft' ? 'draft' : 'published', pinned: pin.pinned, publishedAt: date.toISOString(), ...structure, images, videoUrl };
+        status: input.status === 'draft' ? 'draft' : 'published', pinned: pin.pinned, publishedAt: date.toISOString(), ...structure, images, videoUrl, pdfUrl };
 }
 router.post('/entries', (req, res) => {
     const data = validateEntry(req.body);
     if (data.error) return res.status(data.status || 400).json({ success: false, message: data.error });
     const now = new Date().toISOString();
     const id = cardDb.transaction(() => {
-        const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at,resource_kind,parent_id,pinned,video_url)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now, data.resourceKind, data.parentId, data.pinned, data.videoUrl);
+        const result = cardDb.prepare(`INSERT INTO entries (kind,format,title,summary,cover_image,body,tags,resource_type_id,actions,status,published_at,created_at,updated_at,resource_kind,parent_id,pinned,video_url,pdf_url)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, now, now, data.resourceKind, data.parentId, data.pinned, data.videoUrl, data.pdfUrl);
         const id = Number(result.lastInsertRowid);
         saveResourceExtras(id, data);
         return id;
@@ -209,8 +212,8 @@ router.put('/entries/:id', (req, res) => {
     const data = validateEntry(req.body, id);
     if (data.error) return res.status(data.status || 400).json({ success: false, message: data.error });
     const result = cardDb.transaction(() => {
-        const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=?,resource_kind=?,parent_id=?,pinned=?,video_url=? WHERE id=?`)
-            .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), data.resourceKind, data.parentId, data.pinned, data.videoUrl, id);
+        const result = cardDb.prepare(`UPDATE entries SET kind=?,format=?,title=?,summary=?,cover_image=?,body=?,tags=?,resource_type_id=?,actions=?,status=?,published_at=?,updated_at=?,resource_kind=?,parent_id=?,pinned=?,video_url=?,pdf_url=? WHERE id=?`)
+            .run(data.kind, data.format, data.title, data.summary, data.coverImage, data.body, data.tags, data.resourceTypeId, data.actions, data.status, data.publishedAt, new Date().toISOString(), data.resourceKind, data.parentId, data.pinned, data.videoUrl, data.pdfUrl, id);
         saveResourceExtras(id, data);
         return result;
     })();
@@ -281,6 +284,25 @@ router.post('/upload-video', (req, res, next) => {
             await unlink(req.file.path).catch(() => {});
             next(cause);
         }
+    });
+});
+
+const uploadPdf = multer({ storage: uploadStorage, limits: { fileSize: PDF_UPLOAD_LIMIT, files: 1 },
+    fileFilter: (_req, file, cb) => cb(extname(file.originalname).toLowerCase() === '.pdf' && !file.mimetype.startsWith('image/') ? null : new Error('请选择 PDF 文件'), true) }).single('file');
+router.post('/upload-pdf', (req, res, next) => {
+    uploadPdf(req, res, async error => {
+        if (error) return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ success: false, message: error.code === 'LIMIT_FILE_SIZE' ? 'PDF 不能超过 1 GB' : error.message });
+        if (!req.file) return res.status(400).json({ success: false, message: '请选择 PDF 文件' });
+        let handle;
+        try {
+            handle = await open(req.file.path, 'r');
+            const header = Buffer.alloc(5);
+            await handle.read(header, 0, 5, 0); await handle.close(); handle = null;
+            if (header.toString() !== '%PDF-') { await unlink(req.file.path); return res.status(400).json({ success: false, message: '文件不是有效的 PDF' }); }
+            const url = `/source/${req.file.filename}`;
+            rememberUpload(url);
+            res.json({ success: true, url, name: req.file.originalname });
+        } catch (cause) { await handle?.close().catch(() => {}); await unlink(req.file.path).catch(() => {}); next(cause); }
     });
 });
 

@@ -312,6 +312,23 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.deepEqual(galleryDetail.images.map(image => image.caption), ['游戏画面', '外部图片']);
         assert.equal((await request('/api/admin/entries?kind=resource')).body.data.find(row => row.id === galleryId).images.length, 2);
 
+        const invalidPdf = new FormData(); invalidPdf.append('file', new Blob(['not a PDF']), 'bad.pdf');
+        assert.equal((await request('/api/admin/upload-pdf', { method: 'POST', body: invalidPdf })).status, 400);
+        const pdfUpload = new FormData(); pdfUpload.append('file', new Blob([Buffer.from('%PDF-1.7\nPDF fixture')], { type: 'application/pdf' }), 'course.pdf');
+        const pdfUploaded = await request('/api/admin/upload-pdf', { method: 'POST', body: pdfUpload });
+        assert.equal(pdfUploaded.status, 200);
+        const pdfInput = { kind: 'resource', resource_kind: 'pdf', title: 'PDF课件', parent_id: nestedId, pdf_url: pdfUploaded.body.url, status: 'published' };
+        const pdfCreated = await request('/api/admin/entries', write('POST', pdfInput));
+        assert.equal(pdfCreated.status, 201);
+        const pdfDetail = (await request(`/api/content/entries/${pdfCreated.body.id}`)).body.data;
+        assert.equal(pdfDetail.resource_kind, 'pdf'); assert.equal(pdfDetail.article_navigation, null);
+        assert.ok(existsSync(filePath(pdfUploaded.body.url)), 'PDF字段保护源文件，无需正文引用');
+        const pdfRange = await fetch(base + pdfDetail.pdf_preview_url, { headers: { Range: 'bytes=0-4' } });
+        assert.equal(pdfRange.status, 206); assert.equal(await pdfRange.text(), '%PDF-');
+        assert.equal((await request(`/api/admin/entries/${pdfCreated.body.id}`, write('PUT', { ...pdfInput, status: 'draft' }))).status, 200);
+        assert.equal((await fetch(base + pdfDetail.pdf_preview_url)).status, 404);
+        assert.equal((await request('/api/admin/entries', write('POST', { ...pdfInput, pdf_url: '' }))).status, 400);
+
         // MP4 uploads have their own disk streaming path and are owned by the
         // video field, without requiring an extra Markdown reference.
         const invalidVideo = new FormData(); invalidVideo.append('file', new Blob(['not a video']), 'bad.mp4');

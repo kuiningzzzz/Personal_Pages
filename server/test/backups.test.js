@@ -50,6 +50,8 @@ async function seed(f) {
     const collection = add('课程合集', 'collection'), nested = add('子合集', 'collection', collection);
     const article = add('第一课', 'document', collection, '[源资料](/source/course.pdf) ![图](/picture/course.png)');
     const child = add('第二课', 'document', nested), gallery = add('图集', 'gallery', collection);
+    const pdf = add('PDF课件', 'pdf', collection);
+    db.prepare('UPDATE entries SET pdf_url=? WHERE id=?').run('/source/course.pdf', pdf);
     const video = add('课堂视频', 'video', collection);
     db.prepare('UPDATE entries SET video_url=? WHERE id=?').run('/source/course.mp4', video);
     db.prepare("UPDATE entries SET body=body || ? WHERE id=?").run(`\n[课程视频](/resource/video/${video})`, article);
@@ -84,7 +86,7 @@ async function seed(f) {
     await f.file('data/feedback/images/screen.png', 'private');
     await f.file(`data/ai/collections/${collection}/workspace/reports/notes.md`, '# 学习笔记');
     await f.file(`data/ai/collections/${collection}/harness/session.json`, JSON.stringify({ id: `learning-collection-${collection}-workspace`, messages: ['历史上下文'] }));
-    return { type, collection, nested, article, child, gallery, video, user, visitor, root, reply };
+    return { type, collection, nested, article, child, gallery, video, pdf, user, visitor, root, reply };
 }
 
 test('完整备份、覆盖还原和历史下载删除：保留所有内容关系及文件，自动保存还原前版本', async t => {
@@ -151,6 +153,10 @@ test('增量还原处理编号、用户名和文件冲突；保留当前修改�
     assert.equal(await readFile(join(target.publicRoot, importedMusic.tracks[0].url.slice(1)), 'utf8'), 'MP3 track');
     const imported = target.card.prepare("SELECT * FROM entries WHERE title='第一课'").get(), parent = target.card.prepare("SELECT * FROM entries WHERE title='课程合集'").get();
     assert.equal(target.card.prepare("SELECT color FROM announcement_tags WHERE name='更新日志'").get().color, '#a34f3d');
+    const importedPdf = target.card.prepare("SELECT pdf_url,parent_id FROM entries WHERE title='PDF课件'").get();
+    assert.equal(importedPdf.parent_id, parent.id);
+    assert.match(importedPdf.pdf_url, /course-import-[a-f0-9]+\.pdf/);
+    assert.equal(await readFile(join(target.publicRoot, importedPdf.pdf_url.slice(1)), 'utf8'), 'PDF source');
     const importedVideo = target.card.prepare("SELECT id,video_url,parent_id,body FROM entries WHERE title='课堂视频'").get();
     assert.equal(importedVideo.parent_id, parent.id);
     assert.ok(imported.body.includes(`/resource/video/${importedVideo.id})`), '视频页面链接随增量导入后的编号更新');

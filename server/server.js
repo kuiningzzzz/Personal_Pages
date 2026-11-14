@@ -112,6 +112,9 @@ const server = app.listen(PORT, () => {
     feedbackMail.start();
     activities.start();
 });
+
+// Large authenticated disk uploads can take longer than Node's default 5 minutes.
+server.requestTimeout = 30 * 60 * 1000;
 let closing = false;
 server.on('upgrade', (req, socket, head) => { if (maintenanceActive() || !activityRoutes.upgrade(req, socket, head)) socket.destroy(); });
 async function shutdown() {

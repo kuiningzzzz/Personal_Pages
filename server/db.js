@@ -17,6 +17,7 @@ import { migrateFeedback } from './feedback/schema.js';
 import { migrateAnnouncements } from './announcements.js';
 import { migrateMomentPins } from './moment-pins.js';
 import { migrateActivities } from './activities/schema.js';
+import { migrateResourcePdfs } from './migrations/resource-pdfs.js';
 import { migrateResourceVideos } from './migrations/resource-videos.js';
 import { recoverRestore } from './backups/store.js';
 
@@ -154,6 +155,7 @@ function initializeDatabase() {
             CREATE INDEX IF NOT EXISTS idx_gallery_images_entry ON gallery_images(entry_id, display_order, id);
         `);
         migrateResourceVideos(cardDb);
+        migrateResourcePdfs(cardDb);
         if (!cardDb.prepare('SELECT id FROM profile WHERE id = 1').get()) {
             const legacy = JSON.parse(cardDb.prepare('SELECT data FROM site_configs WHERE key = ?').get('home_content').data);
             const description = Array.isArray(legacy.profile.bio) ? legacy.profile.bio.join('\n') : String(legacy.profile.bio || '');

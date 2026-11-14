@@ -30,7 +30,6 @@ onBeforeUnmount(() => {
       <span v-if="buffering && !error" class="video-buffering" role="status">正在缓冲…</span>
     </div>
     <p v-if="error" class="video-error" role="alert">{{ error }} <button type="button" class="ghost-button" @click="retry">重试</button></p>
-    <a class="video-download ghost-button" :href="src" download target="_blank" rel="noopener noreferrer">下载视频 ↓</a>
   </div>
 </template>
 

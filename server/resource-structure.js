@@ -20,7 +20,7 @@ export function publicAncestors(row) {
 
 export function validateStructure(input, id = null) {
     const kind = input.kind === 'resource' ? 'resource' : 'moment';
-    const resourceKind = kind === 'resource' && ['collection', 'gallery', 'video'].includes(input.resource_kind) ? input.resource_kind : 'document';
+    const resourceKind = kind === 'resource' && ['collection', 'gallery', 'video', 'pdf'].includes(input.resource_kind) ? input.resource_kind : 'document';
     const rows = cardDb.prepare('SELECT id, kind, resource_kind, parent_id FROM entries').all();
     if (resourceKind !== 'collection' && rows.some(row => row.parent_id === id && id !== null)) {
         return { error: '合集还有成员，请先移出成员，再修改资源形态' };

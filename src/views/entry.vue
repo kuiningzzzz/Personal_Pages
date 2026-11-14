@@ -1,9 +1,12 @@
 <script setup>
-import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
+import { defineAsyncComponent, computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import GalleryViewer from '../components/GalleryViewer.vue'
 import VideoViewer from '../components/VideoViewer.vue'
+import PdfPagePicker from '../components/PdfPagePicker.vue'
+const PdfViewer = defineAsyncComponent(() => import('../components/PdfViewer.vue'))
+const pdfViewer = ref(null), pdfPages = ref([]), pdfState = ref({ total: 0, start: 1 })
 import ResourceBreadcrumbs from '../components/ResourceBreadcrumbs.vue'
 import CommentsPanel from '../components/CommentsPanel.vue'
 import { lockPageScroll, trapFocus } from '../lib/layers'
@@ -47,7 +50,7 @@ const drawerTrigger = ref(null)
 const media = window.matchMedia('(max-width: 900px)')
 const mobile = ref(media.matches)
 const drawerOpen = ref(false)
-const outline = computed(() => [...headings.value, ...(['gallery', 'video'].includes(entry.value?.resource_kind) ? [{ id: `${entry.value.resource_kind}-${entry.value.id}`, text: resourceLabel(entry.value), level: 1 }] : [])])
+const outline = computed(() => entry.value?.resource_kind === 'pdf' ? pdfPages.value : [...headings.value, ...(['gallery', 'video'].includes(entry.value?.resource_kind) ? [{ id: `${entry.value.resource_kind}-${entry.value.id}`, text: resourceLabel(entry.value), level: 1 }] : [])])
 const minimumLevel = computed(() => Math.min(...outline.value.map(item => item.level), 6))
 let releaseScroll, frame = 0, resizeObserver, followPending = false
 function trackSection() {
@@ -117,7 +120,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 </script>
 
 <template>
-  <div class="page-shell detail-page" :class="{ 'gallery-page': ['gallery', 'video'].includes(entry?.resource_kind) }">
+  <div class="page-shell detail-page" :class="{ 'gallery-page': ['gallery', 'video', 'pdf'].includes(entry?.resource_kind) }">
     <div v-if="error" class="surface state">{{ error }}</div>
     <div v-else-if="!entry" class="surface state">加载中…</div>
     <template v-else>
@@ -127,7 +130,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <Teleport to="body" :disabled="!mobile">
           <aside :id="`reading-sidebar-${entry.id}`" ref="sidebar" class="reading-sidebar" :class="{ 'drawer-open': drawerOpen, 'mobile-sidebar': mobile }" :role="mobile ? 'dialog' : 'complementary'" :aria-modal="mobile && drawerOpen ? true : undefined" :aria-hidden="mobile && !drawerOpen ? true : undefined" aria-label="目录与评论" @keydown="drawerKeys">
             <div v-if="mobile" class="drawer-heading"><strong>目录与评论</strong><button type="button" aria-label="收起目录与评论" @click="closeDrawer(true)">×</button></div>
-            <section class="toc-panel"><h2>本页目录</h2><nav v-if="outline.length" ref="tocNav" aria-label="文章目录"><a v-for="item in outline" :key="item.id" :href="`#${item.id}`" :class="{ active: activeSection === item.id }" :style="{ '--depth': item.level - minimumLevel }" :aria-current="activeSection === item.id ? 'location' : undefined" @click.prevent="jumpTo(item.id)">{{ item.text }}</a></nav><p v-else>这页没有章节标题。</p></section>
+            <section class="toc-panel"><div class="toc-heading"><h2>本页目录</h2><PdfPagePicker v-if="entry.resource_kind === 'pdf'" :total="pdfState.total" :start="pdfState.start" @select="pdfViewer?.select($event)" /></div><nav v-if="outline.length" ref="tocNav" aria-label="文章目录"><a v-for="item in outline" :key="item.id" :href="`#${item.id}`" :class="{ active: activeSection === item.id }" :style="{ '--depth': item.level - minimumLevel }" :aria-current="activeSection === item.id ? 'location' : undefined" @click.prevent="jumpTo(item.id)">{{ item.text }}</a></nav><p v-else>这页没有章节标题。</p></section>
             <CommentsPanel :entry-id="entry.id" />
           </aside>
         </Teleport>
@@ -135,7 +138,8 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
       <article class="article">
         <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time><small v-if="entry.word_count != null" class="article-word-count">{{ entry.word_count.toLocaleString('zh-CN') }} 字</small></div>
         <h1 v-if="entry.title">{{ entry.title }}</h1>
-        <img v-if="entry.cover_image && !['gallery', 'video'].includes(entry.resource_kind)" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
+        <a v-if="entry.resource_kind === 'video' && entry.video_playback_url || entry.resource_kind === 'pdf' && entry.pdf_preview_url" class="ghost-button media-download" :href="entry.resource_kind === 'pdf' ? entry.pdf_preview_url : entry.video_playback_url" download>下载{{ entry.resource_kind === 'pdf' ? 'PDF' : '视频' }} ↓</a>
+        <img v-if="entry.cover_image && !['gallery', 'video', 'pdf'].includes(entry.resource_kind)" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
         <MarkdownContent v-if="entry.summary" class="lead" :source="entry.summary" />
         <div v-if="entry.tags.length" class="tags"><span v-for="tag in entry.tags" :key="tag">#{{ tag }}</span></div>
         <MarkdownContent :source="entry.body" :heading-prefix="`entry-${entry.id}-section-`" @outline="headings = $event" />
@@ -149,6 +153,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
           </router-link>
         </nav>
       </article>
+      <PdfViewer v-if="entry.resource_kind === 'pdf' && entry.pdf_preview_url" ref="pdfViewer" :src="entry.pdf_preview_url" @pages="pdfPages = $event" @state="pdfState = $event" @jump="jumpTo" />
       <section v-if="entry.resource_kind === 'video'" :id="`video-${entry.id}`" class="gallery-section video-section"><div class="gallery-heading"><h2>视频</h2></div><VideoViewer v-if="entry.video_playback_url" :src="entry.video_playback_url" :poster="entry.cover_image" :title="entry.title" /><p v-else class="lead">暂无可播放的视频。</p></section>
       <section v-if="entry.resource_kind === 'gallery'" :id="`gallery-${entry.id}`" class="gallery-section"><div class="gallery-heading"><h2>图集</h2><button type="button" class="ghost-button gallery-download" :disabled="downloading || !entry.images.length" :aria-busy="downloading" @click="downloadGallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4" stroke-linecap="round" stroke-linejoin="round" /></svg>{{ downloading ? '正在打包…' : '下载整个图包' }}</button></div><p v-if="downloadError" class="gallery-download-error" role="alert">{{ downloadError }}</p><GalleryViewer :images="entry.images" /></section>
         </div>
@@ -164,7 +169,8 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 .reading-content { min-width: 0; }
 .reading-sidebar { position: sticky; top: 105px; display: flex; flex-direction: column; gap: 18px; min-width: 0; height: calc(100dvh - 130px); padding: 0 5px 6px 0; }
 .toc-panel { flex: none; padding: 16px; border-radius: 6px; background: var(--card-sky); box-shadow: 4px 5px 0 var(--card-sky-stack); }
-.toc-panel h2 { margin: 0 0 12px; color: var(--ink); font-size: 16px; font-weight: 800; }
+.toc-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }.media-download { display: inline-block; margin-bottom: 22px; font-size: 13px; }
+.toc-panel h2 { margin: 0; color: var(--ink); font-size: 16px; font-weight: 800; }
 .toc-panel nav { max-height: 28vh; overflow-y: auto; padding-right: 3px; scrollbar-width: thin; }
 .toc-panel a { display: block; padding: 6px 0 6px calc(var(--depth) * 9px); color: var(--muted); font-size: max(11px, calc(13px - var(--depth) * .5px)); line-height: 1.65; overflow-wrap: anywhere; text-decoration: none; transition: color .2s ease; }
 .toc-panel a.active { color: var(--link); font-size: 16px; font-weight: 800; }
