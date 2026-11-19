@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import ResourceMasonry from './ResourceMasonry.vue'
 import MarkdownContent from './MarkdownContent.vue'
 import ShortPostBody from './ShortPostBody.vue'
 import CommentsPanel from './CommentsPanel.vue'
@@ -143,7 +144,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <div v-if="error" :key="`error-${resultVersion}`" class="surface state">{{ error }}</div>
         <div v-else-if="!loaded" key="loading" class="surface state">整理中…</div>
         <div v-else-if="!rows.length" :key="`empty-${resultVersion}`" class="surface state">{{ query ? '没有找到匹配的内容' : '这里还没有内容' }}</div>
-        <div v-else :key="resultVersion" class="entry-list">
+        <ResourceMasonry v-else :key="resultVersion" class="entry-list" :enabled="kind === 'resource'" :count="rows.length">
           <article v-for="(row, index) in rows" :id="`entry-${row.id}`" :key="row.id" class="entry" :class="{ 'short-entry': isShort(row), 'without-cover': isShort(row) && !row.cover_image }">
             <span class="entry-index" aria-hidden="true">{{ String((page - 1) * CONTENT_PAGE_SIZE + index + 1).padStart(2, '0') }}</span>
             <component :is="isShort(row) ? 'div' : RouterLink" v-if="!isShort(row) || row.cover_image" class="entry-visual" :class="{ 'collection-visual': row.resource_kind === 'collection', 'gallery-visual': row.resource_kind === 'gallery' }" :to="isShort(row) ? undefined : entryLink(row)" :aria-label="isShort(row) ? undefined : `查看${row.title || '这条动态'}`">
@@ -153,7 +154,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
               <span v-else class="entry-art" aria-hidden="true"><strong>{{ (row.title || row.resource_type_name || '随记').slice(0, 2) }}</strong></span>
             </component>
             <div class="entry-content">
-              <div class="entry-top"><span v-if="kind === 'moment' && row.pinned" class="moment-pin-label">置顶</span><span>{{ kind === 'resource' ? resourceLabel(row) : row.format === 'short' ? '短帖' : '长文' }}</span><span v-if="!collectionId && row.resource_type_name">{{ row.resource_type_name }}</span><small v-if="row.resource_kind === 'collection'">{{ row.child_count }} 项内容</small><small v-else-if="row.resource_kind === 'gallery'">{{ row.image_count }} 张图片</small><time :datetime="itemTime(row).value">{{ itemTime(row).label }}{{ date(itemTime(row).value) }}</time><small v-if="row.word_count != null" class="entry-word-count">{{ row.word_count.toLocaleString('zh-CN') }} 字</small></div>
+              <div class="entry-top"><span v-if="kind === 'moment' && row.pinned" class="moment-pin-label">置顶</span><span>{{ kind === 'resource' ? resourceLabel(row) : row.format === 'short' ? '短帖' : '长文' }}</span><span v-if="!collectionId && row.resource_type_name">{{ row.resource_type_name }}</span><small v-if="row.resource_kind === 'collection'">{{ row.child_count }} 项内容</small><small v-else-if="row.resource_kind === 'gallery'">{{ row.image_count }} 张图片</small><div class="entry-timing"><time :datetime="itemTime(row).value">{{ itemTime(row).label }}{{ date(itemTime(row).value) }}</time><small v-if="row.word_count != null" class="entry-word-count">{{ row.word_count.toLocaleString('zh-CN') }} 字</small></div></div>
               <ResourceBreadcrumbs v-if="kind === 'resource' && query && row.ancestors?.length" class="search-result-location" :ancestors="row.ancestors" />
               <h2 v-if="isShort(row) && row.title" class="entry-title">{{ row.title }}</h2>
               <router-link v-else-if="row.title" class="entry-title" :to="entryLink(row)">{{ row.title }}<span aria-hidden="true">↗</span></router-link>
@@ -165,7 +166,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
             </div>
             <div v-if="isShort(row)" class="short-comments"><CommentsPanel :entry-id="row.id" inline :focus-comment-id="row.id === Number(route.query.post) ? Number(route.query.comment) || null : null" /></div>
           </article>
-        </div>
+        </ResourceMasonry>
       </Transition>
     </div>
 

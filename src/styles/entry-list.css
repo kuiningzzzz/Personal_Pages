@@ -86,3 +86,27 @@ a.entry-title:hover { text-decoration: underline; text-decoration-color: var(--a
   .entry-art strong { writing-mode: horizontal-tb; }
   .entry-bottom { margin-top: 8px; }
 }
+
+/* Multi-column resource cards. A single column keeps the existing row layout. */
+.entry-timing { display: contents; }
+.entry-list.resource-masonry { position: relative; display: block; height: var(--masonry-height); margin-bottom: 12px; }
+.resource-masonry > .entry { position: absolute; top: var(--masonry-y, 0px); left: var(--masonry-x, 0px); display: flex; flex-direction: column; width: calc((100% - (var(--masonry-columns) - 1) * var(--masonry-gap)) / var(--masonry-columns)); min-height: 0; padding: 13px; border-radius: 7px; box-shadow: 5px 6px 0 var(--stack); }
+.resource-masonry > .entry:hover { transform: translateY(-3px); box-shadow: 6px 9px 0 var(--stack); }
+.resource-masonry .entry-index { position: absolute; z-index: 1; top: 21px; left: 21px; padding: 4px 7px; border-radius: 3px; background: var(--paper); font-size: 14px; box-shadow: 2px 2px 0 var(--paper-deep); }
+.resource-masonry .entry-visual { order: -1; flex: none; width: 100%; height: auto; aspect-ratio: 16 / 10; margin: 0; box-shadow: 3px 3px 0 var(--denim); }
+.resource-masonry .entry:hover .entry-visual { transform: none; box-shadow: 3px 3px 0 var(--denim); }
+.resource-masonry .entry-content { padding: 18px 5px 8px; }
+.resource-masonry .entry-top { gap: 7px 9px; }
+.resource-masonry .entry-top span { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.resource-masonry .entry-timing { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; width: 100%; margin-top: 4px; }
+.resource-masonry .entry-title { margin-top: 13px; font-size: 21px; line-height: 1.45; }
+.resource-masonry .summary { display: block; overflow: visible; margin: 12px 0 16px; font-size: 13px; line-height: 1.8; -webkit-line-clamp: unset; }
+.resource-masonry .entry-bottom { flex-wrap: wrap; align-items: center; margin-top: 12px; gap: 12px; }
+.resource-masonry .entry-bottom .tags { flex-basis: 100%; min-width: 0; }
+.resource-masonry .tags span { overflow-wrap: anywhere; max-width: 100%; }
+.resource-masonry .entry-bottom>a { margin-left: auto; }
+.resource-masonry .entry-actions { gap: 9px; margin-top: 16px; }
+.resource-masonry .entry-actions a { padding: 7px 9px; }
+.resource-masonry .collection-subscribe { margin-top: 15px; }
+.resource-masonry .entry-art strong { writing-mode: horizontal-tb; font-size: 35px; }
+@media (prefers-reduced-motion: reduce) { .resource-masonry > .entry { transition: none; }.resource-masonry > .entry:hover { transform: none; } }
