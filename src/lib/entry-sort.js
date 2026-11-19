@@ -5,13 +5,20 @@ const remembered = new Map()
 const keyFor = (kind, parentId) => `entry-sort:${kind}:${parentId || 'root'}`
 export const normalizeEntrySort = (sort, fallback = 'latest') => sorts.has(sort) ? sort : sorts.has(fallback) ? fallback : 'latest'
 
-export function directorySort(kind, parentId = null, fallback = 'latest') {
+export function directorySort(kind, parentId = null, fallback = kind === 'resource' ? 'updated' : 'latest') {
   const key = keyFor(kind, parentId)
   try {
     const stored = window.sessionStorage.getItem(key)
     if (sorts.has(stored)) return stored
   } catch { /* Memory still works when browser storage is unavailable. */ }
   return normalizeEntrySort(remembered.get(key), fallback)
+}
+
+export function entryListTime(entry, sort, fallback) {
+  if (entry.kind !== 'resource') return { label: '', value: entry.published_at }
+  return normalizeEntrySort(sort, fallback) === 'updated'
+    ? { label: '修改：', value: entry.updated_at }
+    : { label: '创建：', value: entry.created_at }
 }
 
 export function rememberDirectorySort(kind, parentId, sort) {

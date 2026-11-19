@@ -10,7 +10,7 @@ import SubscriptionControls from './SubscriptionControls.vue'
 import PaginationNav from './PaginationNav.vue'
 import { CONTENT_PAGE_SIZE } from '../lib/pagination'
 import { resourceLabel } from '../lib/resources'
-import { directorySort, normalizeEntrySort, rememberDirectorySort, sortedEntryLocation } from '../lib/entry-sort'
+import { entryListTime, directorySort, normalizeEntrySort, rememberDirectorySort, sortedEntryLocation } from '../lib/entry-sort'
 import { loadSubscriptions } from '../lib/subscriptions'
 
 const props = defineProps({ kind: { type: String, required: true }, collectionId: { type: [String, Number], default: null } })
@@ -47,6 +47,7 @@ watch(query, (value, previous) => {
 }, { flush: 'sync' })
 watch(sort, value => { page.value = 1; rememberDirectorySort(props.kind, props.collectionId, value) }, { flush: 'sync', immediate: true })
 watch([query, selectedType, selectedFormat, sort, page], load)
+const itemTime = row => entryListTime(row, sort.value, directorySort(props.kind, props.collectionId))
 const entryLink = row => sortedEntryLocation(row, normalizeEntrySort(sort.value, directorySort(props.kind, props.collectionId)))
 
 async function load() {
@@ -152,7 +153,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
               <span v-else class="entry-art" aria-hidden="true"><strong>{{ (row.title || row.resource_type_name || '随记').slice(0, 2) }}</strong></span>
             </component>
             <div class="entry-content">
-              <div class="entry-top"><span v-if="kind === 'moment' && row.pinned" class="moment-pin-label">置顶</span><span>{{ kind === 'resource' ? resourceLabel(row) : row.format === 'short' ? '短帖' : '长文' }}</span><span v-if="!collectionId && row.resource_type_name">{{ row.resource_type_name }}</span><small v-if="row.resource_kind === 'collection'">{{ row.child_count }} 项内容</small><small v-else-if="row.resource_kind === 'gallery'">{{ row.image_count }} 张图片</small><time :datetime="row.published_at">{{ date(row.published_at) }}</time><small v-if="row.word_count != null" class="entry-word-count">{{ row.word_count.toLocaleString('zh-CN') }} 字</small></div>
+              <div class="entry-top"><span v-if="kind === 'moment' && row.pinned" class="moment-pin-label">置顶</span><span>{{ kind === 'resource' ? resourceLabel(row) : row.format === 'short' ? '短帖' : '长文' }}</span><span v-if="!collectionId && row.resource_type_name">{{ row.resource_type_name }}</span><small v-if="row.resource_kind === 'collection'">{{ row.child_count }} 项内容</small><small v-else-if="row.resource_kind === 'gallery'">{{ row.image_count }} 张图片</small><time :datetime="itemTime(row).value">{{ itemTime(row).label }}{{ date(itemTime(row).value) }}</time><small v-if="row.word_count != null" class="entry-word-count">{{ row.word_count.toLocaleString('zh-CN') }} 字</small></div>
               <ResourceBreadcrumbs v-if="kind === 'resource' && query && row.ancestors?.length" class="search-result-location" :ancestors="row.ancestors" />
               <h2 v-if="isShort(row) && row.title" class="entry-title">{{ row.title }}</h2>
               <router-link v-else-if="row.title" class="entry-title" :to="entryLink(row)">{{ row.title }}<span aria-hidden="true">↗</span></router-link>

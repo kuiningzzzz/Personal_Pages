@@ -525,6 +525,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.deepEqual(earlyNeighbors.next, latestNeighbors.previous);
         assert.equal((await request(`${resourceQuery}&sort=latest`)).body.data[0].id, resourceIds[14]);
         assert.equal((await request('/api/content/entries?kind=resource&sort=updated')).body.data[0].id, pagedCollection, '子内容更新使旧合集在普通列表的最新修改排序中优先');
+        assert.equal((await request('/api/content/entries?kind=resource')).body.data[0].id, pagedCollection, '资源库未指定排序时默认最新修改');
         for (const [parent, ids] of [[null, [...resourceIds, ...childIds]], [pagedCollection, childIds]]) {
             const query = resourceQuery + (parent ? `&parent=${parent}` : '');
             const pages = await Promise.all(Array.from({ length: Math.ceil(ids.length / 15) }, (_, i) => request(`${query}&page=${i + 1}`)));

@@ -46,7 +46,7 @@ router.get('/entries', (req, res) => {
     const terms = query.split(/\s+/u).filter(Boolean);
     const type = Number(req.query.type) || null;
     const format = kind === 'moment' && ['short', 'article'].includes(req.query.format) ? req.query.format : null;
-    const sort = ['latest', 'oldest', 'updated'].includes(req.query.sort) ? req.query.sort : 'relevance';
+    const sort = ['latest', 'oldest', 'updated'].includes(req.query.sort) ? req.query.sort : terms.length ? 'relevance' : kind === 'resource' ? 'updated' : 'latest';
     let page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(48, Math.max(1, Number.parseInt(req.query.limit, 10) || 15));
     const parentId = kind === 'resource' && req.query.parent ? Number(req.query.parent) : null;
