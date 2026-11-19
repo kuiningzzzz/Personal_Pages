@@ -10,7 +10,7 @@ import { createAnnouncementPublicRoutes } from './announcements.js';
 import { publicEntryComparator } from './moment-pins.js';
 import { createPdfRoutes, pdfPreviewUrl } from './pdfs.js';
 import { createVideoRoutes, videoPlaybackUrl } from './videos.js';
-import { documentWordCount, articleWordCount } from './document-word-count.js';
+import { articleWordCount } from './document-word-count.js';
 
 const router = express.Router();
 router.use('/announcements', createAnnouncementPublicRoutes({ db: cardDb }));
@@ -94,7 +94,7 @@ router.get('/entries', (req, res) => {
     page = Math.min(page, Math.max(1, Math.ceil(total / limit)));
     // 列表仅返回摘要；正文仍用于搜索，详情接口返回完整内容。
     const data = rows.slice((page - 1) * limit, page * limit).map(({ body, actions, ...rest }) => ({ ...rest,
-        ...documentWordCount({ ...rest, body }),
+        ...articleWordCount({ ...rest, body }),
         ...(recursiveSearch ? { ancestors: publicAncestors(rest) || [] } : {}),
         body: rest.format === 'short' ? body : '', actions: kind === 'resource' ? actions : [] }));
     res.json({ success: true, data, total, page, limit });

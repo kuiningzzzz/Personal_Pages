@@ -136,7 +136,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         assert.ok(momentId);
         assert.equal((await request(`/api/content/entries/${momentId}`)).body.data.article_navigation, null);
         assert.equal((await request(`/api/content/entries/${momentId}`)).body.data.word_count, 8, '动态长文阅读页返回正文的字数');
-        assert.equal(Object.hasOwn((await request('/api/content/entries?kind=moment&q=vue')).body.data[0], 'word_count'), false, '动态列表保留原有展示');
+        assert.equal((await request('/api/content/entries?kind=moment&q=vue')).body.data[0].word_count, 8, '动态列表返回完整正文的字数，与阅读页一致');
         assert.equal((await request('/api/content/entries?kind=moment&q=vue')).body.total, 1);
         assert.equal((await request('/api/content/entries?kind=moment&q=%E6%90%9C%E7%B4%A2')).body.total, 1);
         await request('/api/admin/entries', write('POST', { ...moment, title: '第二条记录', body: '这里也提到 Vue', tags: [], published_at: '2026-01-01T00:00:00Z' }));
@@ -151,6 +151,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         const shortResults = (await request('/api/content/entries?kind=moment&q=%E9%9A%8F%E6%89%8B%E4%B8%80%E8%AE%B0')).body;
         assert.equal(shortResults.total, 1);
         assert.equal(shortResults.data[0].format, 'short');
+        assert.equal(Object.hasOwn(shortResults.data[0], 'word_count'), false, '短帖不显示字数');
         assert.match(shortResults.data[0].body, /散步/);
         const filteredShort = (await request('/api/content/entries?kind=moment&format=short&limit=1')).body;
         assert.equal(filteredShort.total, 1);
