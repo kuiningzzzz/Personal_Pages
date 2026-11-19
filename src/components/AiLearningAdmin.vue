@@ -1,10 +1,13 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
+import LocationPicker from './LocationPicker.vue'
 import MarkdownContent from './MarkdownContent.vue'
 
 const emit = defineEmits(['notice'])
 const config = ref(null), collections = ref([]), tasks = ref([]), selected = ref(null)
-const documents = ref([]), documentQuery = ref('')
+const documents = ref([])
+const destinations = computed(() => collections.value.map(item => ({ ...item, disabled: !item.publishable })))
+const editableLocations = computed(() => [...collections.value, ...documents.value.map(item => ({ ...item, isFolder: false }))])
 const expandedTaskGroups = ref(new Set())
 const taskGroups = computed(() => {
   const groups = new Map()
@@ -23,10 +26,7 @@ const busy = ref(false), error = ref(''), files = ref([]), fileInput = ref(null)
 const form = ref({ mode: 'create', target_entry_id: '', title: '', collection_id: '', prompt: '', links: '' })
 const modifying = computed(() => form.value.mode === 'modify')
 const targetDocument = computed(() => documents.value.find(item => item.id === Number(form.value.target_entry_id)))
-const filteredDocuments = computed(() => {
-  const query = documentQuery.value.trim().toLocaleLowerCase()
-  return documents.value.filter(item => item.id === Number(form.value.target_entry_id) || !query || item.path.toLocaleLowerCase().includes(query))
-})
+
 const statusText = { queued: '排队中', running: '正在学习', published: '已发布', failed: '失败', cancelled: '已取消' }
 const logLabels = { reasoning: '思考', assistant: '输出', 'tool-call': '工具调用', 'tool-result': '工具结果', 'tool-error': '工具错误', phase: '阶段', model: '模型', 'model-finish': '请求结束', 'model-error': '请求错误', compaction: '压缩', 'idle-warning': '空转提醒', step: '迭代', session: '会话' }
 const loadingEarlier = ref(false)
@@ -133,7 +133,7 @@ onUnmounted(() => { disposed = true; clearTimeout(timer) })
     <p v-if="modifying && config && !documents.length" class="learning-error">资源库暂时没有文档，请先添加一个文档资源。</p>
     <form class="surface learning-form" @submit.prevent="start">
       <div class="learning-modes" role="group" aria-label="学习模式"><button type="button" :class="{ active: !modifying }" :aria-pressed="!modifying" :disabled="busy" @click="form.mode = 'create'">新增模式</button><button type="button" :class="{ active: modifying }" :aria-pressed="modifying" :disabled="busy" @click="form.mode = 'modify'">修改模式</button></div>
-      <div class="learning-grid"><label>任务名称<input v-model="form.title" maxlength="200" :placeholder="modifying ? '可选，默认使用待修改文档名称' : '例如：线性代数 · 第三课'" /></label><label v-if="!modifying">报告目的地<select v-model="form.collection_id" required><option value="" disabled>选择一个合集</option><option v-for="collection in collections" :key="collection.id" :value="collection.id" :disabled="!collection.publishable">{{ collection.path }}{{ collection.publishable ? '' : '（尚未公开）' }}</option></select></label><div v-else class="document-target"><label for="learning-target-document">待修改文档</label><input v-model="documentQuery" type="search" placeholder="搜索文档名称或所在合集" aria-label="搜索待修改文档" /><select id="learning-target-document" v-model="form.target_entry_id" required><option value="" disabled>选择一个现有文档</option><option v-for="document in filteredDocuments" :key="document.id" :value="document.id">{{ document.path }}{{ document.status === 'draft' ? '（草稿）' : '' }}</option></select><small v-if="targetDocument">当前选中：{{ targetDocument.path }}。保留原有位置和发布状态。</small></div></div>
+      <div class="learning-grid"><label>任务名称<input v-model="form.title" maxlength="200" :placeholder="modifying ? '可选，默认使用待修改文档名称' : '例如：线性代数 · 第三课'" /></label><LocationPicker v-if="!modifying" v-model="form.collection_id" label="报告目的地" :items="destinations" :allow-root="false" :disabled="busy" /><div v-else class="document-target"><LocationPicker v-model="form.target_entry_id" label="待修改文档" :items="editableLocations" documents :allow-root="false" :disabled="busy" placeholder="选择一个现有文档" /><small v-if="targetDocument">当前选中：{{ targetDocument.path }}。保留原有位置和发布状态。</small></div></div>
       <label>课件与图片<input ref="fileInput" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md" :disabled="busy" @change="pickFiles" /><small>PDF、图片、文本；最多 12 个文件，每个不超过 50 MB。提交任务时一并上传。</small></label>
       <ul v-if="files.length" class="picked-files"><li v-for="(file, index) in files" :key="index">{{ file.name }} <span>{{ (file.size / 1024 / 1024).toFixed(1) }} MB</span><button type="button" :disabled="busy" @click="files.splice(index, 1)">移除</button></li></ul>
       <label>资料链接<textarea v-model="form.links" rows="2" placeholder="每行一个网址，可与文件、学习要求一起提供" /></label>

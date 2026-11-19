@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { useRoute } from 'vue-router'
+import LocationPicker from '../components/LocationPicker.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import { resourceLabel } from '../lib/resources'
 import AiLearningAdmin from '../components/AiLearningAdmin.vue'
@@ -254,7 +255,7 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
           <div class="form-grid"><label>标题{{ form.format === 'short' ? '（可选）' : '' }}<input v-model="form.title" placeholder="给内容起个标题" /></label><label>发布状态<select v-model="form.status" @change="form.status === 'draft' && (form.pinned = false)"><option value="published">已发布</option><option value="draft">草稿</option></select></label></div>
           <label v-if="kind === 'moment'" class="moment-pin-setting"><input v-model="form.pinned" type="checkbox" :disabled="busy || form.status === 'draft'" /><span>置顶动态（短帖与长文合计最多 5 条，仅限已发布内容）</span></label>
           <div class="form-grid"><label>发布时间<input v-model="dateInput" type="datetime-local" /></label><label v-if="kind === 'moment'">动态形式<select v-model="form.format"><option value="article">长文</option><option value="short">短帖</option></select></label><label v-else-if="!form.parent_id">根大类<select v-model.number="form.resource_type_id"><option :value="null">未分类</option><option v-for="type in types" :key="type.id" :value="type.id">{{ type.name }}</option></select></label><label v-else>根大类 · 继承父合集<input :value="inheritedCategory" readonly /></label></div>
-          <div v-if="kind === 'resource'" class="form-grid"><label>资源形态<select v-model="form.resource_kind"><option value="document">文档</option><option value="collection">合集</option><option value="gallery">图集</option><option value="video">视频</option><option value="pdf">PDF</option></select></label><label>所属合集<select v-model="form.parent_id"><option :value="null">无 · 展示在资源库首页</option><option v-for="collection in parentCollections" :key="collection.id" :value="collection.id">{{ resourceLocation(collection) }} / {{ collection.title }}{{ collection.status === 'draft' ? '（草稿）' : '' }}</option></select></label></div>
+          <div v-if="kind === 'resource'" class="form-grid"><label>资源形态<select v-model="form.resource_kind"><option value="document">文档</option><option value="collection">合集</option><option value="gallery">图集</option><option value="video">视频</option><option value="pdf">PDF</option></select></label><LocationPicker v-model="form.parent_id" label="所属合集" :items="parentCollections" :disabled="busy" /></div>
           <p v-if="kind === 'resource' && form.parent_id" class="editor-hint">此内容只在所属合集中出现，大类随父合集自动继承；如果上级合集是草稿，此内容也暂不对外展示。</p>
           <section v-if="kind === 'resource' && form.resource_kind === 'collection'" class="member-editor">
             <div class="section-head"><div><h3>合集成员</h3><p>勾选已有文档、图集、视频或其他合集。保存时移入本合集；取消勾选的原成员会回到资源库首页。</p></div><span>{{ form.member_ids.length }} 项</span></div>
