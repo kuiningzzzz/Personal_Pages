@@ -148,9 +148,9 @@ onUnmounted(() => { disposed = true; clearTimeout(timer) })
         <section v-for="group in taskGroups" :key="group.id" class="task-group" :aria-labelledby="`task-group-${group.id}`">
           <header class="task-group-heading"><h3 :id="`task-group-${group.id}`">{{ group.path }}</h3><small>{{ group.tasks.length }} 条</small></header>
           <div :id="`task-group-records-${group.id}`" class="task-group-records">
-            <button v-for="task in (expandedTaskGroups.has(group.id) ? group.tasks : group.tasks.slice(0, 5))" :key="task.id" type="button" class="surface task-card" :class="{ selected: selected?.id === task.id }" @click="select(task)"><div><strong>{{ task.title }}</strong><span class="task-status" :class="task.status">{{ statusLabel(task) }}</span></div><small>{{ task.mode === 'modify' ? '修改模式' : '新增模式' }} · {{ new Date(task.created_at).toLocaleString('zh-CN') }}</small><p>{{ task.iterations }} / {{ task.budget }} 次迭代</p></button>
+            <button v-for="task in (expandedTaskGroups.has(group.id) ? group.tasks : group.tasks.slice(0, 1))" :key="task.id" type="button" class="surface task-card" :class="{ selected: selected?.id === task.id }" @click="select(task)"><div><strong>{{ task.title }}</strong><span class="task-status" :class="task.status">{{ statusLabel(task) }}</span></div><small>{{ task.mode === 'modify' ? '修改模式' : '新增模式' }} · {{ new Date(task.created_at).toLocaleString('zh-CN') }}</small><p>{{ task.iterations }} / {{ task.budget }} 次迭代</p></button>
           </div>
-          <button v-if="group.tasks.length > 5" type="button" class="ghost-button task-group-toggle" :aria-expanded="expandedTaskGroups.has(group.id)" :aria-controls="`task-group-records-${group.id}`" @click="toggleTaskGroup(group.id)">{{ expandedTaskGroups.has(group.id) ? '收起' : `展开其余 ${group.tasks.length - 5} 条` }}</button>
+          <button v-if="group.tasks.length > 1" type="button" class="ghost-button task-group-toggle" :aria-expanded="expandedTaskGroups.has(group.id)" :aria-controls="`task-group-records-${group.id}`" @click="toggleTaskGroup(group.id)">{{ expandedTaskGroups.has(group.id) ? '收起' : `展开其余 ${group.tasks.length - 1} 条` }}</button>
         </section>
       </div>
       <article v-if="selected" class="surface task-detail">

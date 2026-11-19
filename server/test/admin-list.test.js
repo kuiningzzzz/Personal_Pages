@@ -6,7 +6,7 @@ import { paginationItems } from '../../src/lib/pagination.js';
 const row = (id, parent_id = null, extra = {}) => ({ id, parent_id, title: `内容 ${id}`, body: '', tags: [],
     resource_kind: 'document', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z', ...extra });
 
-test('后台分页只计根项目，各层默认三个直接成员，展开操作互不影响', () => {
+test('后台分页只计根项目，各层默认全部折叠，展开操作互不影响', () => {
     const roots = Array.from({ length: 16 }, (_, i) => row(i + 1));
     roots[0] = row(1, null, { resource_kind: 'collection', updated_at: '2025-01-01T00:00:00Z' });
     const children = [101, 102, 103, 104].map(id => row(id, 1, { resource_kind: 'collection' }));
@@ -17,14 +17,23 @@ test('后台分页只计根项目，各层默认三个直接成员，展开操�
     assert.equal(initial.total, 16);
     assert.equal(initial.totalPages, 2);
     assert.equal(initial.rows.filter(r => !r.fold && r.depth === 0).length, 15);
-    assert.deepEqual(initial.rows.filter(r => !r.fold && r.depth === 1).map(r => r.id), [104, 103, 102]);
-    assert.deepEqual(initial.rows.filter(r => !r.fold && r.depth === 2).map(r => r.id), [204, 203, 202]);
-    assert.deepEqual(initial.rows.filter(r => r.fold).map(r => [r.id, r.hidden]), [[104, 1], [1, 1]]);
+    assert.deepEqual(initial.rows.filter(r => !r.fold && r.depth > 0), []);
+    assert.deepEqual(initial.rows.filter(r => r.fold).map(r => [r.id, r.hidden]), [[1, 4]]);
     const expanded = adminListing(entries, { ...options, expanded: new Set([1]) });
     assert.equal(expanded.rows.filter(r => !r.fold && r.depth === 1).length, 4);
-    assert.equal(expanded.rows.filter(r => !r.fold && r.depth === 2).length, 3);
+    assert.equal(expanded.rows.filter(r => !r.fold && r.depth === 2).length, 0);
+    const fullyExpanded = adminListing(entries, { ...options, expanded: new Set([1, 104]) });
+    assert.equal(fullyExpanded.rows.filter(r => !r.fold && r.depth === 2).length, 4);
     const page2 = adminListing(entries, { ...options, page: 2, expanded: new Set([1, 104]) });
     assert.deepEqual(page2.rows.map(r => r.id), [2]);
+});
+
+test('仅一个成员的合集也默认折叠，空合集不显示展开按钮', () => {
+    const entries = [row(1, null, { resource_kind: 'collection' }), row(2, 1), row(3, null, { resource_kind: 'collection' })];
+    const result = adminListing(entries, { kind: 'resource' });
+    assert.deepEqual(result.rows.filter(r => !r.fold).map(r => r.id), [3, 1]);
+    assert.deepEqual(result.rows.filter(r => r.fold).map(r => [r.id, r.hidden]), [[1, 1]]);
+    assert.ok(adminListing(entries, { kind: 'resource', expanded: new Set([1]) }).rows.some(r => r.id === 2));
 });
 
 test('创建／修改排序分别排序根和兄弟，不将子内容提升到根层', () => {
@@ -32,8 +41,8 @@ test('创建／修改排序分别排序根和兄弟，不将子内容提升到�
         row(2, null, { created_at: '2024-01-01', updated_at: '2025-01-01' }),
         row(3, 1, { created_at: '2023-01-01', updated_at: '2027-01-01' }),
         row(4, 1, { created_at: '2024-01-01', updated_at: '2026-01-01' })];
-    assert.deepEqual(adminListing(entries, { kind: 'resource', sort: 'updated' }).rows.map(r => r.id), [1, 3, 4, 2]);
-    assert.deepEqual(adminListing(entries, { kind: 'resource', sort: 'created' }).rows.map(r => r.id), [2, 1, 4, 3]);
+    assert.deepEqual(adminListing(entries, { kind: 'resource', sort: 'updated', expanded: new Set([1]) }).rows.filter(r => !r.fold).map(r => r.id), [1, 3, 4, 2]);
+    assert.deepEqual(adminListing(entries, { kind: 'resource', sort: 'created', expanded: new Set([1]) }).rows.filter(r => !r.fold).map(r => r.id), [2, 1, 4, 3]);
     assert.deepEqual(entries.map(r => r.id), [1, 2, 3, 4], '不改变编辑器的完整数据');
 });
 

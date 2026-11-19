@@ -1,7 +1,7 @@
 import { CONTENT_PAGE_SIZE } from './pagination.js'
 
 // Count and paginate roots before flattening their visible branches. Each
-// collection's child limit is independent of the descendants of those children.
+// collection starts collapsed independently of its descendants.
 export function adminListing(entries, { kind, query = '', sort = 'updated', page = 1, expanded = new Set(), pageSize = CONTENT_PAGE_SIZE }) {
   const field = sort === 'created' ? 'created_at' : 'updated_at'
   const ordered = [...entries].sort((a, b) => (Date.parse(b[field]) || 0) - (Date.parse(a[field]) || 0) || b.id - a.id)
@@ -40,10 +40,10 @@ export function adminListing(entries, { kind, query = '', sort = 'updated', page
     if (kind !== 'resource') return
     const branch = matchingChildren(row.id)
     const showAll = terms.length > 0 || expanded.has(row.id)
-    for (const child of showAll ? branch : branch.slice(0, 3)) visit(child, depth + 1)
-    if (!terms.length && branch.length > 3) rows.push({
+    if (showAll) for (const child of branch) visit(child, depth + 1)
+    if (!terms.length && branch.length) rows.push({
       rowKey: `fold-${row.id}`, fold: true, id: row.id, depth: depth + 1,
-      expanded: showAll, hidden: branch.length - 3, title: row.title,
+      expanded: showAll, hidden: branch.length, title: row.title,
     })
   }
   for (const root of roots.slice((currentPage - 1) * pageSize, currentPage * pageSize)) visit(root, 0)
