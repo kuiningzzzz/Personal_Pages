@@ -20,10 +20,9 @@ router.use(createVideoRoutes({ db: cardDb, publicRoot, publicAncestors }));
 const parse = (value, fallback = []) => { try { return JSON.parse(value); } catch { return fallback; } };
 const entrySelect = `SELECT e.*, rt.name AS resource_type_name,
     (SELECT COUNT(*) FROM entries child WHERE child.parent_id = e.id AND child.status = 'published') AS child_count,
-    (SELECT COUNT(*) FROM gallery_images g WHERE g.entry_id = e.id) AS image_count,
-    (SELECT url FROM gallery_images g WHERE g.entry_id = e.id ORDER BY display_order, id LIMIT 1) AS gallery_cover
+    (SELECT COUNT(*) FROM gallery_images g WHERE g.entry_id = e.id) AS image_count
     FROM entries e LEFT JOIN resource_types rt ON rt.id = e.resource_type_id`;
-const entry = ({ gallery_cover, ...row }) => ({ ...row, pinned: Boolean(row.pinned), cover_image: row.cover_image || (row.resource_kind === 'gallery' ? gallery_cover || '' : ''), tags: parse(row.tags), actions: parse(row.actions) });
+const entry = row => ({ ...row, pinned: Boolean(row.pinned), cover_image: row.cover_image || '', tags: parse(row.tags), actions: parse(row.actions) });
 
 router.get('/profile', (_req, res) => {
     const profile = cardDb.prepare('SELECT avatar, name, description FROM profile WHERE id = 1').get();

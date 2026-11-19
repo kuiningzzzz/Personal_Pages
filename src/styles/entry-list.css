@@ -110,3 +110,9 @@ a.entry-title:hover { text-decoration: underline; text-decoration-color: var(--a
 .resource-masonry .collection-subscribe { margin-top: 15px; }
 .resource-masonry .entry-art strong { writing-mode: horizontal-tb; font-size: 35px; }
 @media (prefers-reduced-motion: reduce) { .resource-masonry > .entry { transition: none; }.resource-masonry > .entry:hover { transform: none; } }
+
+/* Resources without an explicit cover use the space for their content. */
+.resource .entry.without-cover { min-height: 0; }
+.resource .entry.without-cover .entry-content { grid-column: 2 / -1; padding-right: 4px; }
+.resource-masonry .entry.without-cover .entry-index { position: static; align-self: flex-start; margin: 3px 5px 0; }
+.resource-masonry .entry.without-cover .entry-content { padding-top: 12px; }

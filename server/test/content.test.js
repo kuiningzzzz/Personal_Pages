@@ -305,7 +305,7 @@ test('管理、发布、搜索及资源分类可以完整工作', async () => {
         const nestedList = (await request(`/api/content/entries?kind=resource&parent=${nestedId}`)).body.data;
         assert.equal(nestedList[0].id, galleryId);
         assert.equal(nestedList[0].image_count, 2);
-        assert.equal(nestedList[0].cover_image, galleryUrl);
+        assert.equal(nestedList[0].cover_image, '', '未设置封面的图集不自动取首张图片作为列表封面');
         const galleryDetail = (await request(`/api/content/entries/${galleryId}`)).body.data;
         assert.equal(galleryDetail.article_navigation, null);
         assert.equal(galleryDetail.resource_type_id, types[1].id);

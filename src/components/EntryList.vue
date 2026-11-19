@@ -145,9 +145,9 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <div v-else-if="!loaded" key="loading" class="surface state">整理中…</div>
         <div v-else-if="!rows.length" :key="`empty-${resultVersion}`" class="surface state">{{ query ? '没有找到匹配的内容' : '这里还没有内容' }}</div>
         <ResourceMasonry v-else :key="resultVersion" class="entry-list" :enabled="kind === 'resource'" :count="rows.length">
-          <article v-for="(row, index) in rows" :id="`entry-${row.id}`" :key="row.id" class="entry" :class="{ 'short-entry': isShort(row), 'without-cover': isShort(row) && !row.cover_image }">
+          <article v-for="(row, index) in rows" :id="`entry-${row.id}`" :key="row.id" class="entry" :class="{ 'short-entry': isShort(row), 'without-cover': (kind === 'resource' || isShort(row)) && !row.cover_image }">
             <span class="entry-index" aria-hidden="true">{{ String((page - 1) * CONTENT_PAGE_SIZE + index + 1).padStart(2, '0') }}</span>
-            <component :is="isShort(row) ? 'div' : RouterLink" v-if="!isShort(row) || row.cover_image" class="entry-visual" :class="{ 'collection-visual': row.resource_kind === 'collection', 'gallery-visual': row.resource_kind === 'gallery' }" :to="isShort(row) ? undefined : entryLink(row)" :aria-label="isShort(row) ? undefined : `查看${row.title || '这条动态'}`">
+            <component :is="isShort(row) ? 'div' : RouterLink" v-if="row.cover_image || (kind !== 'resource' && !isShort(row))" class="entry-visual" :class="{ 'collection-visual': row.resource_kind === 'collection', 'gallery-visual': row.resource_kind === 'gallery' }" :to="isShort(row) ? undefined : entryLink(row)" :aria-label="isShort(row) ? undefined : `查看${row.title || '这条动态'}`">
               <img v-if="row.cover_image" :src="row.cover_image" :alt="`${row.title || '动态'}的封面`" loading="lazy" />
               <span v-else-if="row.resource_kind === 'collection'" class="collection-art" aria-hidden="true"><span></span><span></span><strong>合集</strong></span>
               <span v-else-if="row.resource_kind === 'video'" class="entry-art video-art" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="4" y="8" width="40" height="32" rx="5" stroke="currentColor" stroke-width="2" /><path d="m20 16 14 8-14 8Z" fill="currentColor" /></svg></span>
