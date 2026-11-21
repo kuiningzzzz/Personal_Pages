@@ -1,9 +1,10 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile, readdir, lstat, stat, rename, rm, copyFile, access } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, lstat, stat, rename, rm, access } from 'node:fs/promises';
 import { join, resolve, relative, sep, basename, extname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import Database from '../sqlite.js';
-import { writeArchive, extractArchive, digest, safeName } from './archive.js';
+import { writeArchive, extractArchive, digest, safeName, pathIndex } from './archive.js';
+import { BACKUP_LIMITS } from '../../shared/backup-limits.js';
 import { snapshot, upgradeSnapshot, initializeBackupDb, overwrite, merge, neutralizeImportedJobs } from './database.js';
 import { withMaintenance } from '../maintenance.js';
 import { validIdentifier } from '../activities/package.js';
@@ -16,7 +17,7 @@ const protectedName = name => ['backups', 'card.sqlite', 'comment.sqlite', 'card
 const exists = async path => { try { await access(path); return true; } catch { return false; } };
 async function removeWithin(root, path) {
     if (!resolve(path).startsWith(resolve(root) + sep)) throw new Error('清理路径越界');
-    await rm(path, { recursive: true, force: true });
+    await rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 async function walk(root, prefix = '', directories) {
     if (!await exists(root)) return [];
@@ -27,7 +28,7 @@ async function walk(root, prefix = '', directories) {
         // Refuse symlinks/junctions: backups must not follow paths outside these roots.
         const info = await lstat(path);
         if (info.isSymbolicLink()) throw new Error(`无法备份符号链接：${name}`);
-        if (info.isDirectory()) { directories?.add(name); files.push(...await walk(path, name, directories)); }
+        if (info.isDirectory()) { directories?.add(name); for (const child of await walk(path, name, directories)) files.push(child); }
         else if (info.isFile()) files.push({ name, path, size: info.size });
     }
     return files;
@@ -73,28 +74,31 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         for (const name of await exists(publicRoot) ? await readdir(publicRoot) : []) if (!publicProtected(name)) {
             const path = join(publicRoot, name), info = await lstat(path); safeName(`public/${name}`);
             if (info.isSymbolicLink()) throw new Error(`无法备份公开目录中的符号链接：${name}`);
-            if (info.isDirectory()) { directories.add(`public/${name}`); files.push(...await walk(path, `public/${name}`, directories)); }
+            if (info.isDirectory()) { directories.add(`public/${name}`); for (const child of await walk(path, `public/${name}`, directories)) files.push(child); }
             else if (info.isFile()) files.push({ name: `public/${name}`, path, size: info.size });
         }
         for (const name of await readdir(dataRoot)) if (!reservedData(name)) {
             const path = join(dataRoot, name), info = await lstat(path);
             if (info.isSymbolicLink()) throw new Error(`无法备份数据目录中的符号链接：${name}`);
-            if (info.isDirectory()) { directories.add(`data/${name}`); files.push(...await walk(path, `data/${name}`, directories)); }
+            if (info.isDirectory()) { directories.add(`data/${name}`); for (const child of await walk(path, `data/${name}`, directories)) files.push(child); }
             else if (info.isFile()) files.push({ name: `data/${name}`, path, size: info.size });
         }
         const imagePath = join(work, 'activity-images.tar');
         progress('正在保存活动后端镜像…');
         const activityImages = activityRuntime ? await activityRuntime.exportBackupImages(imagePath, progress) : [];
         if (activityImages.length) files.push({ name: 'runtime/activity-images.tar', path: imagePath, size: (await stat(imagePath)).size });
-        const names = new Set();
-        for (const file of [...files, ...[...directories].map(name => ({ name }))]) { const name = file.name.toLocaleLowerCase('en-US'); if (names.has(name)) throw new Error('存在仅大小写不同的文件名，无法生成跨平台备份'); names.add(name); }
+        if (files.length + 1 > BACKUP_LIMITS.files || directories.size > BACKUP_LIMITS.directories) throw new Error('备份文件或目录数量超过容量限制');
+        const checkPath = pathIndex();
+        for (const file of files) checkPath(file.name);
+        for (const name of directories) checkPath(name + '/');
         const inventory = [];
         for (let i = 0; i < files.length; i++) {
-            progress(`正在校验备份文件 ${i + 1} / ${files.length}…`);
+            if (i % 100 === 0) progress(`正在校验备份文件 ${i + 1} / ${files.length}…`);
             inventory.push({ name: files[i].name, size: files[i].size, sha256: await digest(files[i].path) });
         }
         const manifest = { format: 'personal-pages-backup', version: 2, id, created_at, files: inventory, directories: [...directories].sort(), paths: runtimePaths(dataRoot, publicRoot), activityImages };
-        if (Buffer.byteLength(JSON.stringify(manifest)) > 16 * 1024 ** 2 || files.reduce((sum, f) => sum + f.size, 0) > 20 * 1024 ** 3) throw new Error('备份内容超过当前备份格式的容量限制');
+        const manifestBytes = Buffer.byteLength(JSON.stringify(manifest));
+        if (manifestBytes > BACKUP_LIMITS.manifestBytes || manifestBytes + files.reduce((sum, f) => sum + f.size, 0) > BACKUP_LIMITS.expandedBytes) throw new Error('备份内容超过当前备份格式的容量限制');
         const manifestPath = join(work, 'manifest.json'); await json(manifestPath, manifest);
         await mkdir(root, { recursive: true });
         const temporary = join(root, `${id}.partial`), target = join(root, `${id}.zip`);
@@ -109,8 +113,8 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
     }
     async function validate(path, extracted) {
         progress('正在解压并校验上传的备份包…');
-        const files = await extractArchive(path, extracted), info = files.get('manifest.json');
-        if (!info || info.size > 16 * 1024 ** 2) throw new Error('缺少有效的备份清单');
+        const files = await extractArchive(path, extracted, { progress: ({ files, entries, bytes }) => progress(`正在解压并校验 ${files} / ${entries} 个条目，已处理 ${(bytes / 1024 ** 2).toFixed(1)} MB…`) }), info = files.get('manifest.json');
+        if (!info || info.size > BACKUP_LIMITS.manifestBytes) throw new Error('缺少有效的备份清单');
         let manifest;
         try { manifest = JSON.parse(await readFile(info.path, 'utf8')); } catch { throw new Error('备份清单无法读取'); }
         if (manifest.format !== 'personal-pages-backup' || ![1, 2].includes(manifest.version) || !Array.isArray(manifest.files) || files.size !== manifest.files.length + 1) throw new Error('这不是本站生成的完整备份包');
@@ -118,9 +122,9 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             const parts = name.split('/');
             return parts[0] === 'public' && parts.length >= (manifest.version === 1 ? 3 : 2) && (manifest.version === 1 ? PUBLIC_FOLDERS.includes(parts[1]) : !publicProtected(parts[1])) || parts[0] === 'data' && !reservedData(parts[1]) && parts.length >= 2;
         };
-        const seen = new Set();
+        const seen = new Set(), checkPath = pathIndex();
         for (const item of manifest.files) {
-            safeName(item.name);
+            checkPath(item.name);
             const allowed = item.name === 'databases/card.json' || item.name === 'databases/comment.json' ||
                 allowedPath(item.name) || manifest.version === 2 && item.name === 'runtime/activity-images.tar';
             if (!allowed || seen.has(item.name) || item.name.startsWith('public/') && PUBLIC_FOLDERS.some(folder => item.name === `public/${folder}`)) throw new Error('备份包含未允许的文件'); seen.add(item.name);
@@ -130,14 +134,13 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         const dumps = {};
         for (const name of ['card', 'comment']) {
             const file = files.get(`databases/${name}.json`);
-            if (!file || file.size > 512 * 1024 ** 2) throw new Error('备份数据库缺失或过大');
+            if (!file || file.size > BACKUP_LIMITS.databaseBytes) throw new Error('备份数据库缺失或过大');
             try { dumps[name] = JSON.parse(await readFile(file.path, 'utf8')); } catch { throw new Error('备份数据库无法读取'); }
             upgradeSnapshot(name === 'card' ? cardDb : commentDb, dumps[name]);
         }
         if (manifest.version === 2) {
-            if (!Array.isArray(manifest.directories) || manifest.directories.length > 60000 || new Set(manifest.directories).size !== manifest.directories.length || !Array.isArray(manifest.activityImages) || new Set(manifest.activityImages).size !== manifest.activityImages.length) throw new Error('备份运行数据清单无效');
-            const names = new Set(manifest.files.map(file => file.name));
-            for (const name of manifest.directories) { safeName(name); if (!allowedPath(name) || names.has(name) || [...names].some(file => name.startsWith(file + '/'))) throw new Error('备份目录清单无效'); }
+            if (!Array.isArray(manifest.directories) || manifest.directories.length > BACKUP_LIMITS.directories || !Array.isArray(manifest.activityImages) || new Set(manifest.activityImages).size !== manifest.activityImages.length) throw new Error('备份运行数据清单无效');
+            for (const name of manifest.directories) { safeName(name); if (!allowedPath(name)) throw new Error('备份目录清单无效'); checkPath(name + '/'); }
             if (!!manifest.activityImages.length !== files.has('runtime/activity-images.tar')) throw new Error('活动镜像文件缺失或清单不一致');
             for (const id of manifest.activityImages) if (!dumps.card.tables.plaza_versions?.some(row => row.values.id === id && row.values.backend_enabled)) throw new Error('活动镜像版本不存在');
         }
@@ -259,8 +262,11 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
                 }
             }
             const target = join(install, name); await mkdir(join(target, '..'), { recursive: true });
-            if (text === undefined) await copyFile(file.source, target); else await writeFile(target, text);
+            // Staging is on the same filesystem as extraction: move validated
+            // media instead of keeping a second multi-gigabyte copy.
+            if (text === undefined) await rename(file.source, target); else { await writeFile(target, text); await rm(file.source, { force: true }); }
             importedFiles++;
+            if (importedFiles % 100 === 0) progress(`正在准备还原文件 ${importedFiles} / ${planned.length}…`);
         }
         progress('正在生成还原前的自动备份…');
         const safety = await generate(join(work, 'safety'), 'before-restore');
@@ -345,12 +351,19 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         // Keep the response short; long-running compression/validation is observed by polling.
         setImmediate(async () => {
             const work = join(dataRoot, `.backup-${job.id}`);
-            try { job.result = await maintenance(async () => { await mkdir(work, { recursive: true }); return await operation(work); }); job.status = 'completed'; job.message = job.result.message || '备份包已生成'; }
-            catch (e) { job.status = 'failed'; job.message = e.message || '备份操作失败'; }
+            let status, message;
+            try { job.result = await maintenance(async () => { await mkdir(work, { recursive: true }); return await operation(work); }); status = 'completed'; message = job.result.message || '备份包已生成'; }
+            catch (e) { status = 'failed'; message = e.code === 'ENOSPC' || e.code === 'EDQUOT' ? '服务器磁盘空间不足，操作已中止，请清理空间后重试' : e.message || '备份操作失败'; }
             finally {
+                // Keep the task busy until large temporary files are removed.
+                // Otherwise a new task or test teardown can race this cleanup.
+                job.message = '正在清理临时文件…';
+                let cleanupFailed = false;
+                try { if (!await exists(join(dataRoot, 'restore-journal.json'))) await removeWithin(dataRoot, work); } catch { cleanupFailed = true; }
+                try { await cleanup?.(); } catch { cleanupFailed = true; }
+                if (cleanupFailed) message += '（部分临时文件清理失败）';
+                job.status = status; job.message = message;
                 job.finished_at = new Date().toISOString(); last = job; active = null;
-                if (!await exists(join(dataRoot, 'restore-journal.json'))) await removeWithin(dataRoot, work).catch(() => {});
-                try { await cleanup?.(); } catch { /* An upload cleanup failure must not crash the server. */ }
             }
         });
         return job;

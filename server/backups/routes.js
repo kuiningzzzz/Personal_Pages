@@ -5,12 +5,13 @@ import { mkdirSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MAX_UPLOAD } from './archive.js';
+import { BACKUP_LIMITS } from '../../shared/backup-limits.js';
 
 export function createBackupRoutes(store) {
     const router = express.Router();
     router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
     const route = fn => (req, res, next) => Promise.resolve().then(() => fn(req, res)).catch(next);
-    router.get('/', route(async (_req, res) => res.json({ success: true, data: await store.list(), job: store.jobView(), maxUploadBytes: MAX_UPLOAD })));
+    router.get('/', route(async (_req, res) => res.json({ success: true, data: await store.list(), job: store.jobView(), maxUploadBytes: MAX_UPLOAD, limits: BACKUP_LIMITS })));
     router.get('/job', (_req, res) => res.json({ success: true, data: store.jobView() }));
     router.post('/', route(async (_req, res) => res.status(202).json({ success: true, data: store.generate() })));
     router.get('/:id/download', route(async (req, res) => {
@@ -34,7 +35,7 @@ export function createBackupRoutes(store) {
     });
     router.use((error, _req, res, _next) => {
         if (res.headersSent) return;
-        res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ success: false, message: error.code === 'LIMIT_FILE_SIZE' ? '备份包不能超过 2GB' : error.message || '备份操作失败' });
+        res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ success: false, message: error.code === 'LIMIT_FILE_SIZE' ? `备份包不能超过 ${MAX_UPLOAD / 1024 ** 3}GB` : error.message || '备份操作失败' });
     });
     return router;
 }

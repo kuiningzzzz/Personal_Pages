@@ -121,6 +121,18 @@ sudo -u personalpages env DOCKER_HOST=unix:///run/user/$uid/docker.sock /var/lib
 
 代码维护用户 `ubuntu` 需要遍历和维护 `public` 中的 Git 静态文件；当前已通过 `setfacl -m u:ubuntu:rwx public` 单独授予该目录权限，无需对其他用户开放私有数据目录。
 
+大规模备份支持 ZIP64，上传上限 16GB，解压上限 128GB，最多 50 万个文件。旧 v1/v2 备份无需转换；备份格式版本仍为 v2，新生成的大规模 ZIP64 包应使用当前版本以上的网站还原。Nginx 的 `/api/admin/backups/restore` 单独配置 17G 请求体限制，以容纳 16GB 文件和 multipart 开销；Node 上传总时限为 2 小时，Nginx 仍有 600 秒不活动超时。更改后端的同时须发布前端、更新系统 Nginx 并检查 reload。
+
+解压、数据库准备、还原前自动备份和回滚均在私有数据目录完成。请为上传包、解压文件、旧站数据和自动备份预留空间；程序会在解压时检查可用空间，无法完成校验时不会替换旧站。已校验的普通文件通过重命名进入暂存区，避免额外复制一整套大型媒体。
+
+可在空闲时使用独立临时目录运行大规模验收（会创建并删除约数 GB 测试数据，默认测试不会运行）：
+
+```bash
+sudo install -d -o personalpages -g personalpages -m 700 /var/lib/personal-pages/backup-tests
+cd /home/ubuntu/project/Personal_Pages
+sudo -u personalpages env TMPDIR=/var/lib/personal-pages/backup-tests BACKUP_LARGE_TEST=1 /opt/personal-pages-node/bin/node --max-old-space-size=384 --test server/test/backup-large.test.js
+```
+
 游客存档按最后修改时间清理：启动时及每 6 小时清除闲置超过 10 天的游客目录，保留已登录用户存档和活动后端数据；备份/恢复期间等待清理结束。
 
 ## 新机器部署要点

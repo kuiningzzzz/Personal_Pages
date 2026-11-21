@@ -2,11 +2,13 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import UiDialog from './UiDialog.vue'
 import PaginationNav from './PaginationNav.vue'
+import { BACKUP_LIMITS } from '../../shared/backup-limits.js'
 
 const emit = defineEmits(['restored'])
 const rows = ref([]), job = ref(null), error = ref(''), notice = ref(''), loading = ref(false)
 const file = ref(null), input = ref(null), mode = ref('merge'), dragging = ref(false), uploading = ref(false), uploadProgress = ref(0)
 const confirmation = ref(null), deleting = ref(false), page = ref(1)
+const maxUploadBytes = ref(BACKUP_LIMITS.uploadBytes)
 const busy = computed(() => uploading.value || deleting.value || job.value?.status === 'running')
 const pages = computed(() => Math.max(1, Math.ceil(rows.value.length / 15)))
 const visible = computed(() => rows.value.slice((page.value - 1) * 15, page.value * 15))
@@ -36,7 +38,7 @@ async function load(first = false) {
   try {
     const result = await request()
     if (stopped) return
-    rows.value = result.data; page.value = Math.min(page.value, pages.value); observe(result.job, !first)
+    rows.value = result.data; maxUploadBytes.value = result.maxUploadBytes || BACKUP_LIMITS.uploadBytes; page.value = Math.min(page.value, pages.value); observe(result.job, !first)
   } catch (cause) { if (!stopped) error.value = cause.message }
   finally { loading.value = false }
 }
@@ -64,7 +66,7 @@ function select(files) {
   const selected = files?.[0]
   if (!selected) return
   if (!/\.zip$/i.test(selected.name)) { error.value = '请选择本站生成的 ZIP 备份包'; return }
-  if (selected.size > 2 * 1024 ** 3) { error.value = '备份包不能超过 2GB'; return }
+  if (selected.size > maxUploadBytes.value) { error.value = `备份包不能超过 ${size(maxUploadBytes.value)}`; return }
   file.value = selected
 }
 function drop(event) { dragging.value = false; select(event.dataTransfer.files) }
@@ -110,7 +112,7 @@ onUnmounted(() => { stopped = true; clearInterval(interval); xhr?.abort() })
     <section class="surface restore-panel">
       <h3>从备份包还原</h3><p>包含网站设置、文章、图片、附件、音乐文件、评论、用户、订阅、公告、反馈、AI 对话与工作区，以及广场活动的代码、版本、后端镜像和存档。换服务器时，请部署相同版本项目、保持 .env 配置并选择覆盖导入。</p>
       <div class="restore-modes" role="group" aria-label="导入方式"><label :class="{ selected: mode === 'merge' }"><input v-model="mode" type="radio" value="merge" :disabled="busy" /><span><strong>增量导入</strong><small>保留现有数据，只补充备份中缺少的内容。</small></span></label><label :class="{ selected: mode === 'overwrite' }"><input v-model="mode" type="radio" value="overwrite" :disabled="busy" /><span><strong>覆盖导入</strong><small>将当前数据和上传文件替换为备份中的内容。</small></span></label></div>
-      <div class="backup-drop" :class="{ dragging, disabled: busy }" @dragover.prevent="dragging = !busy" @dragleave.prevent="dragging = false" @drop.prevent="drop"><input ref="input" class="file-input" type="file" accept=".zip,application/zip" :disabled="busy" aria-label="选择备份包" @change="select($event.target.files)" /><strong>{{ file ? file.name : '将备份包拖到这里' }}</strong><small>{{ file ? size(file.size) : '支持本站生成的 ZIP 备份包，最大 2GB' }}</small><button type="button" class="ghost-button" :disabled="busy" @click="input?.click()">{{ file ? '重新选择' : '选择备份包' }}</button></div>
+      <div class="backup-drop" :class="{ dragging, disabled: busy }" @dragover.prevent="dragging = !busy" @dragleave.prevent="dragging = false" @drop.prevent="drop"><input ref="input" class="file-input" type="file" accept=".zip,application/zip" :disabled="busy" aria-label="选择备份包" @change="select($event.target.files)" /><strong>{{ file ? file.name : '将备份包拖到这里' }}</strong><small>{{ file ? size(file.size) : `支持本站生成的 ZIP / ZIP64 备份包，最大 ${size(maxUploadBytes)}` }}</small><button type="button" class="ghost-button" :disabled="busy" @click="input?.click()">{{ file ? '重新选择' : '选择备份包' }}</button></div>
       <footer><small>上传、校验通过后才会替换数据，操作前自动备份。还原不会重发历史邮件或自动续跑未完成的 AI 任务；需要手动重新学习。</small><button class="primary-button" :disabled="busy || !file" @click="startRestore">开始还原</button></footer>
     </section>
     <header class="history-heading"><h3>历史备份 <span>{{ rows.length }}</span></h3><button class="ghost-button" :disabled="loading || busy" @click="load()">刷新</button></header>

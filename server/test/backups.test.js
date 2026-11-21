@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, writeFile, readdir, rm, copyFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
-import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
+import { zipSync, unzipSync, strToU8, strFromU8, Zip, ZipPassThrough } from 'fflate';
 import { createHash, randomUUID } from 'node:crypto';
 import Database from '../sqlite.js';
 import { createBackupStore, recoverRestore } from '../backups/store.js';
@@ -189,6 +189,25 @@ test('增量还原处理编号、用户名和文件冲突；保留当前修改�
     for (const table of Object.keys(before.tables)) assert.equal(snapshot(target.card).tables[table].length, before.tables[table].length, table);
     assert.equal((await readdir(join(target.publicRoot, 'source'))).length, fileCount);
     assert.deepEqual(target.card.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('旧版包含 ZIP 附件的完整备份可覆盖、增量还原，附件不再触发假重复', async t => {
+    const source = await fixture(t), target = await fixture(t); await seed(source);
+    const inner = zipSync({ 'manifest.json': strToU8('inside archive'), 'notes.txt': strToU8('notes') }, { level: 0 });
+    await source.file('public/source/material.zip', inner);
+    const saved = await source.successful(source.store.generate());
+    const contents = unzipSync(await readFile((await source.store.get(saved.id)).path)), chunks = [];
+    const oldZip = new Zip((error, bytes) => { if (error) throw error; chunks.push(Buffer.from(bytes)); });
+    for (const [name, bytes] of Object.entries(contents)) { const entry = new ZipPassThrough(name); oldZip.add(entry); entry.push(bytes, true); }
+    oldZip.end();
+    const archive = await source.file('legacy-nested.zip', Buffer.concat(chunks));
+    await target.successful(target.store.restore(archive, 'overwrite'));
+    assert.deepEqual(await readFile(join(target.publicRoot, 'source/material.zip')), Buffer.from(inner));
+    await target.file('public/source/current-only.txt', 'keep');
+    const result = await target.successful(target.store.restore(archive, 'merge'));
+    assert.equal(result.importedRecords, 0);
+    assert.equal(await readFile(join(target.publicRoot, 'source/current-only.txt'), 'utf8'), 'keep');
+    assert.deepEqual(await readFile(join(target.publicRoot, 'source/material.zip')), Buffer.from(inner));
 });
 
 test('活动版本、合集、标签、代码与存档进入备份，增量还原正确映射用户和外部活动目录', async t => {
@@ -451,4 +470,19 @@ test('文件已替换但数据库提交失败时，两份数据库和文件一�
 test('路径校验兼顾 Windows 和 Linux，不能导入绝对路径或保留设备名', () => {
     for (const value of ['../x', 'public/../x', '/tmp/x', 'C:/x', 'public\\x', 'public/nul.txt', 'public/x.']) assert.throws(() => safeName(value));
     assert.equal(safeName('public/source/课件.pdf'), 'public/source/课件.pdf');
+});
+
+test('大型临时文件清理完成前不报告结束，也不接收下一项任务', async t => {
+    const f = await fixture(t), saved = await f.successful(f.store.generate()), archive = (await f.store.get(saved.id)).path;
+    let release, started;
+    const cleaning = new Promise(resolve => { started = resolve; });
+    const pending = new Promise(resolve => { release = resolve; });
+    const job = f.store.restore(archive, 'merge', async () => { started(); await pending; });
+    try {
+        await cleaning;
+        assert.equal(f.store.busy(), true); assert.equal(job.status, 'running');
+        assert.match(job.message, /清理临时文件/);
+        assert.throws(() => f.store.generate(), /另一个备份/);
+    } finally { release(); }
+    await f.successful(job); assert.equal(f.store.busy(), false);
 });

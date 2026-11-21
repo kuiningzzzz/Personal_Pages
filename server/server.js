@@ -121,7 +121,7 @@ const server = app.listen(PORT, process.env.SERVER_HOST || '127.0.0.1', () => {
 });
 
 // Large authenticated disk uploads can take longer than Node's default 5 minutes.
-server.requestTimeout = 30 * 60 * 1000;
+server.requestTimeout = 2 * 60 * 60 * 1000;
 let guestCleanupWork;
 async function cleanGuests() {
     if (guestCleanupWork || maintenanceActive()) return;
