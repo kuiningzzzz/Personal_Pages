@@ -87,6 +87,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ```bash
 cd /home/ubuntu/project/Personal_Pages
 export PATH=/opt/personal-pages-node/bin:$PATH
+export NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 git pull --ff-only
 npm ci
 npm ci --prefix server

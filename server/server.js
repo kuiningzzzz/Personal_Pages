@@ -20,6 +20,7 @@ import { createFeedbackMailService } from './feedback/mail-service.js';
 import { activities, activityRoutes } from './activities/index.js';
 
 const app = express();
+app.disable('x-powered-by');
 app.set('trust proxy', 'loopback');
 const PORT = process.env.SERVER_PORT || 3002;
 const userMailer = createRegistrationMailer();
@@ -40,7 +41,7 @@ app.use(express.urlencoded({ extended: true, inflate: false })); // 解析 URL �
 // 请求日志
 app.use((req, res, next) => {
     const userPaths = ['/api/auth/config', '/api/auth/session', '/api/auth/code', '/api/auth/register', '/api/auth/login', '/api/auth/reset-password', '/api/auth/settings', '/api/auth/logout'];
-    const loggedPath = req.path.startsWith('/api/auth') ? (userPaths.includes(req.path) ? req.path : '/api/auth') : req.path.startsWith('/api/subscriptions') ? '/api/subscriptions' : req.path.startsWith('/api/plaza/run/') ? '/api/plaza/run/[activity assets]' : req.path.startsWith('/api/plaza') ? req.path : req.url;
+    const loggedPath = req.path.startsWith('/api/admin') ? req.path : req.path.startsWith('/api/auth') ? (userPaths.includes(req.path) ? req.path : '/api/auth') : req.path.startsWith('/api/subscriptions') ? '/api/subscriptions' : req.path.startsWith('/api/plaza/run/') ? '/api/plaza/run/[activity assets]' : req.path.startsWith('/api/plaza') ? req.path : req.url;
     console.log(`${new Date().toISOString()} - ${req.method} ${loggedPath}`);
     next();
 });
