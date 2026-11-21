@@ -39,7 +39,7 @@ export default defineConfig({
       })
     },
     writeBundle(options) {
-      for (const name of ['favicon.png', 'music-sw.js']) cpSync(resolve('public', name), resolve(options.dir, name))
+      for (const name of ['music-sw.js']) cpSync(resolve('public', name), resolve(options.dir, name))
     }
   }],
   // Runtime uploads stay on the API server; a build must not copy gigabytes of
