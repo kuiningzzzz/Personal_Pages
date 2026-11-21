@@ -8,6 +8,7 @@ User=personalpages
 Group=personalpages
 WorkingDirectory=/home/ubuntu/project/Personal_Pages/server
 Environment=NODE_ENV=production
+EnvironmentFile=/home/ubuntu/project/Personal_Pages/.env
 Environment=PATH=/opt/personal-pages-node/bin:/var/lib/personal-pages/bin:/usr/bin:/bin
 Environment=DOCKER_HOST=unix:///run/user/PAGES_UID/docker.sock
 Environment=DOCKER_BIN=/var/lib/personal-pages/bin/docker

@@ -50,7 +50,7 @@ sudo systemctl restart quinine-personal
 sudo systemctl restart personal-pages
 ```
 
-主站 `.env` 建议 `ubuntu:personalpages`、权限 `640`。管理员密码未填时禁止登录；OTP 未配置、网络故障、证书异常或验证接口非正常响应时均拒绝登录，不降级成仅验证密码。每次登录输入管理员密码以及手机上当前的六位实时密钥。
+systemd 通过 `EnvironmentFile` 在启动时加载根目录 `.env`，不依赖服务用户直接读取该文件。建议由 `ubuntu` 持有，权限 `600`；原有 `640` 也可保留。编辑器原子保存造成所属组改变不会影响 systemd 加载。每次修改后需重启 `personal-pages`。管理员密码未填时禁止登录；OTP 未配置、网络故障、证书异常或验证接口非正常响应时均拒绝登录，不降级成仅验证密码。每次登录输入管理员密码以及手机上当前的六位实时密钥。
 
 ## 登录限制与服务器解锁
 
