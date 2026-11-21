@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile, readdir, rm, copyFile, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, readdir, rm, copyFile, stat, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { zipSync, unzipSync, strToU8, strFromU8, Zip, ZipPassThrough } from 'fflate';
@@ -17,6 +17,12 @@ import { zstdCompressSync } from 'node:zlib';
 import { savePlaylists, homePlaylists } from '../home-music.js';
 import { saveSentences, homeSentences } from '../home-sentences.js';
 import express from 'express';
+import { createFileTransfers } from '../backups/transfers.js';
+
+const crossMountTransfers = () => createFileTransfers({ renamePath: async (source, destination) => {
+    if (source.split(sep).includes('data') !== destination.split(sep).includes('data')) throw Object.assign(new Error('cross mount'), { code: 'EXDEV' });
+    return rename(source, destination);
+} });
 
 async function fixture(t, options = {}) {
     const folder = await mkdtemp(join(tmpdir(), 'pages-backup-'));
@@ -437,7 +443,7 @@ test('启动时恢复未提交的文件替换，已经提交的数据不会被�
     const work = join(f.data, '.backup-recovery'), target = join(f.publicRoot, 'picture/course.png'), old = join(work, 'rollback/0');
     await mkdir(join(old, '..'), { recursive: true }); await copyFile(target, old); await writeFile(target, 'interrupted content');
     await writeFile(join(f.data, 'restore-journal.json'), JSON.stringify({ id: 'uncommitted', work, moves: [{ target, old, existed: true }], additions: [] }));
-    await recoverRestore(f.data, f.publicRoot); assert.equal(await readFile(target, 'utf8'), 'picture');
+    await recoverRestore(f.data, f.publicRoot, { transfers: crossMountTransfers() }); assert.equal(await readFile(target, 'utf8'), 'picture');
     await mkdir(join(old, '..'), { recursive: true }); await copyFile(target, old); await writeFile(target, 'committed content');
     f.card.prepare("INSERT INTO backup_state VALUES('restore','committed')").run();
     await writeFile(join(f.data, 'restore-journal.json'), JSON.stringify({ id: 'committed', work, moves: [{ target, old, existed: true }], additions: [] }));
@@ -445,7 +451,7 @@ test('启动时恢复未提交的文件替换，已经提交的数据不会被�
 });
 
 test('文件已替换但数据库提交失败时，两份数据库和文件一起回滚', async t => {
-    const f = await fixture(t), ids = await seed(f);
+    const f = await fixture(t, { transfers: crossMountTransfers() }), ids = await seed(f);
     const saved = await f.successful(f.store.generate()), archive = (await f.store.get(saved.id)).path;
     f.card.prepare("UPDATE entries SET title='还原前当前版本' WHERE id=?").run(ids.article);
     f.comment.prepare("UPDATE comments SET content='还原前旧评论'").run();
@@ -465,6 +471,21 @@ test('文件已替换但数据库提交失败时，两份数据库和文件一�
     assert.equal(await readFile(join(f.publicRoot, 'source/course.pdf'), 'utf8'), 'current source');
     assert.equal(await readFile(join(f.publicRoot, 'picture/current-only.png'), 'utf8'), 'current picture');
     assert.equal((await f.store.list()).length, 2, '还原前的自动备份应继续保留');
+});
+
+test('模拟独立挂载：覆盖和增量导入均支持跨 public/data 移动', async t => {
+    const source = await fixture(t), target = await fixture(t, { transfers: crossMountTransfers() });
+    const ids = await seed(source); await target.file('public/favicon.png', 'previous icon');
+    const generated = await source.successful(source.store.generate()), archive = (await source.store.get(generated.id)).path;
+    await target.successful(target.store.restore(archive, 'overwrite'));
+    assert.equal(await readFile(join(target.publicRoot, 'favicon.png'), 'utf8'), 'hardcoded-favicon');
+    assert.equal(target.card.prepare('SELECT title FROM entries WHERE id=?').get(ids.article).title, '第一课');
+    await target.file('public/source/current-only.txt', 'keep');
+    await source.file('public/source/new.txt', 'new');
+    const next = await source.successful(source.store.generate());
+    await target.successful(target.store.restore((await source.store.get(next.id)).path, 'merge'));
+    assert.equal(await readFile(join(target.publicRoot, 'source/current-only.txt'), 'utf8'), 'keep');
+    assert.equal(await readFile(join(target.publicRoot, 'source/new.txt'), 'utf8'), 'new');
 });
 
 test('路径校验兼顾 Windows 和 Linux，不能导入绝对路径或保留设备名', () => {

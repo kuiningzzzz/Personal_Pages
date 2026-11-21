@@ -10,6 +10,7 @@ import { withMaintenance } from '../maintenance.js';
 import { validIdentifier } from '../activities/package.js';
 import { runtimePaths, relocatePaths } from './paths.js';
 import { migrateSession, sessionProjectKey } from './ai-sessions.js';
+import { fileTransfers } from './transfers.js';
 
 const PUBLIC_FOLDERS = ['articles', 'emoji', 'friend_avatar', 'picture', 'source'];
 const publicProtected = name => ['music-sw.js', '.git', '.codex', '.agents', 'node_modules'].includes(name) || name === '.env' || name.startsWith('.env.');
@@ -34,7 +35,7 @@ async function walk(root, prefix = '', directories) {
     return files;
 }
 async function json(path, value) { await writeFile(path, JSON.stringify(value)); }
-export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, maintenance = withMaintenance, onRestored = () => {}, activityRuntime }) {
+export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, maintenance = withMaintenance, onRestored = () => {}, activityRuntime, transfers = fileTransfers }) {
     dataRoot = resolve(dataRoot); publicRoot = resolve(publicRoot);
     if (dataRoot === publicRoot || dataRoot.startsWith(publicRoot + sep)) throw new Error('数据库目录不能放在公开目录内');
     const publicDataFolder = publicRoot.startsWith(dataRoot + sep) ? relative(dataRoot, publicRoot).split(sep)[0] : null;
@@ -289,7 +290,7 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
                 importedImages = await activityRuntime.importBackupImages(manifest.activityImages.map(id => dumps.card.tables.plaza_versions.find(row => row.values.id === id).values), files.get('runtime/activity-images.tar').path, progress);
             }
             if (mode === 'overwrite') {
-                // Keep directory inodes: Nginx may bind-mount each public folder in Docker.
+                // Keep roots in place: systemd or the host can bind-mount them.
                 const publicNames = manifest.version === 1 ? PUBLIC_FOLDERS : [...new Set([...(await exists(publicRoot) ? await readdir(publicRoot) : []).filter(name => !publicProtected(name)), ...(await exists(join(install, 'public')) ? await readdir(join(install, 'public')) : [])])];
                 for (const folder of publicNames) {
                     const live = join(publicRoot, folder), incoming = join(install, 'public', folder);
@@ -303,8 +304,8 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
                 for (const name of names) await planTree(join(dataRoot, name), join(install, 'data', name));
                 await saveJournal();
                 for (const { target, incoming, old, existed } of moves) {
-                    if (existed) await rename(target, old);
-                    if (await exists(incoming)) { await mkdir(join(target, '..'), { recursive: true }); await rename(incoming, target); }
+                    if (existed) await transfers.backup(target, old);
+                    if (await exists(incoming)) { await mkdir(join(target, '..'), { recursive: true }); await transfers.install(incoming, target); }
                 }
             } else {
                 const installDirectories = new Set(); await walk(install, '', installDirectories);
@@ -323,7 +324,7 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
                 }
                 await saveJournal();
                 for (const target of additions.slice(0, additions.length - installFiles.length)) await mkdir(target, { recursive: true });
-                for (let i = 0; i < installFiles.length; i++) { const target = fileTargets[i]; await mkdir(join(target, '..'), { recursive: true }); await rename(installFiles[i].path, target); }
+                for (let i = 0; i < installFiles.length; i++) { const target = fileTargets[i]; await mkdir(join(target, '..'), { recursive: true }); await transfers.install(installFiles[i].path, target); }
             }
             // SQLite's rollback journal commits both databases together through ATTACH.
             cardDb.prepare('ATTACH DATABASE ? AS backup_comments').run(join(dataRoot, 'comment.sqlite'));
@@ -338,7 +339,7 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
             await rm(journalPath, { force: true });
         } catch (cause) {
             // If COMMIT succeeded, do not roll the files back merely because DETACH/cleanup failed.
-            if (cardDb.prepare("SELECT value FROM backup_state WHERE key='restore'").get()?.value !== journal.id) { await rollbackJournal(journal, dataRoot, publicRoot); if (importedImages.length) await activityRuntime.discardBackupImages(importedImages); }
+            if (cardDb.prepare("SELECT value FROM backup_state WHERE key='restore'").get()?.value !== journal.id) { await rollbackJournal(journal, dataRoot, publicRoot, transfers); if (importedImages.length) await activityRuntime.discardBackupImages(importedImages); }
             await rm(journalPath, { force: true }); throw cause;
         }
         onRestored();
@@ -352,7 +353,10 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         setImmediate(async () => {
             const work = join(dataRoot, `.backup-${job.id}`);
             let status, message;
-            try { job.result = await maintenance(async () => { await mkdir(work, { recursive: true }); return await operation(work); }); status = 'completed'; message = job.result.message || '备份包已生成'; }
+            try { job.result = await maintenance(async () => {
+                if (await exists(join(dataRoot, 'restore-journal.json'))) throw new Error('存在未完成的还原事务，请先重启后端完成恢复');
+                await mkdir(work, { recursive: true }); return await operation(work);
+            }); status = 'completed'; message = job.result.message || '备份包已生成'; }
             catch (e) { status = 'failed'; message = e.code === 'ENOSPC' || e.code === 'EDQUOT' ? '服务器磁盘空间不足，操作已中止，请清理空间后重试' : e.message || '备份操作失败'; }
             finally {
                 // Keep the task busy until large temporary files are removed.
@@ -377,20 +381,20 @@ export function createBackupStore({ cardDb, commentDb, dataRoot, publicRoot, mai
         uploadDirectory: join(root, 'uploads')
     };
 }
-async function rollbackJournal(journal, dataRoot, publicRoot) {
-    for (const target of journal.additions.reverse()) {
+async function rollbackJournal(journal, dataRoot, publicRoot, transfers = fileTransfers) {
+    for (const target of [...journal.additions].reverse()) {
         const root = resolve(target).startsWith(resolve(publicRoot) + sep) ? publicRoot : dataRoot;
         await removeWithin(root, target);
     }
-    for (const item of journal.moves.reverse()) {
+    for (const item of [...journal.moves].reverse()) {
         const root = resolve(item.target).startsWith(resolve(publicRoot) + sep) ? publicRoot : dataRoot;
         if (!resolve(item.old).startsWith(resolve(journal.work) + sep) || !resolve(item.target).startsWith(resolve(root) + sep)) throw new Error('还原恢复路径无效');
-        if (await exists(item.old)) { await removeWithin(root, item.target); await rename(item.old, item.target); }
+        if (await exists(item.old)) { await removeWithin(root, item.target); await transfers.restore(item.old, item.target); }
         else if (!item.existed) await removeWithin(root, item.target);
     }
 }
 // Called before the application's databases are opened and migrations run.
-export async function recoverRestore(dataRoot, publicRoot) {
+export async function recoverRestore(dataRoot, publicRoot, { transfers = fileTransfers } = {}) {
     dataRoot = resolve(dataRoot); publicRoot = resolve(publicRoot);
     const path = join(dataRoot, 'restore-journal.json');
     if (!await exists(path)) return;
@@ -400,6 +404,6 @@ export async function recoverRestore(dataRoot, publicRoot) {
     let committed = false;
     try { if (connection.prepare("SELECT name FROM sqlite_master WHERE name='backup_state'").get()) committed = connection.prepare("SELECT value FROM backup_state WHERE key='restore'").get()?.value === journal.id; }
     finally { connection.close(); }
-    if (!committed) await rollbackJournal(journal, dataRoot, publicRoot);
+    if (!committed) await rollbackJournal(journal, dataRoot, publicRoot, transfers);
     await rm(path, { force: true }); await removeWithin(dataRoot, journal.work);
 }
