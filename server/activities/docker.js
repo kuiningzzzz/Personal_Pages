@@ -129,8 +129,13 @@ export function createDocker({ inDocker = process.env.ACTIVITIES_IN_DOCKER === '
     }
     return { free, build, imageReady, configured, start, stop, remove, prune, exportImages, loadImages, inspect: owned, target: v => ({ host: inDocker ? containerName(v.id) : '127.0.0.1', port: inDocker ? 3000 : v.backend_port }) };
 }
-const reachable = (host, port) => new Promise(resolveReachable => {
-    const socket = createConnection({ host, port }); let done = false;
-    const finish = result => { if (done) return; done = true; socket.destroy(); resolveReachable(result); };
-    socket.setTimeout(500); socket.once('connect', () => finish(true)); socket.once('timeout', () => finish(false)); socket.once('error', () => finish(false));
+export const reachable = (host, port) => new Promise(resolveReachable => {
+    const socket = createConnection({ host, port }); let done = false, stable;
+    const finish = result => { if (done) return; done = true; clearTimeout(stable); socket.destroy(); resolveReachable(result); };
+    // RootlessKit can accept the outer TCP connection before the container's
+    // listener starts, then immediately close it. Do not report that as ready.
+    socket.setTimeout(500);
+    socket.once('connect', () => { stable = setTimeout(() => finish(true), 100); });
+    socket.once('end', () => finish(false)); socket.once('close', () => finish(false));
+    socket.once('timeout', () => finish(false)); socket.once('error', () => finish(false));
 });
