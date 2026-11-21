@@ -4,8 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
 import { cardDb } from './db.js';
 
-export const publicRoot = process.env.PUBLIC_DIR || (process.env.NODE_ENV === 'production'
-    ? '/app/public' : join(dirname(fileURLToPath(import.meta.url)), '..', 'public'));
+export const publicRoot = process.env.PUBLIC_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
 const uploadName = /^\d{13}-[a-f0-9]{16}(?:\.[a-z0-9]{1,11})?$/;
 const folders = ['picture', 'source'];

@@ -20,7 +20,7 @@ import { applyStation } from '../lib/music'
 
 const authenticated = ref(false)
 const checking = ref(true)
-const password = ref('')
+const password = ref(''), otpCode = ref('')
 const message = ref('')
 const hasWarnings = ref(false)
 const busy = ref(false)
@@ -105,7 +105,7 @@ const reportSave = (text, result) => {
   if (!warnings.length) setTimeout(() => { if (message.value.startsWith(text)) message.value = '' }, 4000)
 }
 
-async function login() { busy.value = true; try { await api('/login', json('POST', { password: password.value })); password.value = ''; authenticated.value = true; await loadAll(); report('已登录') } catch (e) { report(e.message, true) } finally { busy.value = false } }
+async function login() { busy.value = true; try { await api('/login', json('POST', { password: password.value, code: otpCode.value })); password.value = ''; otpCode.value = ''; authenticated.value = true; await loadAll(); report('已登录') } catch (e) { report(e.message, true) } finally { busy.value = false } }
 async function logout() { await api('/logout', { method: 'POST' }); authenticated.value = false; entries.value = []; report('已退出') }
 async function loadAll() { await Promise.all([loadProfile(), loadTypes(), loadEntries(), loadSettings()]) }
 async function loadProfile() { const j = await api('/profile'); profile.value = j.data.profile; cards.value = j.data.cards; playlists.value = j.data.playlists || []; sentences.value = j.data.sentences || []; welcome.value = [...(j.data.welcome || ['', '', ''])]; applyStation(j.data) }
@@ -189,7 +189,7 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
   <div class="page-shell admin-page"><div class="admin-title"><div><span class="eyebrow">站点后台</span><h1>内容管理</h1></div><button v-if="authenticated" class="ghost-button" @click="logout">退出登录</button></div>
     <div v-if="message" class="notice" :class="{ 'notice-warning': hasWarnings }" :role="hasWarnings ? 'alert' : 'status'">{{ message }}</div>
     <div v-if="checking" class="surface state">检查登录状态…</div>
-    <form v-else-if="!authenticated" class="surface login" @submit.prevent="login"><h2>登录后台</h2><p>输入管理员密码，继续管理网站内容。</p><label>管理员密码<input v-model="password" type="password" required autocomplete="current-password" /></label><button class="primary-button" :disabled="busy">登录</button></form>
+    <form v-else-if="!authenticated" class="surface login" @submit.prevent="login"><h2>登录后台</h2><p>输入管理员密码和实时密钥，继续管理网站内容。</p><label>管理员密码<input v-model="password" type="password" required autocomplete="current-password" /></label><label>实时密钥<input v-model="otpCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code" placeholder="输入当前六位密钥" /></label><button class="primary-button" :disabled="busy">登录</button></form>
     <template v-else>
       <nav class="admin-nav">
         <button :class="{ active: tab === 'profile' }" @click="tab = 'profile'">首页介绍</button>
@@ -285,7 +285,7 @@ onMounted(async () => { try { const r = await fetch('/api/admin/session'); const
             <div v-if="videoUploadProgress !== null" class="video-upload-progress" role="status"><progress :value="videoUploadProgress" max="100"></progress><span>{{ videoUploadProgress === 100 ? '正在校验文件…' : `正在上传 ${videoUploadProgress}%` }}</span><button type="button" class="ghost-button" @click="videoUploadRequest?.abort()">取消上传</button></div>
           </section>
           <section v-if="kind === 'resource' && form.resource_kind === 'gallery'" class="gallery-editor">
-            <div class="section-head"><div><h3>图集图片</h3><p>按比例以瀑布流呈现，点击可查看大图。第一张图片会作为默认封面。</p></div><span>{{ form.images.length }} / 500 张</span></div>
+            <div class="section-head"><div><h3>图集图片</h3><p>按比例以瀑布流呈现，点击可查看大图。封面请在上方单独设置。</p></div><span>{{ form.images.length }} / 500 张</span></div>
             <label class="upload-label">批量上传图片<input type="file" accept="image/*" multiple :disabled="busy" @change="uploadGallery" /></label>
             <div v-for="(image, index) in form.images" :key="index" class="gallery-image-editor"><img v-if="image.url" :src="image.url" :alt="image.caption || `图片 ${index + 1}`" @load="imageDimensions($event, image)" /><div><label>图片 {{ index + 1 }} · 地址<input v-model="image.url" placeholder="/picture/... 或 https://..." @input="image.width = 0; image.height = 0" /></label><label>图片说明（可选）<input v-model="image.caption" placeholder="描述这张图片" /></label><div class="image-controls"><button type="button" class="ghost-button" :disabled="index === 0 || busy" @click="moveImage(index, -1)">上移</button><button type="button" class="ghost-button" :disabled="index === form.images.length - 1 || busy" @click="moveImage(index, 1)">下移</button><button type="button" class="ghost-button" :disabled="busy" @click="form.images.splice(index, 1)">移除</button></div></div></div>
             <button type="button" class="ghost-button" :disabled="form.images.length >= 500 || busy" @click="form.images.push({ url: '', caption: '', width: 0, height: 0 })">+ 添加图片地址</button>

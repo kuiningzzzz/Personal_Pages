@@ -1,0 +1,26 @@
+[Unit]
+Description=Personal Pages API
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=personalpages
+Group=personalpages
+WorkingDirectory=/home/ubuntu/project/Personal_Pages/server
+Environment=NODE_ENV=production
+Environment=PATH=/opt/personal-pages-node/bin:/var/lib/personal-pages/bin:/usr/bin:/bin
+Environment=DOCKER_HOST=unix:///run/user/PAGES_UID/docker.sock
+Environment=DOCKER_BIN=/var/lib/personal-pages/bin/docker
+ExecStart=/opt/personal-pages-node/bin/node server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+UMask=0077
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/ubuntu/project/Personal_Pages/server/data /home/ubuntu/project/Personal_Pages/public /var/lib/personal-pages
+MemoryMax=3G
+TasksMax=512
+[Install]
+WantedBy=multi-user.target

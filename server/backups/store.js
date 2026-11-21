@@ -12,7 +12,7 @@ import { migrateSession, sessionProjectKey } from './ai-sessions.js';
 
 const PUBLIC_FOLDERS = ['articles', 'emoji', 'friend_avatar', 'picture', 'source'];
 const publicProtected = name => ['music-sw.js', '.git', '.codex', '.agents', 'node_modules'].includes(name) || name === '.env' || name.startsWith('.env.');
-const protectedName = name => ['backups', 'card.sqlite', 'comment.sqlite', 'card.sqlite-wal', 'card.sqlite-shm', 'card.sqlite-journal', 'comment.sqlite-wal', 'comment.sqlite-shm', 'comment.sqlite-journal', 'restore-journal.json', 'restore-journal.json.tmp', '.env'].includes(name) || name.startsWith('.backup-');
+const protectedName = name => ['backups', 'card.sqlite', 'comment.sqlite', 'card.sqlite-wal', 'card.sqlite-shm', 'card.sqlite-journal', 'comment.sqlite-wal', 'comment.sqlite-shm', 'comment.sqlite-journal', 'restore-journal.json', 'restore-journal.json.tmp', '.env'].includes(name) || name.startsWith('.backup-') || name.startsWith('admin-security.sqlite');
 const exists = async path => { try { await access(path); return true; } catch { return false; } };
 async function removeWithin(root, path) {
     if (!resolve(path).startsWith(resolve(root) + sep)) throw new Error('清理路径越界');

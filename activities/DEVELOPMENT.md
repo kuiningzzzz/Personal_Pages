@@ -271,22 +271,13 @@ backend/...
 
 启动 Docker，确保当前运行主站的账户能调用 Docker CLI。Windows 标准 Docker Desktop 路径会自动识别，其他安装位置设置根 `.env` 的 `DOCKER_BIN`。不设置 `ACTIVITIES_IN_DOCKER`，主站代理访问宿主机 `127.0.0.1:<分配端口>`。
 
-### Docker Compose 部署主站（Linux 服务器）
+### Linux 服务器原生部署
 
-项目 `docker-compose.yml` 已配置：
+主站 Docker Compose 部署已移除，详见 [原生部署文档](../DEPLOYMENT.md)。后端以专用 `personalpages` 用户运行，活动容器由该用户的 rootless Docker 管理；不授予宿主机 rootful Docker socket 或 sudo 权限。systemd 设置 `DOCKER_BIN` 和 `DOCKER_HOST`，无需配置 `ACTIVITIES_IN_DOCKER` 或共享 Docker 网络。
 
-- 后端镜像含 Docker CLI；挂载宿主机 `/var/run/docker.sock`。
-- 主站数据目录 `./server/data:/app/data`，活动存放 `/app/data/activities`。
-- 主站后端和活动后端连接共享 `personal-pages-activities` 网络。
-- `ACTIVITIES_IN_DOCKER=1`、`ACTIVITIES_DOCKER_NETWORK=personal-pages-activities`。
+Nginx 将活动资源、后端 HTTP 与 WebSocket 请求反代到主站，主站再访问 `127.0.0.1:<分配端口>`。前端使用 SDK 提供的代理地址，不直接访问活动宿主端口。Nginx 支持活动包 2GB 上传、流式代理和 WebSocket；Vite 开发代理也支持 WebSocket。
 
-活动的宿主端口仍由 Docker 映射并显示在后台；主站容器代理实际访问活动容器名的 `3000` 端口，避免把容器中的 localhost 错当成宿主机。持久数据挂载路径从主站自身的 Docker Mounts 转换为真实宿主路径；分配端口时创建临时探测容器，由 Docker 实际尝试绑定宿主机端口，避免只检测主站容器内部。
-
-自定义 `docker run` 部署时也要挂载 data 和 Docker socket、加入同名共享网络并设置这两个变量。该容器模式针对 Linux Docker 宿主机；Windows 开发建议直接运行主站 + Docker Desktop 的 Linux 活动容器。
-
-Nginx 已提供活动包 2GB 上传、流式代理和 WebSocket 转发；Vite 开发代理也支持 WebSocket。
-
-Docker socket 允许主站管理员运行自己上传的后端代码，拥有宿主机 Docker 的管理权限，因此活动发布仅供受信任站主使用，不开放给普通注册用户。活动容器只挂载自己的数据目录，释放操作按活动版本标签限定，不清理主站或其他服务的容器、镜像、缓存和基础镜像层。
+活动容器只挂载自己的数据目录，释放操作按活动版本标签限定，不清理其他服务的容器、镜像或基础镜像层。备份导入后的持久目录仍由活动服务恢复。容器 root 在宿主机对应专用用户；自定义非 root 容器用户时须按 UID 映射处理目录权限。
 
 ### 数据实际布局
 

@@ -27,7 +27,7 @@ const __dirname = dirname(__filename);
 
 // 数据目录路径
 export const DATA_DIR = process.env.DATA_DIR || join(__dirname, 'data');
-await recoverRestore(DATA_DIR, process.env.PUBLIC_DIR || (process.env.NODE_ENV === 'production' ? '/app/public' : join(__dirname, '..', 'public')));
+await recoverRestore(DATA_DIR, process.env.PUBLIC_DIR || join(__dirname, '..', 'public'));
 
 // 确保数据目录存在
 if (!existsSync(DATA_DIR)) {

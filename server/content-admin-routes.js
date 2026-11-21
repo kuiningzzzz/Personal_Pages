@@ -1,7 +1,8 @@
 import express from 'express';
-import session from 'express-session';
+import Database from './sqlite.js';
+import { createAdminAuth } from './admin-auth.js';
 import multer from 'multer';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { extname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { open, unlink } from 'node:fs/promises';
@@ -23,41 +24,9 @@ import { VIDEO_UPLOAD_LIMIT, validVideoUrl } from './videos.js';
 import { homeSentences, validateSentences, saveSentences } from './home-sentences.js';
 
 const router = express.Router();
-const password = process.env.ADMIN_PASSWORD || '';
-const sessionSecret = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
-if (!password) console.warn('ADMIN_PASSWORD 未设置，管理后台登录已禁用');
-router.use(session({ secret: sessionSecret, resave: false, saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: 'strict', secure: 'auto', maxAge: 7 * 24 * 60 * 60 * 1000 } }));
-
-const attempts = new Map();
-router.post('/login', (req, res) => {
-    const ip = req.ip;
-    const state = attempts.get(ip) || { count: 0, until: 0 };
-    if (state.until > Date.now()) return res.status(429).json({ success: false, message: '尝试过多，请稍后再试' });
-    const supplied = String(req.body.password || '');
-    const valid = password && supplied.length === password.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(password));
-    if (!valid) {
-        state.count += 1;
-        if (state.count >= 8) { state.until = Date.now() + 15 * 60 * 1000; state.count = 0; }
-        attempts.set(ip, state);
-        return res.status(401).json({ success: false, message: password ? '密码错误' : '服务器尚未配置管理员密码' });
-    }
-    attempts.delete(ip);
-    req.session.regenerate(error => {
-        if (error) return res.status(500).json({ success: false, message: '登录失败' });
-        req.session.admin = true;
-        res.json({ success: true });
-    });
-});
-router.get('/session', (req, res) => res.json({ success: true, authenticated: req.session.admin === true }));
-router.post('/logout', (req, res) => req.session.destroy(() => res.json({ success: true })));
-router.use((req, res, next) => req.session.admin ? next() : res.status(401).json({ success: false, message: '请先登录' }));
-router.use((req, res, next) => {
-    if (['GET', 'HEAD'].includes(req.method)) return next();
-    const origin = req.get('origin');
-    if (origin && new URL(origin).host !== req.get('host')) return res.status(403).json({ success: false, message: '请求来源无效' });
-    next();
-});
+const securityDb = new Database(join(DATA_DIR, 'admin-security.sqlite'));
+securityDb.exec('PRAGMA journal_mode=WAL');
+router.use(createAdminAuth({ db: securityDb }));
 
 const clean = (value, max = 10000) => String(value ?? '').trim().slice(0, max);
 router.use('/moderation', createModerationRoutes({ db: cardDb }));

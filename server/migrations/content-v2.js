@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const publicDir = process.env.PUBLIC_DIR || (process.env.NODE_ENV === 'production' ? '/app/public' : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'public'));
+const publicDir = process.env.PUBLIC_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
 
 function articleBody(link) {
     try {

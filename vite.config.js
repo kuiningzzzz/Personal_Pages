@@ -28,7 +28,23 @@ function pdfAssets() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), pdfAssets()],
+  plugins: [vue(), pdfAssets(), {
+    name: 'application-public-assets',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const name = (req.url || '').split('?')[0].slice(1)
+        if (!['favicon.png', 'music-sw.js'].includes(name)) return next()
+        res.setHeader('Content-Type', name.endsWith('.png') ? 'image/png' : 'application/javascript')
+        res.end(readFileSync(resolve('public', name)))
+      })
+    },
+    writeBundle(options) {
+      for (const name of ['favicon.png', 'music-sw.js']) cpSync(resolve('public', name), resolve(options.dir, name))
+    }
+  }],
+  // Runtime uploads stay on the API server; a build must not copy gigabytes of
+  // user data into the frontend release or make private data public.
+  publicDir: false,
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -36,6 +52,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '^/(picture|source|emoji|friend_avatar|articles)/': {
+        target: process.env.VITE_API_TARGET || 'http://localhost:3002', changeOrigin: false
+      },
       '/api': {
         target: process.env.VITE_API_TARGET || 'http://localhost:3002',
         // Admin writes compare Origin with Host. Preserve the browser-facing host.

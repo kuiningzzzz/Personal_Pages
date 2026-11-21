@@ -1,0 +1,1 @@
+const original = globalThis.fetch; globalThis.fetch = (url, options) => String(url) === 'https://otp.test.invalid/api/otp/verify' ? Promise.resolve(new Response(JSON.stringify({valid:JSON.parse(options.body).code === '123456'}),{status:200,headers:{'content-type':'application/json'}})) : original(url,options);

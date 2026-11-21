@@ -91,12 +91,14 @@ async function seed(f) {
 
 test('完整备份、覆盖还原和历史下载删除：保留所有内容关系及文件，自动保存还原前版本', async t => {
     const f = await fixture(t), ids = await seed(f);
+    await f.file('data/admin-security.sqlite', 'local security state');
     const generated = await f.successful(f.store.generate());
     assert.equal((await f.store.list()).length, 1);
     const row = await f.store.get(generated.id), zip = unzipSync(await readFile(row.path));
     const manifest = JSON.parse(strFromU8(zip['manifest.json']));
     assert.ok(manifest.files.some(r => r.name.includes('/workspace/reports/notes.md')));
     assert.equal(manifest.version, 2);
+    assert.ok(!manifest.files.some(r => r.name.includes('admin-security.sqlite')));
     assert.ok(manifest.files.some(r => r.name === 'public/favicon.png'));
     assert.ok(!manifest.files.some(r => r.name.includes('backups/') || r.name.includes('music-sw')));
     assert.equal(JSON.parse(strFromU8(zip['databases/card.json'])).tables.users[0].values.password_hash, 'stored-password-hash');
@@ -106,6 +108,7 @@ test('完整备份、覆盖还原和历史下载删除：保留所有内容关�
     await f.file('data/feedback/images/extra.png', 'extra');
     const restored = await f.successful(f.store.restore(row.path, 'overwrite'));
     assert.ok(restored.safetyBackup);
+    assert.equal(await readFile(join(f.data, 'admin-security.sqlite'), 'utf8'), 'local security state');
     assert.equal((await f.store.list()).length, 2);
     assert.equal(f.card.prepare('SELECT title FROM entries WHERE id=?').get(ids.article).title, '第一课');
     assert.equal(f.card.prepare('SELECT COUNT(*) AS n FROM users').get().n, 2);
