@@ -116,3 +116,7 @@ a.entry-title:hover { text-decoration: underline; text-decoration-color: var(--a
 .resource .entry.without-cover .entry-content { grid-column: 2 / -1; padding-right: 4px; }
 .resource-masonry .entry.without-cover .entry-index { position: static; align-self: flex-start; margin: 3px 5px 0; }
 .resource-masonry .entry.without-cover .entry-content { padding-top: 12px; }
+
+/* Resource covers retain their natural proportions in rows and masonry. */
+.resource .entry-visual { height: auto; aspect-ratio: auto; }
+.resource .entry-visual img { height: auto; max-height: none; object-fit: contain; }

@@ -139,7 +139,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
         <div class="article-meta"><span>{{ entry.kind === 'resource' ? resourceLabel(entry) : entry.format === 'short' ? '短帖' : '长文' }}</span><span v-if="entry.resource_kind === 'gallery'">{{ entry.images.length }} 张图片</span><time :datetime="entry.published_at">{{ date(entry.published_at) }}</time><small v-if="entry.word_count != null" class="article-word-count">{{ entry.word_count.toLocaleString('zh-CN') }} 字</small></div>
         <h1 v-if="entry.title">{{ entry.title }}</h1>
         <a v-if="entry.resource_kind === 'video' && entry.video_playback_url || entry.resource_kind === 'pdf' && entry.pdf_preview_url" class="ghost-button media-download" :href="entry.resource_kind === 'pdf' ? entry.pdf_preview_url : entry.video_playback_url" download>下载{{ entry.resource_kind === 'pdf' ? 'PDF' : '视频' }} ↓</a>
-        <img v-if="entry.cover_image && !['gallery', 'video', 'pdf'].includes(entry.resource_kind)" class="article-cover" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
+        <img v-if="entry.cover_image && !['gallery', 'video', 'pdf'].includes(entry.resource_kind)" class="article-cover" :class="{ 'resource-cover': entry.kind === 'resource' }" :src="entry.cover_image" :alt="`${entry.title || '动态'}的封面`" />
         <MarkdownContent v-if="entry.summary" class="lead" :source="entry.summary" />
         <div v-if="entry.tags.length" class="tags"><span v-for="tag in entry.tags" :key="tag">#{{ tag }}</span></div>
         <MarkdownContent :source="entry.body" :heading-prefix="`entry-${entry.id}-section-`" @outline="headings = $event" />
@@ -195,6 +195,7 @@ const date = value => new Date(value).toLocaleDateString('zh-CN', { year: 'numer
 .article-word-count { font-size: inherit; white-space: nowrap; }
 h1 { margin: 28px 0 18px; font-family: var(--heading-font); font-size: clamp(34px, 5vw, 58px); font-weight: 900; letter-spacing: -.055em; line-height: 1.2; overflow-wrap: anywhere; }
 .article-cover { display: block; width: 100%; max-height: 420px; margin: 22px 0 29px; border-radius: 6px; box-shadow: 7px 7px 0 var(--accent-soft); object-fit: cover; }
+.article-cover.resource-cover { height: auto; max-height: none; object-fit: contain; }
 .article > .lead { margin: 0 0 20px; color: var(--muted); font-size: 17px; line-height: 1.8; }
 .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 34px; }
 .tags span { padding: 3px 8px; border-radius: 3px; color: var(--ink); background: var(--accent-soft); font-size: 12px; font-weight: 700; }
